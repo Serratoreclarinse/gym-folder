@@ -16,6 +16,7 @@ import { useSessions } from '@/hooks/useSessions';
 import { useStrikes } from '@/hooks/useStrikes';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { ClientProgressTab } from '@/components/ClientProgressTab';
+import { ClientNotesTab } from '@/components/ClientNotesTab';
 import { Colors, Typography } from '@/constants/theme';
 
 const PACKAGE_LABEL: Record<string, string> = {
@@ -24,7 +25,7 @@ const PACKAGE_LABEL: Record<string, string> = {
   '1hr': '1 hour',
 };
 
-type Tab = 'overview' | 'sessions' | 'progress' | 'files';
+type Tab = 'overview' | 'sessions' | 'progress' | 'notes' | 'files';
 
 const MAX_STRIKES = 3;
 
@@ -307,8 +308,13 @@ export default function ClientDetailScreen() {
       {client && <ClientHeader />}
 
       {/* Tab bar */}
-      <View style={styles.tabBar}>
-        {(['overview', 'sessions', 'progress', 'files'] as Tab[]).map((tab) => (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.tabBar}
+        contentContainerStyle={styles.tabBarContent}
+      >
+        {(['overview', 'sessions', 'progress', 'notes', 'files'] as Tab[]).map((tab) => (
           <Pressable
             key={tab}
             style={[styles.tabBtn, activeTab === tab && styles.tabBtnActive]}
@@ -318,16 +324,18 @@ export default function ClientDetailScreen() {
               {tab === 'overview' ? 'Overview'
                 : tab === 'sessions' ? `Sessions${sessions.length > 0 ? ` (${sessions.length})` : ''}`
                 : tab === 'progress' ? 'Progress'
+                : tab === 'notes' ? 'Notes'
                 : 'Files'}
             </Text>
           </Pressable>
         ))}
-      </View>
+      </ScrollView>
 
       {/* Tab content */}
       {activeTab === 'overview' && <OverviewContent />}
       {activeTab === 'sessions' && <SessionsContent />}
       {activeTab === 'progress' && <ClientProgressTab clientId={id} />}
+      {activeTab === 'notes' && <ClientNotesTab clientId={id} />}
       {activeTab === 'files' && <FilesContent />}
     </ScrollView>
   );
@@ -352,15 +360,14 @@ const styles = StyleSheet.create({
 
   // Tab bar
   tabBar: {
-    flexDirection: 'row',
     backgroundColor: Colors.surface,
     borderRadius: 12,
-    padding: 4,
     marginBottom: 20,
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  tabBtn: { flex: 1, paddingVertical: 9, borderRadius: 9, alignItems: 'center' },
+  tabBarContent: { flexDirection: 'row', padding: 4 },
+  tabBtn: { paddingVertical: 9, paddingHorizontal: 14, borderRadius: 9, alignItems: 'center' },
   tabBtnActive: { backgroundColor: Colors.accent },
   tabLabel: { fontSize: 12, fontWeight: '700', color: Colors.textSecondary },
   tabLabelActive: { color: Colors.bg },

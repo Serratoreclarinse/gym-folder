@@ -51,6 +51,12 @@
         "projectId": "db3ebbee-d9d6-4d42-94ce-235f563cdb74"
       }
     },
-    "owner": "clarinse"
+    "owner": "clarinse",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/db3ebbee-d9d6-4d42-94ce-235f563cdb74"
+    }
   }
 }
