@@ -1,5 +1,7 @@
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { formatBirthday } from '@/hooks/useBirthdays';
 import {
   Alert,
   Pressable,
@@ -65,12 +67,52 @@ function StrikeInputForm({
   );
 }
 
+function BirthdayEditForm({
+  value,
+  onChangeText,
+  onSave,
+  onCancel,
+}: {
+  value: string;
+  onChangeText: (v: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <View style={styles.bdEditCard}>
+      <Text style={styles.bdEditHint}>Format: MM-DD  (e.g. 12-25 for Dec 25)</Text>
+      <TextInput
+        style={styles.bdEditInput}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder="MM-DD"
+        placeholderTextColor={Colors.textSecondary}
+        keyboardType="numbers-and-punctuation"
+        maxLength={5}
+        autoFocus
+        returnKeyType="done"
+        onSubmitEditing={onSave}
+      />
+      <View style={styles.bdEditBtns}>
+        <Pressable style={styles.bdEditCancel} onPress={onCancel}>
+          <Text style={styles.bdEditCancelText}>Cancel</Text>
+        </Pressable>
+        <Pressable style={styles.bdEditSave} onPress={onSave}>
+          <Text style={styles.bdEditSaveText}>Save</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 export default function ClientDetailScreen() {
   const params = useLocalSearchParams<{ id: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const navigation = useNavigation();
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [showStrikeInput, setShowStrikeInput] = useState(false);
+  const [showBirthdayEdit, setShowBirthdayEdit] = useState(false);
+  const [bdInput, setBdInput] = useState('');
 
   const { clients, loading: clientsLoading, error: clientsError, refetch: refetchClients } = useClients();
   const { sessions, loading: sessionsLoading, error: sessionsError, refetch: refetchSessions } = useSessions(id);
@@ -174,8 +216,45 @@ export default function ClientDetailScreen() {
         </Pressable>
       )}
 
+      {/* Birthday */}
+      <View style={[styles.sectionRow, { marginBottom: 8 }]}>
+        <Text style={styles.sectionTitle}>BIRTHDAY</Text>
+        {!showBirthdayEdit && (
+          <Pressable
+            onPress={() => { setBdInput(client?.birthday ?? ''); setShowBirthdayEdit(true); }}
+            hitSlop={8}
+          >
+            <Ionicons name="pencil-outline" size={16} color={Colors.accent} />
+          </Pressable>
+        )}
+      </View>
+      {showBirthdayEdit ? (
+        <BirthdayEditForm
+          value={bdInput}
+          onChangeText={setBdInput}
+          onSave={() => {
+            const trimmed = bdInput.trim();
+            setShowBirthdayEdit(false);
+            supabase.from('profiles').update({ birthday: trimmed || null }).eq('id', id)
+              .then(() => refetchClients());
+          }}
+          onCancel={() => setShowBirthdayEdit(false)}
+        />
+      ) : (
+        <View style={styles.bdDisplay}>
+          {client?.birthday ? (
+            <>
+              <Text style={{ fontSize: 18 }}>🎂</Text>
+              <Text style={styles.bdText}>{formatBirthday(client.birthday)}</Text>
+            </>
+          ) : (
+            <Text style={styles.bdEmpty}>Not set — tap ✏ to add</Text>
+          )}
+        </View>
+      )}
+
       {/* Strikes section */}
-      <View style={styles.sectionRow}>
+      <View style={[styles.sectionRow, { marginTop: 20 }]}>
         <Text style={styles.sectionTitle}>STRIKES</Text>
         {!showStrikeInput && (
           <Pressable style={styles.addStrikeBtn} onPress={handleAddStrike}>
@@ -494,4 +573,33 @@ const styles = StyleSheet.create({
     alignItems: 'center', marginBottom: 14, borderWidth: 1, borderColor: Colors.border,
   },
   emptyText: { ...Typography.body, color: Colors.textSecondary },
+
+  // Birthday
+  bdDisplay: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: Colors.surface, borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: Colors.border, marginBottom: 8,
+  },
+  bdText: { ...Typography.body, color: Colors.textPrimary },
+  bdEmpty: { ...Typography.body, color: Colors.textSecondary, fontStyle: 'italic' },
+  bdEditCard: {
+    backgroundColor: Colors.surface, borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: Colors.accent + '50', marginBottom: 8,
+  },
+  bdEditHint: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 8 },
+  bdEditInput: {
+    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 10, padding: 10, color: Colors.textPrimary, fontSize: 15, marginBottom: 10,
+  },
+  bdEditBtns: { flexDirection: 'row', gap: 8 },
+  bdEditCancel: {
+    flex: 1, paddingVertical: 10, borderRadius: 10,
+    borderWidth: 1, borderColor: Colors.border, alignItems: 'center',
+  },
+  bdEditCancelText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
+  bdEditSave: {
+    flex: 1, paddingVertical: 10, borderRadius: 10,
+    backgroundColor: Colors.accent, alignItems: 'center',
+  },
+  bdEditSaveText: { color: Colors.bg, fontWeight: '700', fontSize: 13 },
 });

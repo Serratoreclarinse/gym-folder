@@ -17,6 +17,7 @@ export type ClientWithPackage = {
   name: string;
   email: string;
   phone: string | null;
+  birthday: string | null; // MM-DD e.g. "12-25"
   activePackage: ClientPackage | null;
 };
 
@@ -46,7 +47,7 @@ export function useClients() {
         status,
         start_date,
         client:profiles!packages_client_id_fkey (
-          id, name, email, phone
+          id, name, email, phone, birthday
         )
       `)
       .eq('coach_id', profile.id)
@@ -61,7 +62,7 @@ export function useClients() {
     // Deduplicate by client — each client gets their most recent active package
     const clientMap = new Map<string, ClientWithPackage>();
     for (const row of data ?? []) {
-      const c = row.client as { id: string; name: string; email: string; phone: string | null };
+      const c = row.client as { id: string; name: string; email: string; phone: string | null; birthday: string | null };
       if (!c) continue;
 
       const pkg: ClientPackage = {
@@ -80,6 +81,7 @@ export function useClients() {
           name: c.name,
           email: c.email,
           phone: c.phone,
+          birthday: c.birthday,
           activePackage: row.status === 'active' ? pkg : null,
         });
       } else if (row.status === 'active') {

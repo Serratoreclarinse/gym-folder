@@ -1,16 +1,28 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef } from 'react';
+import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import { useAuth } from '@/context/AuthContext';
 import { useClients } from '@/hooks/useClients';
 import { useSessions } from '@/hooks/useSessions';
 import { useStrikeAlerts } from '@/hooks/useStrikeAlerts';
 import { useWaitlist } from '@/hooks/useWaitlist';
+import { useBirthdays, getDaysUntilBirthday, formatBirthday } from '@/hooks/useBirthdays';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { Colors, Typography } from '@/constants/theme';
 
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
 const MAX_STRIKES = 3;
+const BIRTHDAY_GOLD = '#FFD700';
 
 function StatCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
@@ -28,11 +40,38 @@ export default function CoachDashboard() {
   const { sessions, loading: sLoading, error: sError, refetch: refetchSessions } = useSessions();
   const { alerts: strikeAlerts, refetch: refetchStrikes } = useStrikeAlerts();
   const { totalCount: waitlistCount, refetch: refetchWaitlist } = useWaitlist(profile?.id);
+  const { all: allBirthdays } = useBirthdays(clients);
 
   const refreshing = cLoading || sLoading;
   const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); };
 
   useFocusEffect(useCallback(() => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); }, []));
+
+  // fire a local notification once per calendar day for today's client birthdays
+  const notifiedRef = useRef(false);
+  useEffect(() => {
+    if (notifiedRef.current || cLoading) return;
+    notifiedRef.current = true;
+    (async () => {
+      const todayKey = `bdnotif_${new Date().toISOString().slice(0, 10)}`;
+      const done = await AsyncStorage.getItem(todayKey);
+      if (done) return;
+      const todayBdays = clients.filter((c) => c.birthday != null && getDaysUntilBirthday(c.birthday) === 0);
+      if (todayBdays.length === 0) return;
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status !== 'granted') return;
+      for (const c of todayBdays) {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: '🎂 Birthday Today!',
+            body: `Today is ${c.name}'s birthday! Don't forget to send a greeting 🎉`,
+          },
+          trigger: null,
+        });
+      }
+      await AsyncStorage.setItem(todayKey, '1');
+    })();
+  }, [cLoading]);
 
   const activeClients = clients.filter((c) => c.activePackage?.status === 'active').length;
   const expiringCount = clients.filter(
@@ -133,6 +172,49 @@ export default function CoachDashboard() {
                   </Text>
                 </View>
               </Pressable>
+            );
+          })}
+          <View style={{ height: 8 }} />
+        </>
+      )}
+
+      {/* Upcoming Birthdays */}
+      {allBirthdays.length > 0 && (
+        <>
+          <View style={styles.strikeSectionHeader}>
+            <Text style={styles.sectionTitle}>UPCOMING BIRTHDAYS</Text>
+            <View style={[styles.strikeBadge, styles.birthdayBadge]}>
+              <Text style={[styles.strikeBadgeText, styles.birthdayBadgeText]}>{allBirthdays.length}</Text>
+            </View>
+          </View>
+          {allBirthdays.map((b) => {
+            const isToday = b.daysUntil === 0;
+            const initials = b.name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
+            return (
+              <View key={b.id} style={[styles.birthdayCard, isToday && styles.birthdayCardToday]}>
+                <View style={[styles.birthdayAvatar, isToday && styles.birthdayAvatarToday]}>
+                  <Text style={[styles.birthdayAvatarText, isToday && { color: BIRTHDAY_GOLD }]}>{initials}</Text>
+                </View>
+                <View style={styles.birthdayInfo}>
+                  <Text style={styles.birthdayName}>{b.name}</Text>
+                  <Text style={[styles.birthdayDate, isToday && { color: BIRTHDAY_GOLD }]}>
+                    {isToday
+                      ? '🎂 Today!'
+                      : `${formatBirthday(b.birthday!)} · in ${b.daysUntil} day${b.daysUntil !== 1 ? 's' : ''}`}
+                  </Text>
+                </View>
+                {b.phone ? (
+                  <Pressable
+                    style={[styles.whatsappBtn, isToday && styles.whatsappBtnToday]}
+                    onPress={() => {
+                      const msg = `Happy Birthday ${b.name}! 🎂🎉 Wishing you a wonderful day! 💪`;
+                      Linking.openURL(`whatsapp://send?phone=${encodeURIComponent(b.phone!)}&text=${encodeURIComponent(msg)}`);
+                    }}
+                  >
+                    <Text style={[styles.whatsappBtnText, isToday && { color: BIRTHDAY_GOLD }]}>Send 🎉</Text>
+                  </Pressable>
+                ) : null}
+              </View>
             );
           })}
           <View style={{ height: 8 }} />
@@ -304,4 +386,30 @@ const styles = StyleSheet.create({
   sessionInfo: { flex: 1 },
   sessionClient: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
   sessionMeta: { ...Typography.caption, color: Colors.textSecondary },
+
+  // Birthday section
+  birthdayBadge: { backgroundColor: BIRTHDAY_GOLD + '20', borderColor: BIRTHDAY_GOLD + '50' },
+  birthdayBadgeText: { color: BIRTHDAY_GOLD },
+  birthdayCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: Colors.surface, borderRadius: 14, padding: 14,
+    marginBottom: 8, borderWidth: 1, borderColor: Colors.border,
+  },
+  birthdayCardToday: { backgroundColor: BIRTHDAY_GOLD + '10', borderColor: BIRTHDAY_GOLD + '40' },
+  birthdayAvatar: {
+    width: 42, height: 42, borderRadius: 21,
+    backgroundColor: Colors.border, justifyContent: 'center', alignItems: 'center',
+  },
+  birthdayAvatarToday: { backgroundColor: BIRTHDAY_GOLD + '18', borderWidth: 1.5, borderColor: BIRTHDAY_GOLD + '50' },
+  birthdayAvatarText: { fontSize: 14, fontWeight: '800', color: Colors.textSecondary },
+  birthdayInfo: { flex: 1 },
+  birthdayName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
+  birthdayDate: { ...Typography.caption, color: Colors.textSecondary },
+  whatsappBtn: {
+    backgroundColor: Colors.bg, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  whatsappBtnToday: { backgroundColor: BIRTHDAY_GOLD + '15', borderColor: BIRTHDAY_GOLD + '50' },
+  whatsappBtnText: { fontSize: 12, fontWeight: '700', color: Colors.textSecondary },
 });

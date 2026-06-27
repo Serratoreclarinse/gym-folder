@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useClients, type ClientWithPackage } from '@/hooks/useClients';
+import { getDaysUntilBirthday } from '@/hooks/useBirthdays';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { Colors, Typography } from '@/constants/theme';
 
@@ -29,6 +30,7 @@ function PackageBadge({ remaining, status }: { remaining: number; status: string
 function ClientCard({ client }: { client: ClientWithPackage }) {
   const pkg = client.activePackage;
   const initials = client.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+  const hasBday = client.birthday != null && getDaysUntilBirthday(client.birthday) <= 3;
 
   return (
     <Pressable
@@ -40,7 +42,10 @@ function ClientCard({ client }: { client: ClientWithPackage }) {
       </View>
 
       <View style={styles.clientInfo}>
-        <Text style={styles.clientName}>{client.name}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <Text style={styles.clientName}>{client.name}</Text>
+          {hasBday && <Text style={{ fontSize: 14 }}>🎂</Text>}
+        </View>
         <Text style={styles.clientEmail}>{client.email}</Text>
         {pkg ? (
           <Text style={styles.packageType}>
