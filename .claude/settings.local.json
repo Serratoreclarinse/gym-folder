@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "PowerShell(node --version)",
+      "PowerShell(npm --version)",
+      "PowerShell($env:PATH)",
+      "PowerShell(Get-ChildItem -Recurse \"C:\\\\Users\\\\JHE\\\\gym-folder\\\\app\" | Where-Object { -not $_.PSIsContainer } | Select-Object -ExpandProperty FullName)",
+      "Skill(code-review)",
+      "Skill(code-review:*)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 8081 -ErrorAction SilentlyContinue | Select-Object State, OwningProcess; Get-Process -Id \\(Get-NetTCPConnection -LocalPort 8081 -ErrorAction SilentlyContinue\\).OwningProcess -ErrorAction SilentlyContinue | Select-Object Id, ProcessName)"
+    ]
+  }
+}

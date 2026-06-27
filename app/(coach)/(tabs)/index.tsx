@@ -1,0 +1,307 @@
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '@/context/AuthContext';
+import { useClients } from '@/hooks/useClients';
+import { useSessions } from '@/hooks/useSessions';
+import { useStrikeAlerts } from '@/hooks/useStrikeAlerts';
+import { useWaitlist } from '@/hooks/useWaitlist';
+import { ErrorBanner } from '@/components/ErrorBanner';
+import { Colors, Typography } from '@/constants/theme';
+
+const MAX_STRIKES = 3;
+
+function StatCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <View style={[styles.card, accent && styles.cardAccent]}>
+      <Text style={[styles.cardValue, accent && styles.cardValueAccent]}>{value}</Text>
+      <Text style={styles.cardLabel}>{label}</Text>
+    </View>
+  );
+}
+
+export default function CoachDashboard() {
+  const { profile } = useAuth();
+  const firstName = profile?.name?.split(' ')[0] ?? 'Coach';
+  const { clients, loading: cLoading, error: cError, refetch: refetchClients } = useClients();
+  const { sessions, loading: sLoading, error: sError, refetch: refetchSessions } = useSessions();
+  const { alerts: strikeAlerts, refetch: refetchStrikes } = useStrikeAlerts();
+  const { totalCount: waitlistCount, refetch: refetchWaitlist } = useWaitlist(profile?.id);
+
+  const refreshing = cLoading || sLoading;
+  const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); };
+
+  useFocusEffect(useCallback(() => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); }, []));
+
+  const activeClients = clients.filter((c) => c.activePackage?.status === 'active').length;
+  const expiringCount = clients.filter(
+    (c) => c.activePackage?.status === 'active' && (c.activePackage?.sessions_remaining ?? 0) <= 3
+  ).length;
+
+  const today = new Date().toISOString().split('T')[0];
+  const todaySessions = sessions.filter((s) => s.session_date === today).length;
+
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  const weekSessions = sessions.filter((s) => new Date(s.session_date) >= weekAgo).length;
+
+  const recentSessions = sessions.slice(0, 5);
+
+  return (
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}
+    >
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.greeting}>Hey, {firstName} 👊</Text>
+          <Text style={styles.date}>
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </Text>
+        </View>
+        <Pressable style={styles.addBtn} onPress={() => router.push('/(coach)/add-client')}>
+          <Ionicons name="person-add-outline" size={20} color={Colors.accent} />
+        </Pressable>
+      </View>
+
+      {/* Errors */}
+      {(cError || sError) && (
+        <ErrorBanner message={cError ?? sError!} onRetry={onRefresh} />
+      )}
+
+      {/* Stats */}
+      <View style={styles.statsGrid}>
+        <StatCard label="Active Clients" value={String(activeClients)} accent />
+        <StatCard label="Sessions Today" value={String(todaySessions)} />
+        <StatCard label="This Week" value={String(weekSessions)} />
+        <StatCard label="Expiring Soon" value={expiringCount > 0 ? `⚠ ${expiringCount}` : '—'} />
+      </View>
+
+      {/* Quick actions */}
+      <View style={styles.quickRow}>
+        <Pressable style={[styles.quickBtn, styles.quickBtnPrimary]} onPress={() => router.push('/(coach)/log-session')}>
+          <Ionicons name="add-circle-outline" size={20} color={Colors.bg} />
+          <Text style={styles.quickBtnPrimaryText}>LOG SESSION</Text>
+        </Pressable>
+        <Pressable style={[styles.quickBtn, styles.quickBtnSecondary]} onPress={() => router.push('/(coach)/revenue')}>
+          <Ionicons name="bar-chart-outline" size={20} color={Colors.accent} />
+          <Text style={styles.quickBtnSecondaryText}>REVENUE</Text>
+        </Pressable>
+      </View>
+
+      {/* Strike Alerts */}
+      {strikeAlerts.length > 0 && (
+        <>
+          <View style={styles.strikeSectionHeader}>
+            <Text style={styles.sectionTitle}>STRIKE ALERTS</Text>
+            <View style={styles.strikeBadge}>
+              <Text style={styles.strikeBadgeText}>{strikeAlerts.length}</Text>
+            </View>
+          </View>
+          {strikeAlerts.map((alert) => {
+            const isMax = alert.strike_count >= MAX_STRIKES;
+            const color = isMax ? Colors.danger : '#FFA500';
+            const initials = alert.client_name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
+            const latestDate = new Date(alert.latest_strike_date).toLocaleDateString('en-US', {
+              month: 'short', day: 'numeric',
+            });
+            return (
+              <Pressable
+                key={alert.client_id}
+                style={({ pressed }) => [styles.strikeAlertCard, { borderColor: color + '50' }, pressed && { opacity: 0.75 }]}
+                onPress={() => router.push(`/(coach)/client/${alert.client_id}`)}
+              >
+                <View style={[styles.strikeAvatar, { backgroundColor: color + '18', borderColor: color + '40' }]}>
+                  <Text style={[styles.strikeAvatarText, { color }]}>{initials}</Text>
+                </View>
+                <View style={styles.strikeAlertInfo}>
+                  <Text style={styles.strikeAlertName}>{alert.client_name}</Text>
+                  <Text style={styles.strikeAlertDate}>Last strike: {latestDate}</Text>
+                </View>
+                <View style={[styles.strikeCountBadge, { backgroundColor: color + '18', borderColor: color + '40' }]}>
+                  {Array.from({ length: MAX_STRIKES }).map((_, i) => (
+                    <View
+                      key={i}
+                      style={[styles.strikePip, { backgroundColor: i < alert.strike_count ? color : Colors.border }]}
+                    />
+                  ))}
+                  <Text style={[styles.strikeCountText, { color }]}>
+                    {alert.strike_count}/{MAX_STRIKES}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+          <View style={{ height: 8 }} />
+        </>
+      )}
+
+      {/* Waitlist notice */}
+      {waitlistCount > 0 && (
+        <Pressable
+          style={styles.waitlistNotice}
+          onPress={() => router.push('/(coach)/(tabs)/calendar')}
+        >
+          <Ionicons name="people-outline" size={16} color={Colors.accent} />
+          <Text style={styles.waitlistNoticeText}>
+            {waitlistCount} client{waitlistCount !== 1 ? 's' : ''} on waitlist — check Calendar for open slots
+          </Text>
+          <Ionicons name="chevron-forward" size={14} color={Colors.accent} />
+        </Pressable>
+      )}
+
+      {/* Recent sessions */}
+      <Text style={styles.sectionTitle}>RECENT SESSIONS</Text>
+      {recentSessions.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyText}>No sessions logged yet</Text>
+        </View>
+      ) : (
+        recentSessions.map((s) => (
+          <Pressable
+            key={s.id}
+            style={styles.sessionRow}
+            onPress={() => router.push(`/(coach)/client/${s.client_id}`)}
+          >
+            <View style={styles.sessionDot} />
+            <View style={styles.sessionInfo}>
+              <Text style={styles.sessionClient}>{s.client_name}</Text>
+              <Text style={styles.sessionMeta}>
+                {new Date(s.session_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                {'  ·  '}{s.duration_minutes} min{'  ·  '}{s.exercises.length} exercises
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
+          </Pressable>
+        ))
+      )}
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  scroll: { flex: 1, backgroundColor: Colors.bg },
+  content: { padding: 20, paddingBottom: 40 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 },
+  greeting: { ...Typography.title, color: Colors.textPrimary, marginBottom: 4 },
+  date: { ...Typography.body, color: Colors.textSecondary },
+  addBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.accent + '15',
+    borderWidth: 1,
+    borderColor: Colors.accent + '40',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 20 },
+  card: {
+    flex: 1,
+    minWidth: '44%',
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  cardAccent: { backgroundColor: Colors.accent + '12', borderColor: Colors.accent + '40' },
+  cardValue: { ...Typography.title, color: Colors.textPrimary, marginBottom: 4 },
+  cardValueAccent: { color: Colors.accent },
+  cardLabel: { ...Typography.caption, color: Colors.textSecondary },
+  quickRow: { flexDirection: 'row', gap: 10, marginBottom: 32 },
+  quickBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', gap: 7,
+    borderRadius: 14, paddingVertical: 14,
+  },
+  quickBtnPrimary: { backgroundColor: Colors.accent },
+  quickBtnPrimaryText: { color: Colors.bg, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+  quickBtnSecondary: {
+    backgroundColor: Colors.surface,
+    borderWidth: 1, borderColor: Colors.accent + '50',
+  },
+  quickBtnSecondaryText: { color: Colors.accent, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+  sectionTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 12 },
+  strikeSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  strikeBadge: {
+    backgroundColor: Colors.danger + '20',
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: Colors.danger + '50',
+  },
+  strikeBadgeText: { color: Colors.danger, fontSize: 11, fontWeight: '800' },
+  strikeAlertCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: Colors.surface,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 8,
+    borderWidth: 1,
+  },
+  strikeAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  strikeAvatarText: { fontSize: 14, fontWeight: '800' },
+  strikeAlertInfo: { flex: 1 },
+  strikeAlertName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
+  strikeAlertDate: { ...Typography.caption, color: Colors.textSecondary },
+  strikeCountBadge: {
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+  },
+  strikePip: { width: 7, height: 7, borderRadius: 4 },
+  strikeCountText: { fontSize: 11, fontWeight: '800' },
+  waitlistNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.accent + '12',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: Colors.accent + '35',
+  },
+  waitlistNoticeText: { ...Typography.caption, color: Colors.accent, flex: 1 },
+  emptyState: {
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  emptyText: { ...Typography.body, color: Colors.textSecondary },
+  sessionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 12,
+  },
+  sessionDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.accent },
+  sessionInfo: { flex: 1 },
+  sessionClient: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
+  sessionMeta: { ...Typography.caption, color: Colors.textSecondary },
+});

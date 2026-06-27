@@ -1,0 +1,782 @@
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Alert,
+  Dimensions,
+  FlatList,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import Svg, { G, Rect, Text as SvgText } from 'react-native-svg';
+import { Ionicons } from '@expo/vector-icons';
+import { useClients } from '@/hooks/useClients';
+import { usePayments, Payment, NewPayment, PaymentMethod, PaymentStatus } from '@/hooks/usePayments';
+import { Colors, Typography } from '@/constants/theme';
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+const { width: SCREEN_W } = Dimensions.get('window');
+const CHART_W = SCREEN_W - 80; // 24 screen pad + 16 card pad each side
+const BAR_COUNT = 6;
+const BAR_W = Math.floor((CHART_W * 0.52) / BAR_COUNT);
+const BAR_GAP = Math.floor((CHART_W - BAR_COUNT * BAR_W) / (BAR_COUNT + 1));
+
+const fmt = (n: number) =>
+  'OMR ' + n.toFixed(3).replace(/\.?0+$/, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+const fmtK = (n: number) => {
+  if (n >= 1000) return 'OMR ' + (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  return 'OMR ' + n.toFixed(3).replace(/\.?0+$/, '');
+};
+
+const fmtDate = (s: string) => {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const fmtMonth = (key: string) => {
+  const [y, m] = key.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+};
+
+const todayISO = () => new Date().toISOString().split('T')[0];
+
+function getLast6Months(): { key: string; label: string }[] {
+  const result: { key: string; label: string }[] = [];
+  const now = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    result.push({
+      key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+      label: d.toLocaleDateString('en-US', { month: 'short' }),
+    });
+  }
+  return result;
+}
+
+const METHOD_LABEL: Record<PaymentMethod, string> = {
+  cash: 'Cash',
+  bank_transfer: 'Bank',
+  other: 'Other',
+};
+
+// ─── Bar Chart ──────────────────────────────────────────────────────────────
+
+function BarChart({ data }: { data: { label: string; total: number }[] }) {
+  const chartH = 120;
+  const labelH = 18;
+  const maxBarH = chartH - labelH - 6;
+  const maxVal = Math.max(...data.map((d) => d.total), 1);
+
+  return (
+    <Svg width={CHART_W} height={chartH}>
+      {data.map((d, i) => {
+        const h = d.total > 0 ? Math.max(4, (d.total / maxVal) * maxBarH) : 3;
+        const x = BAR_GAP + i * (BAR_W + BAR_GAP);
+        const y = chartH - labelH - h - 4;
+        const color = d.total > 0 ? Colors.accent : Colors.border;
+        return (
+          <G key={`bar${i}`}>
+            <Rect x={x} y={y} width={BAR_W} height={h} rx={4} fill={color} />
+            <SvgText
+              x={x + BAR_W / 2}
+              y={chartH - 2}
+              textAnchor="middle"
+              fontSize={9}
+              fontWeight="600"
+              fill={Colors.textSecondary}
+            >
+              {d.label}
+            </SvgText>
+            {d.total > 0 && (
+              <SvgText
+                x={x + BAR_W / 2}
+                y={y - 3}
+                textAnchor="middle"
+                fontSize={8}
+                fill={Colors.accent}
+              >
+                {fmtK(d.total)}
+              </SvgText>
+            )}
+          </G>
+        );
+      })}
+    </Svg>
+  );
+}
+
+// ─── Payment Row ─────────────────────────────────────────────────────────────
+
+function PaymentRow({
+  payment,
+  showClient,
+  onPress,
+  onLongPress,
+}: {
+  payment: Payment;
+  showClient: boolean;
+  onPress: () => void;
+  onLongPress: () => void;
+}) {
+  const isPaid = payment.status === 'paid';
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.payRow, pressed && { opacity: 0.7 }]}
+      onPress={onPress}
+      onLongPress={onLongPress}
+    >
+      <View style={styles.payRowLeft}>
+        {showClient && (
+          <Text style={styles.payClientName}>{payment.client_name}</Text>
+        )}
+        <Text style={styles.payPackage}>{payment.package_type}</Text>
+        <Text style={styles.payMeta}>
+          {fmtDate(payment.payment_date)}  ·  {METHOD_LABEL[payment.payment_method]}
+        </Text>
+        {payment.notes ? (
+          <Text style={styles.payNotes} numberOfLines={1}>{payment.notes}</Text>
+        ) : null}
+      </View>
+      <View style={styles.payRowRight}>
+        <Text style={[styles.payAmount, !isPaid && { color: Colors.textSecondary }]}>
+          {fmt(payment.amount)}
+        </Text>
+        <View style={[styles.statusPill, isPaid ? styles.statusPaid : styles.statusPending]}>
+          <Text style={[styles.statusText, { color: isPaid ? '#4CAF50' : '#FFA500' }]}>
+            {isPaid ? 'Paid' : 'Pending'}
+          </Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+// ─── Collapsible Section ──────────────────────────────────────────────────────
+
+function CollapseSection({
+  title,
+  subtitle,
+  expanded,
+  onToggle,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.section}>
+      <Pressable style={styles.sectionHeader} onPress={onToggle}>
+        <View style={styles.sectionHeaderLeft}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          <Text style={styles.sectionSub}>{subtitle}</Text>
+        </View>
+        <Ionicons
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={16}
+          color={Colors.textSecondary}
+        />
+      </Pressable>
+      {expanded && <View style={styles.sectionBody}>{children}</View>}
+    </View>
+  );
+}
+
+// ─── Payment Form Modal ───────────────────────────────────────────────────────
+// Defined outside the main screen to prevent keyboard-flicker on TextInput focus.
+
+type FormProps = {
+  visible: boolean;
+  editing: Payment | null;
+  clients: ReturnType<typeof useClients>['clients'];
+  onClose: () => void;
+  onSave: (data: NewPayment) => Promise<void>;
+};
+
+function PaymentFormModal({ visible, editing, clients, onClose, onSave }: FormProps) {
+  const [clientId, setClientId] = useState('');
+  const [packageType, setPackageType] = useState('');
+  const [amount, setAmount] = useState('');
+  const [method, setMethod] = useState<PaymentMethod>('cash');
+  const [date, setDate] = useState(todayISO());
+  const [status, setStatus] = useState<PaymentStatus>('paid');
+  const [notes, setNotes] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!visible) return;
+    if (editing) {
+      setClientId(editing.client_id);
+      setPackageType(editing.package_type);
+      setAmount(String(editing.amount));
+      setMethod(editing.payment_method);
+      setDate(editing.payment_date);
+      setStatus(editing.status);
+      setNotes(editing.notes ?? '');
+    } else {
+      setClientId('');
+      setPackageType('');
+      setAmount('');
+      setMethod('cash');
+      setDate(todayISO());
+      setStatus('paid');
+      setNotes('');
+    }
+    setPickerOpen(false);
+  }, [visible, editing?.id]);
+
+  const selectedClient = clients.find((c) => c.id === clientId);
+
+  const handleSave = async () => {
+    const parsedAmount = parseFloat(amount);
+    if (!clientId) { Alert.alert('Missing', 'Please select a client.'); return; }
+    if (!parsedAmount || parsedAmount <= 0) { Alert.alert('Missing', 'Please enter a valid amount.'); return; }
+    setSaving(true);
+    await onSave({
+      client_id: clientId,
+      package_type: packageType.trim() || 'Package',
+      amount: parsedAmount,
+      payment_method: method,
+      payment_date: date || todayISO(),
+      status,
+      notes: notes.trim() || null,
+    });
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={fm.root}>
+        <Pressable style={fm.overlay} onPress={onClose} />
+        <View style={fm.sheet}>
+          <View style={fm.handle} />
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <Text style={fm.title}>{editing ? 'EDIT PAYMENT' : 'ADD PAYMENT'}</Text>
+
+            {/* Client */}
+            <Text style={fm.label}>CLIENT</Text>
+            <Pressable style={fm.select} onPress={() => setPickerOpen((v) => !v)}>
+              <Text style={[fm.selectText, !selectedClient && { color: Colors.textSecondary + '80' }]}>
+                {selectedClient ? selectedClient.name : 'Select a client…'}
+              </Text>
+              <Ionicons name={pickerOpen ? 'chevron-up' : 'chevron-down'} size={15} color={Colors.textSecondary} />
+            </Pressable>
+            {pickerOpen && (
+              <View style={fm.dropdown}>
+                <FlatList
+                  data={clients}
+                  keyExtractor={(c) => c.id}
+                  scrollEnabled={false}
+                  renderItem={({ item: c }) => (
+                    <Pressable
+                      style={[fm.dropItem, c.id === clientId && fm.dropItemActive]}
+                      onPress={() => { setClientId(c.id); setPickerOpen(false); }}
+                    >
+                      <Text style={[fm.dropItemText, c.id === clientId && { color: Colors.accent }]}>
+                        {c.name}
+                      </Text>
+                      {c.id === clientId && <Ionicons name="checkmark" size={14} color={Colors.accent} />}
+                    </Pressable>
+                  )}
+                />
+              </View>
+            )}
+
+            {/* Package description */}
+            <Text style={fm.label}>PACKAGE / DESCRIPTION</Text>
+            <TextInput
+              style={fm.input}
+              value={packageType}
+              onChangeText={setPackageType}
+              placeholder="e.g. 20 sessions · 1hr"
+              placeholderTextColor={Colors.textSecondary + '60'}
+              autoCorrect={false}
+            />
+
+            {/* Amount */}
+            <Text style={fm.label}>AMOUNT (OMR)</Text>
+            <View style={fm.amountWrap}>
+              <Text style={fm.peso}>OMR</Text>
+              <TextInput
+                style={[fm.input, fm.amountInput]}
+                value={amount}
+                onChangeText={setAmount}
+                placeholder="0.000"
+                placeholderTextColor={Colors.textSecondary + '60'}
+                keyboardType="decimal-pad"
+              />
+            </View>
+
+            {/* Payment method */}
+            <Text style={fm.label}>PAYMENT METHOD</Text>
+            <View style={fm.segRow}>
+              {(['cash', 'bank_transfer', 'other'] as PaymentMethod[]).map((m) => (
+                <Pressable
+                  key={m}
+                  style={[fm.seg, method === m && fm.segActive]}
+                  onPress={() => setMethod(m)}
+                >
+                  <Text style={[fm.segText, method === m && fm.segTextActive]}>
+                    {METHOD_LABEL[m]}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {/* Date */}
+            <Text style={fm.label}>DATE (YYYY-MM-DD)</Text>
+            <TextInput
+              style={fm.input}
+              value={date}
+              onChangeText={setDate}
+              placeholder="2025-06-01"
+              placeholderTextColor={Colors.textSecondary + '60'}
+              keyboardType="numbers-and-punctuation"
+              maxLength={10}
+            />
+
+            {/* Status */}
+            <Text style={fm.label}>STATUS</Text>
+            <View style={fm.segRow}>
+              {(['paid', 'pending'] as PaymentStatus[]).map((s) => (
+                <Pressable
+                  key={s}
+                  style={[
+                    fm.seg,
+                    status === s && (s === 'paid' ? fm.segActive : fm.segPending),
+                  ]}
+                  onPress={() => setStatus(s)}
+                >
+                  <Text style={[fm.segText, status === s && fm.segTextActive]}>
+                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {/* Notes */}
+            <Text style={fm.label}>NOTES (OPTIONAL)</Text>
+            <TextInput
+              style={[fm.input, fm.inputMulti]}
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="e.g. BDO transfer, referral discount…"
+              placeholderTextColor={Colors.textSecondary + '60'}
+              multiline
+              numberOfLines={3}
+              autoCorrect={false}
+            />
+
+            <View style={fm.btnRow}>
+              <Pressable style={fm.cancelBtn} onPress={onClose}>
+                <Text style={fm.cancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={fm.saveBtn} onPress={handleSave} disabled={saving}>
+                <Text style={fm.saveText}>{saving ? 'Saving…' : 'Save'}</Text>
+              </Pressable>
+            </View>
+            <View style={{ height: 48 }} />
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+
+export default function RevenueScreen() {
+  const { payments, loading, refetch, addPayment, updatePayment, deletePayment, toggleStatus } =
+    usePayments();
+  const { clients } = useClients();
+
+  const [activeTab, setActiveTab] = useState<'monthly' | 'clients'>('monthly');
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+  const [showModal, setShowModal] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+
+  useFocusEffect(useCallback(() => { refetch(); }, []));
+
+  const toggleExpand = (key: string) =>
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+
+  const openAdd = () => { setEditingPayment(null); setShowModal(true); };
+  const openEdit = (p: Payment) => { setEditingPayment(p); setShowModal(true); };
+
+  const handleSave = async (data: NewPayment) => {
+    if (editingPayment) {
+      await updatePayment(editingPayment.id, data);
+    } else {
+      await addPayment(data);
+    }
+  };
+
+  const handlePaymentPress = (p: Payment) => {
+    Alert.alert(p.client_name, `${p.package_type} · ${fmt(p.amount)}`, [
+      {
+        text: p.status === 'paid' ? 'Mark as Pending' : 'Mark as Paid',
+        onPress: () => toggleStatus(p.id, p.status),
+      },
+      { text: 'Edit', onPress: () => openEdit(p) },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () =>
+          Alert.alert('Delete Payment', 'This cannot be undone.', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Delete', style: 'destructive', onPress: () => deletePayment(p.id) },
+          ]),
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  // ── Derived data ────────────────────────────────────────────────────────────
+  const thisMonthKey = (() => {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`;
+  })();
+
+  const paidPayments = payments.filter((p) => p.status === 'paid');
+  const thisMonthPaid = paidPayments.filter((p) => p.payment_date.startsWith(thisMonthKey));
+  const thisMonthTotal = thisMonthPaid.reduce((s, p) => s + p.amount, 0);
+  const allTimeTotal = paidPayments.reduce((s, p) => s + p.amount, 0);
+  const thisMonthPackages = payments.filter((p) => p.payment_date.startsWith(thisMonthKey)).length;
+  const activeClientCount = new Set(paidPayments.map((p) => p.client_id)).size;
+  const pendingCount = payments.filter((p) => p.status === 'pending').length;
+
+  // Bar chart: last 6 months
+  const last6 = getLast6Months();
+  const chartData = last6.map(({ key, label }) => ({
+    label,
+    total: paidPayments.filter((p) => p.payment_date.startsWith(key)).reduce((s, p) => s + p.amount, 0),
+  }));
+
+  // Monthly grouping (desc)
+  const monthKeys = [
+    ...new Set(payments.map((p) => p.payment_date.slice(0, 7))),
+  ].sort().reverse();
+
+  // Client grouping
+  const clientIds = [...new Set(payments.map((p) => p.client_id))];
+  const byClient = clientIds.map((id) => {
+    const cp = payments.filter((p) => p.client_id === id);
+    return { id, name: cp[0].client_name, payments: cp };
+  });
+
+  return (
+    <View style={styles.root}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={Colors.accent} />}
+      >
+        {/* ── Summary cards ──────────────────────────────────────── */}
+        <View style={styles.grid}>
+          <View style={[styles.card, styles.cardAccent]}>
+            <Text style={styles.cardValue}>{fmt(thisMonthTotal)}</Text>
+            <Text style={styles.cardLabel}>This Month</Text>
+          </View>
+          <View style={styles.card}>
+            <Text style={styles.cardValue}>{fmt(allTimeTotal)}</Text>
+            <Text style={styles.cardLabel}>All Time</Text>
+          </View>
+          <View style={styles.card}>
+            <Text style={styles.cardValue}>{thisMonthPackages}</Text>
+            <Text style={styles.cardLabel}>Packages This Month</Text>
+          </View>
+          <View style={styles.card}>
+            <Text style={[styles.cardValue, pendingCount > 0 && { color: '#FFA500' }]}>
+              {pendingCount > 0 ? `⚠ ${pendingCount}` : activeClientCount}
+            </Text>
+            <Text style={styles.cardLabel}>
+              {pendingCount > 0 ? 'Pending Payments' : 'Clients Paid'}
+            </Text>
+          </View>
+        </View>
+
+        {/* ── Bar chart ──────────────────────────────────────────── */}
+        <View style={styles.chartCard}>
+          <Text style={styles.chartTitle}>EARNINGS — LAST 6 MONTHS</Text>
+          {allTimeTotal === 0 ? (
+            <Text style={styles.chartEmpty}>No paid records yet</Text>
+          ) : (
+            <BarChart data={chartData} />
+          )}
+        </View>
+
+        {/* ── Tab switcher ───────────────────────────────────────── */}
+        <View style={styles.tabRow}>
+          {(['monthly', 'clients'] as const).map((tab) => (
+            <Pressable
+              key={tab}
+              style={[styles.tabBtn, activeTab === tab && styles.tabBtnActive]}
+              onPress={() => setActiveTab(tab)}
+            >
+              <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+                {tab === 'monthly' ? 'By Month' : 'By Client'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {/* ── Empty state ────────────────────────────────────────── */}
+        {payments.length === 0 && !loading ? (
+          <View style={styles.empty}>
+            <Ionicons name="bar-chart-outline" size={52} color={Colors.border} />
+            <Text style={styles.emptyTitle}>No revenue recorded yet</Text>
+            <Text style={styles.emptySub}>Tap + to add your first payment</Text>
+          </View>
+        ) : activeTab === 'monthly' ? (
+          /* ── Monthly view ────────────────────────────────────── */
+          monthKeys.map((key) => {
+            const mp = payments.filter((p) => p.payment_date.startsWith(key));
+            const mTotal = mp.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount, 0);
+            const mPending = mp.filter((p) => p.status === 'pending').length;
+            return (
+              <CollapseSection
+                key={key}
+                title={fmtMonth(key)}
+                subtitle={`${fmt(mTotal)}${mPending > 0 ? `  ·  ${mPending} pending` : ''}  ·  ${mp.length} record${mp.length !== 1 ? 's' : ''}`}
+                expanded={expandedKeys.has(key)}
+                onToggle={() => toggleExpand(key)}
+              >
+                {mp.map((p) => (
+                  <PaymentRow
+                    key={p.id}
+                    payment={p}
+                    showClient
+                    onPress={() => handlePaymentPress(p)}
+                    onLongPress={() => openEdit(p)}
+                  />
+                ))}
+              </CollapseSection>
+            );
+          })
+        ) : (
+          /* ── Client view ─────────────────────────────────────── */
+          byClient.map(({ id, name, payments: cp }) => {
+            const cTotal = cp.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount, 0);
+            const cPending = cp.filter((p) => p.status === 'pending').length;
+            return (
+              <CollapseSection
+                key={id}
+                title={name}
+                subtitle={`${fmt(cTotal)} paid${cPending > 0 ? `  ·  ${cPending} pending` : ''}  ·  ${cp.length} record${cp.length !== 1 ? 's' : ''}`}
+                expanded={expandedKeys.has(id)}
+                onToggle={() => toggleExpand(id)}
+              >
+                {cp.map((p) => (
+                  <PaymentRow
+                    key={p.id}
+                    payment={p}
+                    showClient={false}
+                    onPress={() => handlePaymentPress(p)}
+                    onLongPress={() => openEdit(p)}
+                  />
+                ))}
+              </CollapseSection>
+            );
+          })
+        )}
+
+        <View style={{ height: 100 }} />
+      </ScrollView>
+
+      {/* ── FAB ── */}
+      <Pressable style={styles.fab} onPress={openAdd}>
+        <Ionicons name="add" size={28} color={Colors.bg} />
+      </Pressable>
+
+      {/* ── Add / Edit Modal ── */}
+      <PaymentFormModal
+        visible={showModal}
+        editing={editingPayment}
+        clients={clients}
+        onClose={() => setShowModal(false)}
+        onSave={handleSave}
+      />
+    </View>
+  );
+}
+
+// ─── Styles ──────────────────────────────────────────────────────────────────
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: Colors.bg },
+  scroll: { flex: 1 },
+  content: { padding: 20, paddingBottom: 32 },
+
+  // Summary grid
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
+  card: {
+    flex: 1, minWidth: '44%',
+    backgroundColor: Colors.surface, borderRadius: 16,
+    padding: 16, borderWidth: 1, borderColor: Colors.border,
+  },
+  cardAccent: { backgroundColor: Colors.accent + '12', borderColor: Colors.accent + '40' },
+  cardValue: { ...Typography.subtitle, color: Colors.accent, fontWeight: '800', marginBottom: 4 },
+  cardLabel: { ...Typography.caption, color: Colors.textSecondary },
+
+  // Chart
+  chartCard: {
+    backgroundColor: Colors.surface, borderRadius: 16,
+    borderWidth: 1, borderColor: Colors.border,
+    padding: 16, marginBottom: 16, overflow: 'hidden',
+  },
+  chartTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 14 },
+  chartEmpty: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', paddingVertical: 24 },
+
+  // Tabs
+  tabRow: {
+    flexDirection: 'row', backgroundColor: Colors.surface,
+    borderRadius: 12, borderWidth: 1, borderColor: Colors.border,
+    padding: 4, marginBottom: 14,
+  },
+  tabBtn: { flex: 1, borderRadius: 9, paddingVertical: 8, alignItems: 'center' },
+  tabBtnActive: { backgroundColor: Colors.accent },
+  tabText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
+  tabTextActive: { color: Colors.bg },
+
+  // Collapsible section
+  section: {
+    backgroundColor: Colors.surface, borderRadius: 14,
+    borderWidth: 1, borderColor: Colors.border, marginBottom: 10, overflow: 'hidden',
+  },
+  sectionHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', padding: 14,
+  },
+  sectionHeaderLeft: { flex: 1 },
+  sectionTitle: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
+  sectionSub: { ...Typography.caption, color: Colors.textSecondary },
+  sectionBody: { borderTopWidth: 1, borderTopColor: Colors.border },
+
+  // Payment row
+  payRow: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    paddingHorizontal: 14, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  payRowLeft: { flex: 1, marginRight: 10 },
+  payClientName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 1 },
+  payPackage: { ...Typography.body, color: Colors.textPrimary, marginBottom: 2 },
+  payMeta: { ...Typography.caption, color: Colors.textSecondary },
+  payNotes: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic', marginTop: 2 },
+  payRowRight: { alignItems: 'flex-end', gap: 6 },
+  payAmount: { ...Typography.body, color: Colors.accent, fontWeight: '700' },
+  statusPill: {
+    borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1,
+  },
+  statusPaid: { backgroundColor: '#4CAF5015', borderColor: '#4CAF5040' },
+  statusPending: { backgroundColor: '#FFA50015', borderColor: '#FFA50040' },
+  statusText: { fontSize: 11, fontWeight: '700' },
+
+  // Empty state
+  empty: { alignItems: 'center', paddingTop: 60, gap: 8 },
+  emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 12 },
+  emptySub: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center' },
+
+  // FAB
+  fab: {
+    position: 'absolute', bottom: 24, right: 20,
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: Colors.accent,
+    justifyContent: 'center', alignItems: 'center',
+    shadowColor: Colors.accent, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
+  },
+});
+
+// Form modal styles (separate namespace to keep clean)
+const fm = StyleSheet.create({
+  root: { flex: 1, justifyContent: 'flex-end' },
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
+  sheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 22, borderTopRightRadius: 22,
+    borderWidth: 1, borderBottomWidth: 0, borderColor: Colors.border,
+    paddingHorizontal: 20, paddingTop: 12,
+    maxHeight: '88%',
+  },
+  handle: {
+    width: 36, height: 4, borderRadius: 2,
+    backgroundColor: Colors.border, alignSelf: 'center', marginBottom: 20,
+  },
+  title: { ...Typography.label, color: Colors.textPrimary, fontWeight: '800', letterSpacing: 1.5, marginBottom: 20 },
+  label: { ...Typography.label, color: Colors.textSecondary, marginBottom: 6, marginTop: 16 },
+
+  // Client dropdown
+  select: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: Colors.surfaceRaised, borderRadius: 10,
+    borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: 14, paddingVertical: 12,
+  },
+  selectText: { ...Typography.body, color: Colors.textPrimary, flex: 1 },
+  dropdown: {
+    backgroundColor: Colors.surfaceRaised, borderRadius: 10,
+    borderWidth: 1, borderColor: Colors.border,
+    marginTop: 4, maxHeight: 200, overflow: 'hidden',
+  },
+  dropItem: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 14, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  dropItemActive: { backgroundColor: Colors.accent + '10' },
+  dropItemText: { ...Typography.body, color: Colors.textPrimary },
+
+  // Inputs
+  input: {
+    backgroundColor: Colors.surfaceRaised, borderRadius: 10,
+    borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: 14, paddingVertical: 12,
+    color: Colors.textPrimary, fontSize: 15,
+  },
+  inputMulti: { height: 80, textAlignVertical: 'top' },
+  amountWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  peso: { ...Typography.body, color: Colors.accent, fontWeight: '800' },
+  amountInput: { flex: 1, fontSize: 20, fontWeight: '700' },
+
+  // Segment controls
+  segRow: { flexDirection: 'row', gap: 8 },
+  seg: {
+    flex: 1, paddingVertical: 10, borderRadius: 10,
+    backgroundColor: Colors.surfaceRaised,
+    borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  segActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+  segPending: { backgroundColor: '#FFA50020', borderColor: '#FFA50060' },
+  segText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
+  segTextActive: { color: Colors.bg },
+
+  // Buttons
+  btnRow: { flexDirection: 'row', gap: 10, marginTop: 24 },
+  cancelBtn: {
+    flex: 1, borderRadius: 12, borderWidth: 1, borderColor: Colors.border,
+    paddingVertical: 13, alignItems: 'center',
+  },
+  cancelText: { color: Colors.textSecondary, fontWeight: '700', fontSize: 15 },
+  saveBtn: {
+    flex: 1, borderRadius: 12, backgroundColor: Colors.accent,
+    paddingVertical: 13, alignItems: 'center',
+  },
+  saveText: { color: Colors.bg, fontWeight: '800', fontSize: 15 },
+});

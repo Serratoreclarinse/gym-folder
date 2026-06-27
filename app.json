@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "ELEVAT3",
+    "slug": "gym-coaching-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "gymcoaching",
+    "userInterfaceStyle": "dark",
+    "icon": "./assets/images/logo.jpg",
+    "splash": {
+      "image": "./assets/images/logo.jpg",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0A0A"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.gymcoaching.app"
+    },
+    "android": {
+      "package": "com.gymcoaching.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/logo.jpg",
+        "backgroundColor": "#0A0A0A"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/logo.jpg",
+          "color": "#0A0A0A",
+          "defaultChannel": "sessions"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "db3ebbee-d9d6-4d42-94ce-235f563cdb74"
+      }
+    },
+    "owner": "clarinse"
+  }
+}
