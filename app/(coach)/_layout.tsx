@@ -42,6 +42,14 @@ export default function CoachRootLayout() {
         name="template-form"
         options={{ title: 'Template' }}
       />
+      <Stack.Screen
+        name="availability"
+        options={{ title: 'Availability' }}
+      />
+      <Stack.Screen
+        name="blocked-dates"
+        options={{ title: 'Blocked Dates' }}
+      />
     </Stack>
   );
 }

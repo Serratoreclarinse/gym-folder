@@ -20,6 +20,7 @@ import { useClients } from '@/hooks/useClients';
 import { useSessions } from '@/hooks/useSessions';
 import { useWaitlist, WaitlistEntry } from '@/hooks/useWaitlist';
 import { addStrikeForClient } from '@/hooks/useStrikes';
+import { useAvailability } from '@/hooks/useAvailability';
 import { Colors, Typography } from '@/constants/theme';
 
 const DAY_ABBR = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -105,6 +106,7 @@ export default function CalendarScreen() {
     refetch: refetchWaitlist,
   } = useWaitlist(profile?.id);
   const { clients } = useClients();
+  const { isDateBlocked } = useAvailability();
 
   useFocusEffect(useCallback(() => { refetch(); refetchWaitlist(); }, []));
 
@@ -286,6 +288,7 @@ export default function CalendarScreen() {
             const isSelected = iso === selectedDate;
             const isToday = iso === todayISO;
             const count = byDate[iso]?.length ?? 0;
+            const isBlocked = isDateBlocked(iso);
             return (
               <Pressable key={iso} style={styles.dayCol} onPress={() => setSelectedDate(iso)}>
                 <Text style={[styles.dayAbbr, isSelected && styles.dayAbbrActive]}>
@@ -295,12 +298,15 @@ export default function CalendarScreen() {
                   styles.dayNumWrap,
                   isSelected && styles.dayNumWrapSelected,
                   isToday && !isSelected && styles.dayNumWrapToday,
+                  isBlocked && !isSelected && { backgroundColor: Colors.danger + '18' },
                 ]}>
-                  <Text style={[styles.dayNum, isSelected && styles.dayNumSelected]}>
+                  <Text style={[styles.dayNum, isSelected && styles.dayNumSelected, isBlocked && !isSelected && { color: Colors.danger }]}>
                     {day.getDate()}
                   </Text>
                 </View>
-                {count > 0 ? (
+                {isBlocked ? (
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.danger }} />
+                ) : count > 0 ? (
                   <View style={[styles.dot, isSelected && styles.dotSelected]} />
                 ) : (
                   <View style={styles.dotPlaceholder} />

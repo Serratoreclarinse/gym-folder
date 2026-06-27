@@ -10,6 +10,7 @@ import { useSessions } from '@/hooks/useSessions';
 import { useStrikeAlerts } from '@/hooks/useStrikeAlerts';
 import { useWaitlist } from '@/hooks/useWaitlist';
 import { useBirthdays, getDaysUntilBirthday, formatBirthday } from '@/hooks/useBirthdays';
+import { useAvailability } from '@/hooks/useAvailability';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { Colors, Typography } from '@/constants/theme';
 
@@ -23,6 +24,11 @@ Notifications.setNotificationHandler({
 
 const MAX_STRIKES = 3;
 const BIRTHDAY_GOLD = '#FFD700';
+
+function fmt12(t: string): string {
+  const [h, m] = t.split(':').map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+}
 
 function StatCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
@@ -41,6 +47,8 @@ export default function CoachDashboard() {
   const { alerts: strikeAlerts, refetch: refetchStrikes } = useStrikeAlerts();
   const { totalCount: waitlistCount, refetch: refetchWaitlist } = useWaitlist(profile?.id);
   const { all: allBirthdays } = useBirthdays(clients);
+  const { getTodayInfo } = useAvailability();
+  const todaySchedule = getTodayInfo();
 
   const refreshing = cLoading || sLoading;
   const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); };
@@ -118,6 +126,17 @@ export default function CoachDashboard() {
         <StatCard label="This Week" value={String(weekSessions)} />
         <StatCard label="Expiring Soon" value={expiringCount > 0 ? `⚠ ${expiringCount}` : '—'} />
       </View>
+
+      {/* Today's availability */}
+      {todaySchedule && (
+        <Pressable style={styles.availBanner} onPress={() => router.push('/(coach)/availability')}>
+          <View style={styles.availDot} />
+          <Text style={styles.availText}>
+            Available today: {fmt12(todaySchedule.startTime)} – {fmt12(todaySchedule.endTime)}
+          </Text>
+          <Ionicons name="chevron-forward" size={13} color="#4CAF50" />
+        </Pressable>
+      )}
 
       {/* Quick actions */}
       <View style={styles.quickRow}>
@@ -386,6 +405,15 @@ const styles = StyleSheet.create({
   sessionInfo: { flex: 1 },
   sessionClient: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
   sessionMeta: { ...Typography.caption, color: Colors.textSecondary },
+
+  // Availability banner
+  availBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#4CAF5012', borderRadius: 12, padding: 11, marginBottom: 16,
+    borderWidth: 1, borderColor: '#4CAF5035',
+  },
+  availDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4CAF50' },
+  availText: { ...Typography.caption, color: '#4CAF50', flex: 1 },
 
   // Birthday section
   birthdayBadge: { backgroundColor: BIRTHDAY_GOLD + '20', borderColor: BIRTHDAY_GOLD + '50' },

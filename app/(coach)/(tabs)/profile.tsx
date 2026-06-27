@@ -1,5 +1,6 @@
 import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useState } from 'react';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/lib/supabase';
@@ -152,6 +153,24 @@ export default function CoachProfileScreen() {
           />
         </View>
       )}
+
+      {/* Settings */}
+      <View style={[styles.sectionHeader, { marginTop: 8 }]}>
+        <Text style={styles.sectionLabel}>SETTINGS</Text>
+      </View>
+      <View style={styles.infoSection}>
+        <Pressable
+          style={({ pressed }) => [styles.infoRow, pressed && { opacity: 0.7 }]}
+          onPress={() => router.push('/(coach)/availability')}
+        >
+          <Ionicons name="calendar-outline" size={18} color={Colors.textSecondary} style={styles.rowIcon} />
+          <View style={styles.rowContent}>
+            <Text style={styles.infoLabel}>AVAILABILITY</Text>
+            <Text style={styles.infoValue}>Set your weekly schedule & blocked dates</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={14} color={Colors.textSecondary} />
+        </Pressable>
+      </View>
 
       {/* Sign out */}
       <Pressable
