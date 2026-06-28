@@ -1,5 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { ExercisePickerModal } from '@/components/ExercisePickerModal';
 import * as Notifications from 'expo-notifications';
 import {
   Alert,
@@ -92,6 +93,7 @@ function ExerciseCard({
   onChange,
   onRemove,
   onToggleSuperset,
+  onOpenPicker,
 }: {
   exercise: Exercise;
   index: number;
@@ -99,6 +101,7 @@ function ExerciseCard({
   onChange: (id: string, field: keyof Exercise, value: string) => void;
   onRemove: (id: string) => void;
   onToggleSuperset: (id: string) => void;
+  onOpenPicker: (id: string) => void;
 }) {
   return (
     <View style={styles.exCard}>
@@ -109,13 +112,17 @@ function ExerciseCard({
         </Pressable>
       </View>
 
-      <TextInput
-        style={styles.exInput}
-        placeholder="Exercise name (e.g. Bench Press)"
-        placeholderTextColor={Colors.textSecondary}
-        value={exercise.exercise_name}
-        onChangeText={(v) => onChange(exercise.id, 'exercise_name', v)}
-      />
+      {/* Exercise name — tappable to open library picker */}
+      <Pressable
+        style={[styles.exInput, styles.exNameBtn]}
+        onPress={() => onOpenPicker(exercise.id)}
+      >
+        <Text style={[styles.exNameBtnText, !exercise.exercise_name && { color: Colors.textSecondary }]}
+          numberOfLines={1}>
+          {exercise.exercise_name || 'Tap to select exercise…'}
+        </Text>
+        <Ionicons name="search-outline" size={16} color={Colors.textSecondary} />
+      </Pressable>
 
       <View style={styles.exRow}>
         <View style={styles.exSmallField}>
@@ -222,6 +229,7 @@ export default function LogSessionScreen() {
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [pickerTargetId, setPickerTargetId] = useState<string | null>(null);
 
   useEffect(() => {
     Notifications.requestPermissionsAsync();
@@ -591,6 +599,7 @@ export default function LogSessionScreen() {
             onChange={updateExercise}
             onRemove={removeExercise}
             onToggleSuperset={toggleSuperset}
+            onOpenPicker={(id) => setPickerTargetId(id)}
           />
         ))}
 
@@ -674,6 +683,16 @@ export default function LogSessionScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Exercise Library Picker */}
+      <ExercisePickerModal
+        visible={pickerTargetId !== null}
+        onClose={() => setPickerTargetId(null)}
+        onSelect={(name) => {
+          if (pickerTargetId) updateExercise(pickerTargetId, 'exercise_name', name);
+          setPickerTargetId(null);
+        }}
+      />
 
       {/* Exercise History Modal */}
       <Modal
@@ -889,6 +908,11 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   exNotes: { minHeight: 56, textAlignVertical: 'top', marginBottom: 0 },
+  exNameBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 12,
+  },
+  exNameBtnText: { color: Colors.textPrimary, fontSize: 14, flex: 1, marginRight: 8 },
   exRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   exSmallField: { flex: 1 },
   bwBtnWrap: { justifyContent: 'flex-end', paddingBottom: 0 },
