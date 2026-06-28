@@ -15,6 +15,15 @@ export default function CoachProfileScreen() {
   const [instagram, setInstagram] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const [editingName, setEditingName] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [savingName, setSavingName] = useState(false);
+
+  const [editingPassword, setEditingPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
+
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
@@ -72,6 +81,35 @@ export default function CoachProfileScreen() {
     if (error) { Alert.alert('Error', error.message); return; }
     await refreshProfile();
     setEditing(false);
+  };
+
+  const handleChangeName = async () => {
+    if (!newName.trim() || !profile?.id) return;
+    setSavingName(true);
+    const { error } = await supabase.from('profiles').update({ name: newName.trim() }).eq('id', profile.id);
+    setSavingName(false);
+    if (error) { Alert.alert('Error', error.message); return; }
+    await refreshProfile();
+    setEditingName(false);
+  };
+
+  const handleChangePassword = async () => {
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters.');
+      return;
+    }
+    setSavingPassword(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setSavingPassword(false);
+    if (error) { Alert.alert('Error', error.message); return; }
+    Alert.alert('Success', 'Password updated!');
+    setEditingPassword(false);
+    setNewPassword('');
+    setConfirmPassword('');
   };
 
   const openLink = (url: string) => Linking.openURL(url).catch(() => {});
@@ -172,6 +210,93 @@ export default function CoachProfileScreen() {
         </Pressable>
       </View>
 
+      {/* Account */}
+      <View style={[styles.sectionHeader, { marginTop: 8 }]}>
+        <Text style={styles.sectionLabel}>ACCOUNT</Text>
+      </View>
+
+      {editingName ? (
+        <View style={styles.editCard}>
+          <EditField
+            icon="person-outline"
+            label="NEW NAME"
+            value={newName}
+            onChangeText={setNewName}
+            placeholder="Enter your name"
+            last
+          />
+          <View style={styles.editActions}>
+            <Pressable style={styles.cancelBtn} onPress={() => setEditingName(false)}>
+              <Text style={styles.cancelBtnText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.saveBtn, (!newName.trim() || savingName) && { opacity: 0.4 }]}
+              onPress={handleChangeName}
+              disabled={!newName.trim() || savingName}
+            >
+              <Text style={styles.saveBtnText}>{savingName ? 'Saving…' : 'Save'}</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : editingPassword ? (
+        <View style={styles.editCard}>
+          <EditField
+            icon="lock-closed-outline"
+            label="NEW PASSWORD"
+            value={newPassword}
+            onChangeText={setNewPassword}
+            placeholder="Min. 6 characters"
+            secureTextEntry
+          />
+          <EditField
+            icon="lock-closed-outline"
+            label="CONFIRM PASSWORD"
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            placeholder="Repeat new password"
+            secureTextEntry
+            last
+          />
+          <View style={styles.editActions}>
+            <Pressable style={styles.cancelBtn} onPress={() => { setEditingPassword(false); setNewPassword(''); setConfirmPassword(''); }}>
+              <Text style={styles.cancelBtnText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.saveBtn, savingPassword && { opacity: 0.4 }]}
+              onPress={handleChangePassword}
+              disabled={savingPassword}
+            >
+              <Text style={styles.saveBtnText}>{savingPassword ? 'Saving…' : 'Save'}</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.infoSection}>
+          <Pressable
+            style={({ pressed }) => [styles.infoRow, styles.infoRowBorder, pressed && { opacity: 0.7 }]}
+            onPress={() => { setNewName(profile?.name ?? ''); setEditingName(true); }}
+          >
+            <Ionicons name="person-outline" size={18} color={Colors.textSecondary} style={styles.rowIcon} />
+            <View style={styles.rowContent}>
+              <Text style={styles.infoLabel}>DISPLAY NAME</Text>
+              <Text style={styles.infoValue}>{profile?.name ?? '—'}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={14} color={Colors.textSecondary} />
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.infoRow, pressed && { opacity: 0.7 }]}
+            onPress={() => setEditingPassword(true)}
+          >
+            <Ionicons name="lock-closed-outline" size={18} color={Colors.textSecondary} style={styles.rowIcon} />
+            <View style={styles.rowContent}>
+              <Text style={styles.infoLabel}>PASSWORD</Text>
+              <Text style={styles.infoValue}>••••••••</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={14} color={Colors.textSecondary} />
+          </Pressable>
+        </View>
+      )}
+
       {/* Sign out */}
       <Pressable
         style={({ pressed }) => [styles.signOutBtn, pressed && { opacity: 0.7 }]}
@@ -209,10 +334,10 @@ function SocialRow({
 }
 
 function EditField({
-  icon, label, value, onChangeText, placeholder, keyboardType, iconColor, last,
+  icon, label, value, onChangeText, placeholder, keyboardType, iconColor, secureTextEntry, last,
 }: {
   icon: string; label: string; value: string; onChangeText: (v: string) => void;
-  placeholder?: string; keyboardType?: any; iconColor?: string; last?: boolean;
+  placeholder?: string; keyboardType?: any; iconColor?: string; secureTextEntry?: boolean; last?: boolean;
 }) {
   return (
     <View style={[styles.editField, !last && styles.editFieldBorder]}>
@@ -228,6 +353,7 @@ function EditField({
           keyboardType={keyboardType}
           autoCapitalize="none"
           autoCorrect={false}
+          secureTextEntry={secureTextEntry}
         />
       </View>
     </View>
