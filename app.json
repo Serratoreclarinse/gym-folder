@@ -6,9 +6,9 @@
     "orientation": "portrait",
     "scheme": "gymcoaching",
     "userInterfaceStyle": "dark",
-    "icon": "./assets/images/logo.jpg",
+    "icon": "./assets/images/logo.png",
     "splash": {
-      "image": "./assets/images/logo.jpg",
+      "image": "./assets/images/logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#0A0A0A"
     },
@@ -22,7 +22,7 @@
     "android": {
       "package": "com.gymcoaching.app",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/logo.jpg",
+        "foregroundImage": "./assets/images/logo.png",
         "backgroundColor": "#0A0A0A"
       }
     },
@@ -36,7 +36,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/logo.jpg",
+          "icon": "./assets/images/logo.png",
           "color": "#0A0A0A",
           "defaultChannel": "sessions"
         }
