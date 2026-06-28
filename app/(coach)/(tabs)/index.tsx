@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -55,11 +55,27 @@ export default function CoachDashboard() {
   const todaySchedule = getTodayInfo();
   const { pinnedAnnouncement, togglePin } = useAnnouncements();
   const { activeSession, nextSession, extendSession, endSession, refetch: refetchTimer } = useActiveSession();
+  const [pausedWorkout, setPausedWorkout] = useState<any | null>(null);
 
   const refreshing = cLoading || sLoading;
   const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); };
 
-  useFocusEffect(useCallback(() => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); }, []));
+  useFocusEffect(useCallback(() => {
+    refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer();
+    AsyncStorage.getItem('@elevat3/paused_workout').then((data) => {
+      if (data) {
+        const w = JSON.parse(data);
+        if (Date.now() - w.savedAt < 24 * 60 * 60 * 1000) {
+          setPausedWorkout(w);
+        } else {
+          AsyncStorage.removeItem('@elevat3/paused_workout');
+          setPausedWorkout(null);
+        }
+      } else {
+        setPausedWorkout(null);
+      }
+    });
+  }, []));
 
   // fire a local notification once per calendar day for today's client birthdays
   const notifiedRef = useRef(false);
@@ -138,6 +154,38 @@ export default function CoachDashboard() {
         <StatCard label="This Week" value={String(weekSessions)} />
         <StatCard label="Expiring Soon" value={expiringCount > 0 ? `⚠ ${expiringCount}` : '—'} />
       </View>
+
+      {/* Resume paused workout */}
+      {pausedWorkout && (
+        <Pressable
+          style={({ pressed }) => [styles.resumeCard, pressed && { opacity: 0.8 }]}
+          onPress={() => router.push({
+            pathname: '/(coach)/guided-workout',
+            params: {
+              exercises: JSON.stringify(pausedWorkout.exercises),
+              clientId: pausedWorkout.clientId,
+              pkgId: pausedWorkout.pkgId,
+              coachId: pausedWorkout.coachId,
+              sessionDate: pausedWorkout.sessionDate,
+              durationMinutes: pausedWorkout.durationMinutes,
+              sessionNotes: pausedWorkout.sessionNotes ?? '',
+              clientName: pausedWorkout.clientName,
+              resume: 'true',
+            },
+          } as any)}
+        >
+          <View style={styles.resumeIcon}>
+            <Ionicons name="play-circle" size={28} color="#4CAF50" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.resumeTitle}>RESUME WORKOUT</Text>
+            <Text style={styles.resumeSub}>
+              {pausedWorkout.clientName} · Exercise {pausedWorkout.exIdx + 1} of {pausedWorkout.exercises?.length ?? '?'}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
+        </Pressable>
+      )}
 
       {/* Active session timer */}
       {activeSession && (
@@ -393,6 +441,15 @@ export default function CoachDashboard() {
 }
 
 const styles = StyleSheet.create({
+  resumeCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#4CAF5015', borderWidth: 1.5, borderColor: '#4CAF5050',
+    borderRadius: 16, padding: 14, marginBottom: 10,
+  },
+  resumeIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  resumeTitle: { color: '#4CAF50', fontWeight: '800', fontSize: 13, letterSpacing: 0.5, marginBottom: 3 },
+  resumeSub: { color: Colors.textSecondary, fontSize: 13 },
+
   scroll: { flex: 1, backgroundColor: Colors.bg },
   content: { padding: 20, paddingBottom: 40 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 },

@@ -4,8 +4,11 @@ import { Alert, Pressable, StyleSheet, Text, Vibration, View } from 'react-nativ
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { Colors, Typography } from '@/constants/theme';
+
+const WORKOUT_KEY = '@elevat3/paused_workout';
 
 type Exercise = {
   exercise_name: string;
@@ -47,8 +50,41 @@ export default function GuidedWorkoutScreen() {
   const [startTime] = useState(() => Date.now());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const saveProgress = async (currentExIdx: number, currentSetIdx: number) => {
+    try {
+      await AsyncStorage.setItem(WORKOUT_KEY, JSON.stringify({
+        exercises,
+        exIdx: currentExIdx,
+        setIdx: currentSetIdx,
+        clientId: params.clientId,
+        pkgId: params.pkgId,
+        coachId: params.coachId,
+        sessionDate: params.sessionDate,
+        durationMinutes: params.durationMinutes,
+        sessionNotes: params.sessionNotes,
+        clientName: params.clientName,
+        savedAt: Date.now(),
+      }));
+    } catch {}
+  };
+
   const currentEx = exercises[exIdx];
   const totalSets = currentEx?.sets ?? 1;
+
+  // Restore saved progress if resuming, otherwise save fresh start
+  useEffect(() => {
+    if (params.resume === 'true') {
+      AsyncStorage.getItem(WORKOUT_KEY).then((data) => {
+        if (data) {
+          const saved = JSON.parse(data);
+          setExIdx(saved.exIdx ?? 0);
+          setSetIdx(saved.setIdx ?? 0);
+        }
+      });
+    } else {
+      saveProgress(0, 0);
+    }
+  }, []);
 
   // Elapsed timer — ticks up every second
   useEffect(() => {
@@ -91,10 +127,16 @@ export default function GuidedWorkoutScreen() {
     if (phase === 'summary') { router.replace('/(coach)'); return; }
     Alert.alert(
       'Exit Workout?',
-      'Exercise progress will be lost. Your session timer will keep running on the Dashboard.',
+      'Your exercise progress will be saved. You can resume from the Dashboard anytime.',
       [
         { text: 'Keep Going', style: 'cancel' },
-        { text: 'Exit to Dashboard', style: 'destructive', onPress: () => router.replace('/(coach)') },
+        {
+          text: 'Exit & Save Progress',
+          onPress: async () => {
+            await saveProgress(exIdx, setIdx);
+            router.replace('/(coach)');
+          },
+        },
       ],
     );
   };
@@ -117,20 +159,26 @@ export default function GuidedWorkoutScreen() {
 
   const handleSkipRest = () => {
     stopRest();
-    setSetIdx((prev) => prev + 1);
+    const nextSetIdx = setIdx + 1;
+    setSetIdx(nextSetIdx);
     setPhase('set');
+    saveProgress(exIdx, nextSetIdx);
   };
 
   const handleNextSet = () => {
     stopRest();
-    setSetIdx((prev) => prev + 1);
+    const nextSetIdx = setIdx + 1;
+    setSetIdx(nextSetIdx);
     setPhase('set');
+    saveProgress(exIdx, nextSetIdx);
   };
 
   const handleNextExercise = () => {
-    setExIdx((prev) => prev + 1);
+    const nextExIdx = exIdx + 1;
+    setExIdx(nextExIdx);
     setSetIdx(0);
     setPhase('set');
+    saveProgress(nextExIdx, 0);
   };
 
   const adjustRest = (delta: number) => {
@@ -153,6 +201,7 @@ export default function GuidedWorkoutScreen() {
         notes: params.sessionNotes || null,
       });
       if (error) throw error;
+      await AsyncStorage.removeItem(WORKOUT_KEY);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setPhase('summary');
     } catch (err: unknown) {
