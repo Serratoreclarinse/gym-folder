@@ -1,9 +1,11 @@
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -14,6 +16,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { useClients } from '@/hooks/useClients';
+import { saveInBodyLink } from '@/hooks/useClientFiles';
 import { Colors, Typography } from '@/constants/theme';
 
 const SCAN_SIZE = 260;
@@ -31,10 +35,20 @@ type ModalState =
   | { type: 'confirm'; client: ScannedClient; wasLast: boolean; scanTime: Date }
   | { type: 'error'; message: string }
   | { type: 'no-sessions'; client: ScannedClient }
+  | { type: 'web-link'; url: string; isInBody: boolean }
   | null;
 
 function isValidUUID(str: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+}
+
+function isWebUrl(str: string): boolean {
+  return str.startsWith('http://') || str.startsWith('https://');
+}
+
+function isInBodyUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  return lower.includes('inbody') || lower.includes('lookin.body');
 }
 
 function initials(name: string): string {
@@ -80,10 +94,13 @@ function ScanOverlay({ processing }: { processing: boolean }) {
 
 export default function QRScannerScreen() {
   const { profile } = useAuth();
+  const { clients } = useClients();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [modalState, setModalState] = useState<ModalState>(null);
+  const [selectedClientId, setSelectedClientId] = useState('');
+  const [savingLink, setSavingLink] = useState(false);
 
   // Reset scanner every time this tab comes into focus
   useFocusEffect(useCallback(() => {
@@ -96,6 +113,21 @@ export default function QRScannerScreen() {
     setModalState(null);
     setScanned(false);
     setProcessing(false);
+    setSelectedClientId('');
+  };
+
+  const handleSaveLink = async (url: string) => {
+    if (!selectedClientId || !profile?.id) return;
+    setSavingLink(true);
+    const today = new Date().toISOString().split('T')[0];
+    const { error } = await saveInBodyLink(selectedClientId, profile.id, url, 'InBody Result', today);
+    setSavingLink(false);
+    if (error) {
+      Alert.alert('Error', 'Could not save link to client files.');
+      return;
+    }
+    Linking.openURL(url);
+    closeModal();
   };
 
   const handleScan = async ({ data }: { type: string; data: string }) => {
@@ -106,6 +138,14 @@ export default function QRScannerScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     const value = data.trim();
+
+    // URL QR (e.g. InBody result link) — handle before UUID check
+    if (isWebUrl(value)) {
+      setProcessing(false);
+      setSelectedClientId('');
+      setModalState({ type: 'web-link', url: value, isInBody: isInBodyUrl(value) });
+      return;
+    }
 
     // Validate UUID format
     if (!isValidUUID(value)) {
@@ -138,7 +178,7 @@ export default function QRScannerScreen() {
       return;
     }
 
-    const client = pkg.client as { id: string; name: string };
+    const client = pkg.client as unknown as { id: string; name: string };
     const remaining = pkg.sessions_remaining as number;
 
     // 0 sessions — do not deduct
@@ -375,6 +415,76 @@ export default function QRScannerScreen() {
           </View>
         )}
       </Modal>
+
+      {/* ── MODAL: Web / InBody link ──────────────────────────── */}
+      <Modal visible={modalState?.type === 'web-link'} transparent animationType="fade">
+        {modalState?.type === 'web-link' && (() => {
+          const { url, isInBody } = modalState;
+          const accentColor = '#4CAF50';
+          return (
+            <View style={styles.modalBg}>
+              <View style={styles.modalCard}>
+                {/* Header */}
+                <View style={[styles.modalHeader, { backgroundColor: accentColor + '12' }]}>
+                  <Ionicons name="link-outline" size={28} color={accentColor} />
+                  <Text style={[styles.modalHeaderText, { color: accentColor }]}>
+                    {isInBody ? 'InBody Result Detected' : 'Web Link Detected'}
+                  </Text>
+                </View>
+
+                {/* URL preview */}
+                <View style={styles.urlRow}>
+                  <Text style={styles.urlText} numberOfLines={2}>{url}</Text>
+                </View>
+
+                {/* Client picker */}
+                <View style={styles.pickerSection}>
+                  <Text style={styles.pickerLabel}>SAVE TO CLIENT</Text>
+                  <ScrollView style={styles.pickerList} showsVerticalScrollIndicator={false}>
+                    {clients.map((c) => {
+                      const sel = selectedClientId === c.id;
+                      const ini = c.name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
+                      return (
+                        <Pressable
+                          key={c.id}
+                          style={[styles.cpRow, sel && { backgroundColor: accentColor + '12', borderColor: accentColor + '50' }]}
+                          onPress={() => setSelectedClientId(c.id)}
+                        >
+                          <View style={[styles.cpAvatar, sel && { backgroundColor: accentColor + '20', borderColor: accentColor }]}>
+                            <Text style={[styles.cpAvatarText, sel && { color: accentColor }]}>{ini}</Text>
+                          </View>
+                          <Text style={[styles.cpName, sel && { color: accentColor }]}>{c.name}</Text>
+                          {sel && <Ionicons name="checkmark-circle" size={18} color={accentColor} />}
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+
+                {/* Action buttons */}
+                <View style={styles.modalBtns}>
+                  <Pressable style={styles.secondaryModalBtn} onPress={() => { Linking.openURL(url); closeModal(); }}>
+                    <Text style={styles.secondaryModalBtnText}>Open Only</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.primaryModalBtn, { backgroundColor: accentColor }, (!selectedClientId || savingLink) && { opacity: 0.4 }]}
+                    disabled={!selectedClientId || savingLink}
+                    onPress={() => handleSaveLink(url)}
+                  >
+                    <Text style={styles.primaryModalBtnText}>
+                      {savingLink ? 'SAVING…' : 'SAVE & OPEN'}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                <Pressable style={{ paddingBottom: 16, alignItems: 'center' }} onPress={closeModal}>
+                  <Text style={{ color: Colors.textSecondary, fontSize: 13 }}>Cancel</Text>
+                </Pressable>
+              </View>
+            </View>
+          );
+        })()}
+      </Modal>
     </View>
   );
 }
@@ -576,4 +686,60 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   secondaryModalBtnText: { color: Colors.textPrimary, fontSize: 13, fontWeight: '600' },
+
+  // Web-link / InBody modal
+  urlRow: {
+    margin: 16,
+    marginBottom: 8,
+    backgroundColor: Colors.bg,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 12,
+  },
+  urlText: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    fontFamily: 'monospace',
+  },
+  pickerSection: {
+    marginHorizontal: 16,
+    marginBottom: 4,
+  },
+  pickerLabel: {
+    ...Typography.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.2,
+    marginBottom: 8,
+  },
+  pickerList: {
+    maxHeight: 220,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 12,
+  },
+  cpRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    borderRadius: 0,
+  },
+  cpAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cpAvatarText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
+  cpName: { flex: 1, ...Typography.body, color: Colors.textPrimary },
 });

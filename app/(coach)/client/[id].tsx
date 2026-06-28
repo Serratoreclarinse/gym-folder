@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { formatBirthday } from '@/hooks/useBirthdays';
 import {
   Alert,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -330,6 +331,24 @@ export default function ClientDetailScreen() {
         <Text style={styles.clientEmail}>{client?.email ?? ''}</Text>
         {client?.phone ? <Text style={styles.clientPhone}>{client.phone}</Text> : null}
       </View>
+      {client?.phone && (
+        <View style={styles.contactBtns}>
+          <Pressable
+            style={styles.contactBtn}
+            onPress={() => Linking.openURL(`whatsapp://send?phone=${encodeURIComponent(client.phone!)}`)}
+            hitSlop={6}
+          >
+            <Ionicons name="logo-whatsapp" size={22} color="#25D366" />
+          </Pressable>
+          <Pressable
+            style={styles.contactBtn}
+            onPress={() => Linking.openURL(`tel:${client.phone}`)}
+            hitSlop={6}
+          >
+            <Ionicons name="call-outline" size={22} color={Colors.accent} />
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 
@@ -578,9 +597,21 @@ export default function ClientDetailScreen() {
             <View key={s.id} style={styles.sessionCard}>
               <View style={styles.sessionCardTop}>
                 <Text style={styles.sessionDate}>{dateStr}</Text>
-                <View style={styles.durationChip}>
-                  <Ionicons name="time-outline" size={12} color={Colors.accent} />
-                  <Text style={styles.durationText}>{s.duration_minutes} min</Text>
+                <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                  <View style={[styles.sessionTypeChip, s.session_type === 'home' && styles.sessionTypeChipHome]}>
+                    <Ionicons
+                      name={s.session_type === 'home' ? 'home-outline' : 'barbell-outline'}
+                      size={11}
+                      color={s.session_type === 'home' ? '#2196F3' : Colors.accent}
+                    />
+                    <Text style={[styles.sessionTypeText, s.session_type === 'home' && { color: '#2196F3' }]}>
+                      {s.session_type === 'home' ? 'Home' : 'Gym'}
+                    </Text>
+                  </View>
+                  <View style={styles.durationChip}>
+                    <Ionicons name="time-outline" size={12} color={Colors.accent} />
+                    <Text style={styles.durationText}>{s.duration_minutes} min</Text>
+                  </View>
                 </View>
               </View>
               {s.exercises.map((ex, i) => (
@@ -659,6 +690,12 @@ const styles = StyleSheet.create({
 
   // Client header
   clientHeader: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 20 },
+  contactBtns: { flexDirection: 'row', gap: 8, marginLeft: 'auto' as any },
+  contactBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+    justifyContent: 'center', alignItems: 'center',
+  },
   avatar: {
     width: 58, height: 58, borderRadius: 29,
     backgroundColor: Colors.accent + '18', borderWidth: 2, borderColor: Colors.accent + '50',
@@ -763,6 +800,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent + '18', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3,
   },
   durationText: { fontSize: 12, fontWeight: '600', color: Colors.accent },
+  sessionTypeChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.accent + '12', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3,
+    borderWidth: 1, borderColor: Colors.accent + '30',
+  },
+  sessionTypeChipHome: { backgroundColor: '#2196F312', borderColor: '#2196F330' },
+  sessionTypeText: { fontSize: 11, fontWeight: '700', color: Colors.accent },
   exRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 },
   exBullet: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.accent, marginTop: 6 },
   exDetails: { flex: 1 },

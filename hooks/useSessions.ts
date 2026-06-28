@@ -23,6 +23,7 @@ export type WorkoutSession = {
   exercises: Exercise[];
   notes: string | null;
   status: 'confirmed' | 'pending' | 'absent';
+  session_type: 'gym' | 'home';
   created_at: string;
 };
 
@@ -52,6 +53,7 @@ export function useSessions(clientId?: string) {
         exercises,
         notes,
         status,
+        session_type,
         created_at,
         client:profiles!workout_sessions_client_id_fkey (name, phone)
       `)
@@ -81,6 +83,7 @@ export function useSessions(clientId?: string) {
         exercises: row.exercises as Exercise[],
         notes: row.notes,
         status: (row.status as WorkoutSession['status']) ?? 'confirmed',
+        session_type: (row.session_type as 'gym' | 'home') ?? 'gym',
         created_at: row.created_at,
       }))
     );

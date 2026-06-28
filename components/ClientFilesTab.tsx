@@ -5,6 +5,7 @@ import {
   FlatList,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -229,6 +230,40 @@ function DocumentRow({ file, onPress }: { file: ClientFile; onPress: () => void 
   );
 }
 
+// ── Link row — at module scope ────────────────────────────────────────────────
+
+function LinkRow({ file, onDelete }: { file: ClientFile; onDelete: (file: ClientFile) => void }) {
+  const handleOpen = () => {
+    Linking.openURL(file.file_url).catch(() => Alert.alert('Error', 'Could not open link.'));
+  };
+
+  const handleLongPress = () => {
+    Alert.alert('Remove Link', 'Remove this saved link?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => onDelete(file) },
+    ]);
+  };
+
+  return (
+    <Pressable
+      style={({ pressed }) => [s.linkRow, pressed && { opacity: 0.75 }]}
+      onPress={handleOpen}
+      onLongPress={handleLongPress}
+    >
+      <View style={s.linkIcon}>
+        <Ionicons name="open-outline" size={18} color="#4CAF50" />
+      </View>
+      <View style={s.linkInfo}>
+        <Text style={s.linkLabel} numberOfLines={1}>{file.label ?? 'InBody Result'}</Text>
+        <Text style={s.linkDate}>{fmtDate(file.date)}</Text>
+      </View>
+      <View style={s.linkOpenBtn}>
+        <Text style={s.linkOpenText}>OPEN</Text>
+      </View>
+    </Pressable>
+  );
+}
+
 // ── Full-screen image viewer — at module scope ────────────────────────────────
 
 function ImageViewer({
@@ -339,6 +374,8 @@ export function ClientFilesTab({ clientId }: { clientId: string }) {
   const [viewerStartIdx, setViewerStartIdx] = useState(0);
 
   const filtered = files.filter((f) => f.category === filterCat);
+  const filteredLinks = filtered.filter((f) => f.file_type === 'link');
+  const filteredPhotos = filtered.filter((f) => f.file_type !== 'link');
 
   const openUpload = () => {
     setImageUri(null);
@@ -438,23 +475,34 @@ export function ClientFilesTab({ clientId }: { clientId: string }) {
         </View>
       ) : filterCat === 'document' ? (
         <View>
-          {filtered.map((f) => (
+          {filteredPhotos.map((f) => (
             <DocumentRow
               key={f.id}
               file={f}
-              onPress={() => openViewer(filtered.indexOf(f))}
+              onPress={() => openViewer(filteredPhotos.indexOf(f))}
             />
           ))}
         </View>
       ) : (
-        <View style={s.grid}>
-          {filtered.map((f, idx) => (
-            <PhotoGridItem
-              key={f.id}
-              file={f}
-              onPress={() => openViewer(idx)}
-            />
-          ))}
+        <View>
+          {filteredLinks.length > 0 && (
+            <View style={{ marginBottom: filteredPhotos.length > 0 ? 12 : 0 }}>
+              {filteredLinks.map((f) => (
+                <LinkRow key={f.id} file={f} onDelete={handleDelete} />
+              ))}
+            </View>
+          )}
+          {filteredPhotos.length > 0 && (
+            <View style={s.grid}>
+              {filteredPhotos.map((f, idx) => (
+                <PhotoGridItem
+                  key={f.id}
+                  file={f}
+                  onPress={() => openViewer(idx)}
+                />
+              ))}
+            </View>
+          )}
         </View>
       )}
 
@@ -488,7 +536,7 @@ export function ClientFilesTab({ clientId }: { clientId: string }) {
         onRequestClose={() => setViewerVisible(false)}
       >
         <ImageViewer
-          files={filtered}
+          files={filteredPhotos}
           startIndex={viewerStartIdx}
           onClose={() => setViewerVisible(false)}
           onDelete={handleDelete}
@@ -621,6 +669,25 @@ const s = StyleSheet.create({
   docInfo: { flex: 1 },
   docLabel: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
   docDate: { ...Typography.caption, color: Colors.textSecondary },
+
+  linkRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: Colors.surface, borderRadius: 14, padding: 12,
+    marginBottom: 8, borderWidth: 1, borderColor: '#4CAF5030',
+  },
+  linkIcon: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: '#4CAF5015', justifyContent: 'center', alignItems: 'center',
+  },
+  linkInfo: { flex: 1 },
+  linkLabel: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
+  linkDate: { ...Typography.caption, color: Colors.textSecondary },
+  linkOpenBtn: {
+    backgroundColor: '#4CAF5015', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderWidth: 1, borderColor: '#4CAF5050',
+  },
+  linkOpenText: { color: '#4CAF50', fontSize: 11, fontWeight: '800', letterSpacing: 0.8 },
 
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
   sheet: {

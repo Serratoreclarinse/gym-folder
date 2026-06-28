@@ -9,7 +9,7 @@ export type ClientFile = {
   client_id: string;
   coach_id: string;
   file_url: string;
-  file_type: 'image' | 'pdf';
+  file_type: 'image' | 'pdf' | 'link';
   category: FileCategory;
   label: string | null;
   description: string | null;
@@ -107,4 +107,25 @@ export function useClientFiles(clientId: string) {
   };
 
   return { files, loading, refetch: load, uploadFile, deleteFile };
+}
+
+// Standalone — saves an InBody (or any web) result URL directly, no file upload needed.
+export async function saveInBodyLink(
+  clientId: string,
+  coachId: string,
+  url: string,
+  label: string,
+  date: string,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('client_files').insert({
+    client_id: clientId,
+    coach_id: coachId,
+    file_url: url,
+    file_type: 'link',
+    category: 'inbody',
+    label: label.trim() || 'InBody Result',
+    description: null,
+    date,
+  });
+  return { error: error?.message ?? null };
 }

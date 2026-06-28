@@ -192,6 +192,7 @@ export default function LogSessionScreen() {
 
   const [selectedClientId, setSelectedClientId] = useState(params.clientId ?? '');
   const [sessionDate, setSessionDate] = useState(params.date ?? todayISO());
+  const [sessionType, setSessionType] = useState<'gym' | 'home'>('gym');
   const [duration, setDuration] = useState('60');
   const [exercises, setExercises] = useState<Exercise[]>([blankExercise()]);
   const [sessionTime, setSessionTime] = useState(currentTimeStr());
@@ -299,6 +300,7 @@ export default function LogSessionScreen() {
         duration_minutes: Number(duration),
         exercises: validExercises,
         notes: sessionNotes.trim() || null,
+        session_type: sessionType,
       });
 
       if (error) {
@@ -431,6 +433,29 @@ export default function LogSessionScreen() {
               placeholder="60"
               placeholderTextColor={Colors.textSecondary}
             />
+          </View>
+        </View>
+
+        {/* Session type — Gym vs Home */}
+        <View style={styles.field}>
+          <Text style={styles.label}>SESSION TYPE</Text>
+          <View style={styles.typeRow}>
+            {(['gym', 'home'] as const).map((t) => (
+              <Pressable
+                key={t}
+                style={[styles.typeBtn, sessionType === t && styles.typeBtnActive]}
+                onPress={() => setSessionType(t)}
+              >
+                <Ionicons
+                  name={t === 'gym' ? 'barbell-outline' : 'home-outline'}
+                  size={16}
+                  color={sessionType === t ? Colors.bg : Colors.textSecondary}
+                />
+                <Text style={[styles.typeBtnText, sessionType === t && styles.typeBtnTextActive]}>
+                  {t === 'gym' ? 'Gym' : 'Home'}
+                </Text>
+              </Pressable>
+            ))}
           </View>
         </View>
 
@@ -658,6 +683,15 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 12 },
   field: { marginBottom: 16 },
   label: { ...Typography.label, color: Colors.textSecondary, marginBottom: 8 },
+  typeRow: { flexDirection: 'row', gap: 10 },
+  typeBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    paddingVertical: 12, borderRadius: 12, borderWidth: 1.5,
+    borderColor: Colors.border, backgroundColor: Colors.surface,
+  },
+  typeBtnActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+  typeBtnText: { fontSize: 14, fontWeight: '700', color: Colors.textSecondary },
+  typeBtnTextActive: { color: Colors.bg },
   input: {
     backgroundColor: Colors.surface,
     borderWidth: 1,
