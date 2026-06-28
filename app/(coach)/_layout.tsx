@@ -50,6 +50,10 @@ export default function CoachRootLayout() {
         name="blocked-dates"
         options={{ title: 'Blocked Dates' }}
       />
+      <Stack.Screen
+        name="announcements"
+        options={{ title: 'Announcements' }}
+      />
     </Stack>
   );
 }

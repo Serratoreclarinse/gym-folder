@@ -11,6 +11,7 @@ import { useStrikeAlerts } from '@/hooks/useStrikeAlerts';
 import { useWaitlist } from '@/hooks/useWaitlist';
 import { useBirthdays, getDaysUntilBirthday, formatBirthday } from '@/hooks/useBirthdays';
 import { useAvailability } from '@/hooks/useAvailability';
+import { useAnnouncements } from '@/hooks/useAnnouncements';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { Colors, Typography } from '@/constants/theme';
 
@@ -49,6 +50,7 @@ export default function CoachDashboard() {
   const { all: allBirthdays } = useBirthdays(clients);
   const { getTodayInfo } = useAvailability();
   const todaySchedule = getTodayInfo();
+  const { pinnedAnnouncement, togglePin } = useAnnouncements();
 
   const refreshing = cLoading || sLoading;
   const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); };
@@ -109,9 +111,14 @@ export default function CoachDashboard() {
             {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </Text>
         </View>
-        <Pressable style={styles.addBtn} onPress={() => router.push('/(coach)/add-client')}>
-          <Ionicons name="person-add-outline" size={20} color={Colors.accent} />
-        </Pressable>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Pressable style={styles.addBtn} onPress={() => router.push('/(coach)/announcements' as any)}>
+            <Ionicons name="megaphone-outline" size={20} color={Colors.accent} />
+          </Pressable>
+          <Pressable style={styles.addBtn} onPress={() => router.push('/(coach)/add-client')}>
+            <Ionicons name="person-add-outline" size={20} color={Colors.accent} />
+          </Pressable>
+        </View>
       </View>
 
       {/* Errors */}
@@ -138,6 +145,29 @@ export default function CoachDashboard() {
         </Pressable>
       )}
 
+      {/* Pinned announcement banner */}
+      {pinnedAnnouncement && (
+        <View style={[
+          styles.pinnedBanner,
+          pinnedAnnouncement.type === 'emergency' && styles.pinnedBannerEmergency,
+        ]}>
+          <Ionicons
+            name={pinnedAnnouncement.type === 'emergency' ? 'warning-outline' : 'megaphone-outline'}
+            size={16}
+            color={pinnedAnnouncement.type === 'emergency' ? Colors.danger : Colors.accent}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.pinnedTitle, pinnedAnnouncement.type === 'emergency' && { color: Colors.danger }]}>
+              {pinnedAnnouncement.title}
+            </Text>
+            <Text style={styles.pinnedMsg} numberOfLines={1}>{pinnedAnnouncement.message}</Text>
+          </View>
+          <Pressable onPress={() => togglePin(pinnedAnnouncement.id, true)} hitSlop={10}>
+            <Ionicons name="close-circle-outline" size={18} color={Colors.textSecondary} />
+          </Pressable>
+        </View>
+      )}
+
       {/* Quick actions */}
       <View style={styles.quickRow}>
         <Pressable style={[styles.quickBtn, styles.quickBtnPrimary]} onPress={() => router.push('/(coach)/log-session')}>
@@ -149,6 +179,15 @@ export default function CoachDashboard() {
           <Text style={styles.quickBtnSecondaryText}>REVENUE</Text>
         </Pressable>
       </View>
+
+      {/* Emergency notice quick action */}
+      <Pressable
+        style={styles.emergencyBtn}
+        onPress={() => router.push({ pathname: '/(coach)/announcements', params: { preset: 'emergency' } } as any)}
+      >
+        <Ionicons name="warning-outline" size={18} color="#fff" />
+        <Text style={styles.emergencyBtnText}>EMERGENCY NOTICE</Text>
+      </Pressable>
 
       {/* Strike Alerts */}
       {strikeAlerts.length > 0 && (
@@ -414,6 +453,25 @@ const styles = StyleSheet.create({
   },
   availDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4CAF50' },
   availText: { ...Typography.caption, color: '#4CAF50', flex: 1 },
+
+  // Emergency button
+  emergencyBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    backgroundColor: Colors.danger, borderRadius: 14, paddingVertical: 13, marginBottom: 32,
+  },
+  emergencyBtnText: { color: '#fff', fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+
+  // Pinned announcement banner
+  pinnedBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: Colors.accent + '12', borderRadius: 12, padding: 12, marginBottom: 16,
+    borderWidth: 1, borderColor: Colors.accent + '35',
+  },
+  pinnedBannerEmergency: {
+    backgroundColor: Colors.danger + '10', borderColor: Colors.danger + '40',
+  },
+  pinnedTitle: { ...Typography.caption, color: Colors.accent, fontWeight: '700', marginBottom: 1 },
+  pinnedMsg: { ...Typography.caption, color: Colors.textSecondary },
 
   // Birthday section
   birthdayBadge: { backgroundColor: BIRTHDAY_GOLD + '20', borderColor: BIRTHDAY_GOLD + '50' },
