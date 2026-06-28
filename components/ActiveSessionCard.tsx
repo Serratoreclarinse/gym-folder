@@ -185,6 +185,7 @@ export function ActiveSessionCard({
   nextSession,
   onExtend,
   onEnd,
+  onCancel,
   onPause,
   onResume,
 }: {
@@ -192,6 +193,7 @@ export function ActiveSessionCard({
   nextSession: NextSession | null;
   onExtend: (minutes: number, reason: string) => Promise<{ error: string | null }>;
   onEnd: () => Promise<{ error: string | null }>;
+  onCancel: () => Promise<{ error: string | null }>;
   onPause: () => Promise<{ error: string | null }>;
   onResume: () => Promise<{ error: string | null }>;
 }) {
@@ -277,6 +279,24 @@ export function ActiveSessionCard({
     );
   };
 
+  const handleCancelSession = () => {
+    Alert.alert(
+      'Cancel Session',
+      `Cancel the timer for ${activeSession.client_name}? The session log will be deleted.`,
+      [
+        { text: 'Keep Timer', style: 'cancel' },
+        {
+          text: 'Cancel Session',
+          style: 'destructive',
+          onPress: async () => {
+            const { error } = await onCancel();
+            if (error) Alert.alert('Error', error);
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <>
       <View style={[s.card, isRed && s.cardRed, isYellow && s.cardYellow]}>
@@ -302,7 +322,7 @@ export function ActiveSessionCard({
           </View>
         </View>
 
-        {/* Buttons — top row: PAUSE/RESUME + END, bottom row: EXTEND */}
+        {/* Buttons — top row: PAUSE/RESUME + END, middle: EXTEND, bottom: CANCEL */}
         <View style={s.btnCol}>
           <View style={s.btnRow}>
             {isPaused ? (
@@ -336,6 +356,13 @@ export function ActiveSessionCard({
           >
             <Ionicons name="add-circle-outline" size={16} color={Colors.accent} />
             <Text style={s.extendBtnText}>EXTEND TIME</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [s.cancelBtn, pressed && { opacity: 0.6 }]}
+            onPress={handleCancelSession}
+          >
+            <Ionicons name="close-circle-outline" size={14} color={Colors.textSecondary} />
+            <Text style={s.cancelBtnText}>CANCEL SESSION</Text>
           </Pressable>
         </View>
       </View>
@@ -408,6 +435,11 @@ const s = StyleSheet.create({
     paddingVertical: 10,
   },
   endBtnText: { color: Colors.textPrimary, fontWeight: '700', fontSize: 13, letterSpacing: 0.5 },
+  cancelBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    paddingVertical: 8,
+  },
+  cancelBtnText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 12, letterSpacing: 0.5 },
 });
 
 const em = StyleSheet.create({

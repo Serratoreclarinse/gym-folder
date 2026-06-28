@@ -182,5 +182,17 @@ export function useActiveSession() {
     return { error: null };
   };
 
-  return { activeSession, nextSession, extensions, loading, refetch: load, extendSession, endSession, pauseSession, resumeSession };
+  const cancelSession = async (): Promise<{ error: string | null }> => {
+    if (!activeSession) return { error: 'No active session' };
+    const { error } = await supabase
+      .from('active_sessions')
+      .delete()
+      .eq('id', activeSession.id);
+    if (error) return { error: error.message };
+    setActiveSession(null);
+    setExtensions([]);
+    return { error: null };
+  };
+
+  return { activeSession, nextSession, extensions, loading, refetch: load, extendSession, endSession, cancelSession, pauseSession, resumeSession };
 }

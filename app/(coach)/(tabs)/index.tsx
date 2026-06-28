@@ -54,7 +54,7 @@ export default function CoachDashboard() {
   const { getTodayInfo } = useAvailability();
   const todaySchedule = getTodayInfo();
   const { pinnedAnnouncement, togglePin } = useAnnouncements();
-  const { activeSession, nextSession, extendSession, endSession, pauseSession, resumeSession, refetch: refetchTimer } = useActiveSession();
+  const { activeSession, nextSession, extendSession, endSession, cancelSession, pauseSession, resumeSession, refetch: refetchTimer } = useActiveSession();
   const [pausedWorkout, setPausedWorkout] = useState<any | null>(null);
 
   const refreshing = cLoading || sLoading;
@@ -197,6 +197,11 @@ export default function CoachDashboard() {
           onResume={resumeSession}
           onEnd={async () => {
             const result = await endSession();
+            if (!result.error) refetchTimer();
+            return result;
+          }}
+          onCancel={async () => {
+            const result = await cancelSession();
             if (!result.error) refetchTimer();
             return result;
           }}
