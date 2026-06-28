@@ -9,7 +9,12 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://crdefmftxjhdcxqqrxuu.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNyZGVmbWZ0eGpoZGN4cXFyeHV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxMjE4MDgsImV4cCI6MjA5NzY5NzgwOH0.ptAC-NEuHVYywep6c_140aYZYp2ti7d3CWh-Z0as4ok",
+        "EXPO_PUBLIC_APP_NAME": "Gym Coaching"
+      }
     },
     "production": {
       "autoIncrement": true
