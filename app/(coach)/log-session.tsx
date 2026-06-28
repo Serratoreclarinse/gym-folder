@@ -30,11 +30,12 @@ type Exercise = {
   weight: string;
   duration: string;
   notes: string;
+  isSuperset: boolean;
 };
 
 const todayISO = () => new Date().toISOString().split('T')[0];
 const uid = () => Math.random().toString(36).slice(2);
-const blankExercise = (): Exercise => ({ id: uid(), exercise_name: '', sets: '', reps: '', weight: '', duration: '', notes: '' });
+const blankExercise = (): Exercise => ({ id: uid(), exercise_name: '', sets: '', reps: '', weight: '', duration: '', notes: '', isSuperset: false });
 
 function currentTimeStr(): string {
   const now = new Date();
@@ -87,13 +88,17 @@ async function scheduleSessionReminder(clientName: string, sessionDate: string, 
 function ExerciseCard({
   exercise,
   index,
+  isLast,
   onChange,
   onRemove,
+  onToggleSuperset,
 }: {
   exercise: Exercise;
   index: number;
+  isLast: boolean;
   onChange: (id: string, field: keyof Exercise, value: string) => void;
   onRemove: (id: string) => void;
+  onToggleSuperset: (id: string) => void;
 }) {
   return (
     <View style={styles.exCard}>
@@ -179,6 +184,22 @@ function ExerciseCard({
         multiline
         numberOfLines={2}
       />
+
+      {!isLast && (
+        <Pressable
+          style={[styles.supersetToggle, exercise.isSuperset && styles.supersetToggleActive]}
+          onPress={() => onToggleSuperset(exercise.id)}
+        >
+          <Ionicons
+            name="swap-horizontal-outline"
+            size={13}
+            color={exercise.isSuperset ? Colors.bg : Colors.textSecondary}
+          />
+          <Text style={[styles.supersetToggleText, exercise.isSuperset && styles.supersetToggleTextActive]}>
+            {exercise.isSuperset ? 'SUPERSET WITH NEXT ✓' : 'SUPERSET WITH NEXT'}
+          </Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -215,7 +236,7 @@ export default function LogSessionScreen() {
   const addFromHistory = (item: RecentExercise) => {
     setExercises((prev) => [
       ...prev,
-      { id: uid(), exercise_name: item.exercise_name, sets: item.sets, reps: item.reps, weight: item.weight, duration: item.duration, notes: '' },
+      { id: uid(), exercise_name: item.exercise_name, sets: item.sets, reps: item.reps, weight: item.weight, duration: item.duration, notes: '', isSuperset: false },
     ]);
     setShowHistoryModal(false);
   };
@@ -235,6 +256,7 @@ export default function LogSessionScreen() {
               weight: e.weight ?? '',
               duration: '',
               notes: e.notes ?? '',
+              isSuperset: false,
             }))
           : [blankExercise()]
       );
@@ -259,6 +281,10 @@ export default function LogSessionScreen() {
 
   const updateExercise = (id: string, field: keyof Exercise, value: string) => {
     setExercises((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
+  };
+
+  const toggleSuperset = (id: string) => {
+    setExercises((prev) => prev.map((e) => (e.id === id ? { ...e, isSuperset: !e.isSuperset } : e)));
   };
 
   const removeExercise = (id: string) => {
@@ -287,6 +313,7 @@ export default function LogSessionScreen() {
         weight: e.weight.trim() || null,
         duration: e.duration.trim() || null,
         notes: e.notes.trim() || null,
+        isSuperset: e.isSuperset,
       }));
 
     setLoading(true);
@@ -395,6 +422,7 @@ export default function LogSessionScreen() {
         weight: e.weight.trim() || null,
         duration: e.duration.trim() || null,
         notes: e.notes.trim() || null,
+        isSuperset: e.isSuperset,
       }));
     router.push({
       pathname: '/(coach)/guided-workout',
@@ -559,8 +587,10 @@ export default function LogSessionScreen() {
             key={ex.id}
             exercise={ex}
             index={i}
+            isLast={i === exercises.length - 1}
             onChange={updateExercise}
             onRemove={removeExercise}
+            onToggleSuperset={toggleSuperset}
           />
         ))}
 
@@ -876,6 +906,15 @@ const styles = StyleSheet.create({
   bwBtnText: { fontSize: 12, fontWeight: '800', color: Colors.textSecondary },
   bwBtnTextActive: { color: Colors.bg },
   exLabel: { ...Typography.label, color: Colors.textSecondary, fontSize: 10, marginBottom: 6 },
+  supersetToggle: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    marginTop: 10, paddingVertical: 8, borderRadius: 8,
+    borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: Colors.bg,
+  },
+  supersetToggleActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+  supersetToggleText: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  supersetToggleTextActive: { color: Colors.bg },
   exSmallInput: {
     backgroundColor: Colors.bg,
     borderWidth: 1,

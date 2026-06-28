@@ -16,12 +16,30 @@ type Exercise = {
   reps: number | null;
   weight: string | null;
   notes: string | null;
+  isSuperset?: boolean;
 };
 
 type Phase = 'set' | 'rest' | 'between' | 'done' | 'saving' | 'summary';
 
 function pad(n: number) {
   return String(n).padStart(2, '0');
+}
+
+// Returns groups of exercise indices. Exercises with isSuperset:true are chained with the next.
+// e.g. [Plank(super), PushUp, Squat] → [[0,1],[2]]
+function buildGroups(exs: Exercise[]): number[][] {
+  const groups: number[][] = [];
+  let i = 0;
+  while (i < exs.length) {
+    const group = [i];
+    while (exs[i]?.isSuperset && i + 1 < exs.length) {
+      i++;
+      group.push(i);
+    }
+    groups.push(group);
+    i++;
+  }
+  return groups;
 }
 
 export default function GuidedWorkoutScreen() {
@@ -72,8 +90,13 @@ export default function GuidedWorkoutScreen() {
     } catch {}
   };
 
+  const groups = buildGroups(exercises);
+  const currentGroupIdx = groups.findIndex((g) => g.includes(exIdx));
+  const currentGroup = groups[currentGroupIdx] ?? [exIdx];
+  const isSupersetGroup = currentGroup.length > 1;
+  const isLastInGroup = exIdx === currentGroup[currentGroup.length - 1];
   const currentEx = exercises[exIdx];
-  const totalSets = currentEx?.sets ?? 1;
+  const totalSets = exercises[currentGroup[0]]?.sets ?? 1;
 
   // Restore saved progress if resuming, otherwise save fresh start
   useEffect(() => {
@@ -147,39 +170,41 @@ export default function GuidedWorkoutScreen() {
   };
 
   const handleSetDone = () => {
+    if (!isLastInGroup) {
+      // More exercises in this superset — advance without rest
+      const next = exIdx + 1;
+      setExIdx(next);
+      void saveProgress(next, setIdx);
+      return;
+    }
     const moreSets = setIdx + 1 < totalSets;
     if (moreSets) {
       setRestRemaining(defaultRest);
       setRestRunning(true);
       setPhase('rest');
     } else {
-      const moreExercises = exIdx + 1 < totalExercises;
-      if (moreExercises) {
-        setPhase('between');
-      } else {
-        setPhase('done');
-      }
+      const moreGroups = currentGroupIdx + 1 < groups.length;
+      if (moreGroups) setPhase('between');
+      else setPhase('done');
     }
   };
 
-  const handleSkipRest = () => {
+  const goToNextSet = () => {
     stopRest();
+    const firstExIdx = currentGroup[0];
     const nextSetIdx = setIdx + 1;
+    setExIdx(firstExIdx);
     setSetIdx(nextSetIdx);
     setPhase('set');
-    void saveProgress(exIdx, nextSetIdx);
+    void saveProgress(firstExIdx, nextSetIdx);
   };
 
-  const handleNextSet = () => {
-    stopRest();
-    const nextSetIdx = setIdx + 1;
-    setSetIdx(nextSetIdx);
-    setPhase('set');
-    void saveProgress(exIdx, nextSetIdx);
-  };
+  const handleSkipRest = () => goToNextSet();
+  const handleNextSet = () => goToNextSet();
 
   const handleNextExercise = () => {
-    const nextExIdx = exIdx + 1;
+    const nextGroup = groups[currentGroupIdx + 1];
+    const nextExIdx = nextGroup[0];
     setExIdx(nextExIdx);
     setSetIdx(0);
     setPhase('set');
@@ -239,7 +264,7 @@ export default function GuidedWorkoutScreen() {
           </View>
 
           <Text style={styles.wProgress}>
-            {exIdx + 1}/{totalExercises}
+            {currentGroupIdx + 1}/{groups.length}
           </Text>
         </View>
       )}
@@ -250,7 +275,9 @@ export default function GuidedWorkoutScreen() {
       {phase === 'set' && (
         <View style={styles.phase}>
           <Text style={styles.progressLabel}>
-            Exercise {exIdx + 1} of {totalExercises}
+            {isSupersetGroup
+              ? `SUPERSET ${currentGroup.indexOf(exIdx) + 1}/${currentGroup.length}  ·  Group ${currentGroupIdx + 1} of ${groups.length}`
+              : `Exercise ${currentGroupIdx + 1} of ${groups.length}`}
           </Text>
 
           <Text style={styles.exName}>{currentEx?.exercise_name}</Text>
@@ -357,7 +384,9 @@ export default function GuidedWorkoutScreen() {
           )}
 
           <Text style={styles.upNextLabel}>
-            Up next: Set {setIdx + 2} of {totalSets} — {currentEx?.exercise_name}
+            {isSupersetGroup
+              ? `Up next: Set ${setIdx + 2} of ${totalSets} — ${currentGroup.map((i) => exercises[i]?.exercise_name).join(' + ')}`
+              : `Up next: Set ${setIdx + 2} of ${totalSets} — ${currentEx?.exercise_name}`}
           </Text>
         </View>
       )}
@@ -368,21 +397,32 @@ export default function GuidedWorkoutScreen() {
           <View style={styles.bigIcon}>
             <Ionicons name="checkmark-circle" size={80} color={Colors.accent} />
           </View>
-          <Text style={styles.exName}>{currentEx?.exercise_name}</Text>
+          <Text style={styles.exName}>
+            {isSupersetGroup
+              ? currentGroup.map((i) => exercises[i]?.exercise_name).join(' + ')
+              : currentEx?.exercise_name}
+          </Text>
           <Text style={styles.progressLabel}>All {totalSets} sets complete!</Text>
 
-          <View style={styles.upNextCard}>
-            <Text style={styles.upNextCardLabel}>UP NEXT</Text>
-            <Text style={styles.upNextCardName}>{exercises[exIdx + 1]?.exercise_name}</Text>
-            {(exercises[exIdx + 1]?.reps || exercises[exIdx + 1]?.weight) ? (
-              <Text style={styles.upNextCardMeta}>
-                {[
-                  exercises[exIdx + 1]?.reps ? `${exercises[exIdx + 1]?.reps} reps` : null,
-                  exercises[exIdx + 1]?.weight,
-                ].filter(Boolean).join(' · ')}
-              </Text>
-            ) : null}
-          </View>
+          {(() => {
+            const nextGroup = groups[currentGroupIdx + 1] ?? [];
+            const nextGroupName = nextGroup.map((i) => exercises[i]?.exercise_name).filter(Boolean).join(' + ');
+            const nextFirstEx = exercises[nextGroup[0]];
+            return (
+              <View style={styles.upNextCard}>
+                <Text style={styles.upNextCardLabel}>UP NEXT</Text>
+                <Text style={styles.upNextCardName}>{nextGroupName}</Text>
+                {nextGroup.length === 1 && (nextFirstEx?.reps || nextFirstEx?.weight) ? (
+                  <Text style={styles.upNextCardMeta}>
+                    {[
+                      nextFirstEx?.reps ? `${nextFirstEx.reps} reps` : null,
+                      nextFirstEx?.weight,
+                    ].filter(Boolean).join(' · ')}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })()}
 
           <Pressable style={styles.primaryBtn} onPress={handleNextExercise}>
             <Text style={styles.primaryBtnText}>NEXT EXERCISE →</Text>
