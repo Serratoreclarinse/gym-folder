@@ -24,6 +24,10 @@ export default function CoachProfileScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
 
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [savingEmail, setSavingEmail] = useState(false);
+
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
@@ -91,6 +95,17 @@ export default function CoachProfileScreen() {
     if (error) { Alert.alert('Error', error.message); return; }
     await refreshProfile();
     setEditingName(false);
+  };
+
+  const handleChangeEmail = async () => {
+    if (!newEmail.trim()) return;
+    setSavingEmail(true);
+    const { error } = await supabase.auth.updateUser({ email: newEmail.trim() });
+    setSavingEmail(false);
+    if (error) { Alert.alert('Error', error.message); return; }
+    Alert.alert('Confirmation sent', 'Check your new email inbox to confirm the change.');
+    setEditingEmail(false);
+    setNewEmail('');
   };
 
   const handleChangePassword = async () => {
@@ -215,7 +230,31 @@ export default function CoachProfileScreen() {
         <Text style={styles.sectionLabel}>ACCOUNT</Text>
       </View>
 
-      {editingName ? (
+      {editingEmail ? (
+        <View style={styles.editCard}>
+          <EditField
+            icon="mail-outline"
+            label="NEW EMAIL"
+            value={newEmail}
+            onChangeText={setNewEmail}
+            placeholder="Enter new email address"
+            keyboardType="email-address"
+            last
+          />
+          <View style={styles.editActions}>
+            <Pressable style={styles.cancelBtn} onPress={() => { setEditingEmail(false); setNewEmail(''); }}>
+              <Text style={styles.cancelBtnText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.saveBtn, (!newEmail.trim() || savingEmail) && { opacity: 0.4 }]}
+              onPress={handleChangeEmail}
+              disabled={!newEmail.trim() || savingEmail}
+            >
+              <Text style={styles.saveBtnText}>{savingEmail ? 'Sending…' : 'Save'}</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : editingName ? (
         <View style={styles.editCard}>
           <EditField
             icon="person-outline"
@@ -280,6 +319,17 @@ export default function CoachProfileScreen() {
             <View style={styles.rowContent}>
               <Text style={styles.infoLabel}>DISPLAY NAME</Text>
               <Text style={styles.infoValue}>{profile?.name ?? '—'}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={14} color={Colors.textSecondary} />
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.infoRow, styles.infoRowBorder, pressed && { opacity: 0.7 }]}
+            onPress={() => { setNewEmail(profile?.email ?? ''); setEditingEmail(true); }}
+          >
+            <Ionicons name="mail-outline" size={18} color={Colors.textSecondary} style={styles.rowIcon} />
+            <View style={styles.rowContent}>
+              <Text style={styles.infoLabel}>EMAIL</Text>
+              <Text style={styles.infoValue}>{profile?.email ?? '—'}</Text>
             </View>
             <Ionicons name="chevron-forward" size={14} color={Colors.textSecondary} />
           </Pressable>
