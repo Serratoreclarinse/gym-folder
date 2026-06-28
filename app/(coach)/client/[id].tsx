@@ -13,9 +13,13 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '@/context/AuthContext';
 import { useClients } from '@/hooks/useClients';
 import { useSessions } from '@/hooks/useSessions';
 import { useStrikes } from '@/hooks/useStrikes';
+import { useClientLabels, PREDEFINED_TAGS } from '@/hooks/useClientLabels';
+import { useScheduledSessions } from '@/hooks/useScheduledSessions';
+import { scheduleSessionReminder, cancelSessionReminder } from '@/lib/notifications';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { ClientProgressTab } from '@/components/ClientProgressTab';
 import { ClientNotesTab } from '@/components/ClientNotesTab';
@@ -27,6 +31,13 @@ const PACKAGE_LABEL: Record<string, string> = {
   '45min': '45 min',
   '1hr': '1 hour',
 };
+
+type PackageType = '30min' | '45min' | '1hr';
+const PACKAGE_OPTIONS: { value: PackageType; label: string }[] = [
+  { value: '30min', label: '30 min' },
+  { value: '45min', label: '45 min' },
+  { value: '1hr', label: '1 hr' },
+];
 
 type Tab = 'overview' | 'sessions' | 'progress' | 'notes' | 'files';
 
@@ -106,6 +117,120 @@ function BirthdayEditForm({
   );
 }
 
+function RenewForm({
+  initialType,
+  onConfirm,
+  onCancel,
+}: {
+  initialType: PackageType;
+  onConfirm: (type: PackageType, sessions: string) => void;
+  onCancel: () => void;
+}) {
+  const [pkgType, setPkgType] = useState<PackageType>(initialType);
+  const [sessions, setSessions] = useState('');
+  const isValid = sessions.trim() !== '' && Number(sessions) > 0;
+  return (
+    <View style={styles.renewCard}>
+      <Text style={styles.renewTitle}>NEW PACKAGE</Text>
+      <View style={styles.renewSegmented}>
+        {PACKAGE_OPTIONS.map((opt) => (
+          <Pressable
+            key={opt.value}
+            style={[styles.renewSegment, pkgType === opt.value && styles.renewSegmentActive]}
+            onPress={() => setPkgType(opt.value)}
+          >
+            <Text style={[styles.renewSegmentText, pkgType === opt.value && styles.renewSegmentTextActive]}>
+              {opt.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      <Text style={styles.renewLabel}>Total Sessions</Text>
+      <TextInput
+        style={styles.renewInput}
+        value={sessions}
+        onChangeText={(v) => setSessions(v.replace(/[^0-9]/g, ''))}
+        placeholder="e.g. 10"
+        placeholderTextColor={Colors.textSecondary}
+        keyboardType="number-pad"
+        autoFocus
+        returnKeyType="done"
+        onSubmitEditing={() => isValid && onConfirm(pkgType, sessions)}
+      />
+      <View style={styles.renewBtns}>
+        <Pressable style={styles.renewCancel} onPress={onCancel}>
+          <Text style={styles.renewCancelText}>Cancel</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.renewConfirm, !isValid && { opacity: 0.4 }]}
+          disabled={!isValid}
+          onPress={() => onConfirm(pkgType, sessions)}
+        >
+          <Text style={styles.renewConfirmText}>RENEW</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function ScheduleForm({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: (date: string, time: string, notes: string) => void;
+  onCancel: () => void;
+}) {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const [date, setDate] = useState(tomorrow.toISOString().slice(0, 10));
+  const [time, setTime] = useState('09:00');
+  const [notes, setNotes] = useState('');
+  return (
+    <View style={styles.scheduleCard}>
+      <Text style={styles.scheduleFormTitle}>SCHEDULE SESSION</Text>
+      <Text style={styles.scheduleFormLabel}>Date (YYYY-MM-DD)</Text>
+      <TextInput
+        style={styles.scheduleFormInput}
+        value={date}
+        onChangeText={setDate}
+        placeholder="2024-01-15"
+        placeholderTextColor={Colors.textSecondary}
+        keyboardType="numbers-and-punctuation"
+        maxLength={10}
+        autoFocus
+      />
+      <Text style={styles.scheduleFormLabel}>Time (24h, e.g. 14:30)</Text>
+      <TextInput
+        style={styles.scheduleFormInput}
+        value={time}
+        onChangeText={setTime}
+        placeholder="09:00"
+        placeholderTextColor={Colors.textSecondary}
+        keyboardType="numbers-and-punctuation"
+        maxLength={5}
+      />
+      <Text style={styles.scheduleFormLabel}>Notes (optional)</Text>
+      <TextInput
+        style={styles.scheduleFormInput}
+        value={notes}
+        onChangeText={setNotes}
+        placeholder="e.g. Chest day, bring towel"
+        placeholderTextColor={Colors.textSecondary}
+        returnKeyType="done"
+        onSubmitEditing={() => onConfirm(date, time, notes)}
+      />
+      <View style={styles.scheduleBtns}>
+        <Pressable style={styles.scheduleCancel} onPress={onCancel}>
+          <Text style={styles.scheduleCancelText}>Cancel</Text>
+        </Pressable>
+        <Pressable style={styles.scheduleConfirm} onPress={() => onConfirm(date, time, notes)}>
+          <Text style={styles.scheduleConfirmText}>SCHEDULE</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 export default function ClientDetailScreen() {
   const params = useLocalSearchParams<{ id: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -114,10 +239,16 @@ export default function ClientDetailScreen() {
   const [showStrikeInput, setShowStrikeInput] = useState(false);
   const [showBirthdayEdit, setShowBirthdayEdit] = useState(false);
   const [bdInput, setBdInput] = useState('');
+  const [showRenewForm, setShowRenewForm] = useState(false);
+  const [showScheduleForm, setShowScheduleForm] = useState(false);
 
+  const { profile } = useAuth();
   const { clients, loading: clientsLoading, error: clientsError, refetch: refetchClients } = useClients();
   const { sessions, loading: sessionsLoading, error: sessionsError, refetch: refetchSessions } = useSessions(id);
   const { strikes, refetch: refetchStrikes, addStrike, removeStrike } = useStrikes(id);
+  const { tagsFor, toggleTag } = useClientLabels(id);
+  const { sessions: scheduledSessions, scheduleSession, deleteSession: deleteScheduledSession } = useScheduledSessions(id);
+  const clientTags = tagsFor(id);
 
   const client = clients.find((c) => c.id === id);
   const pkg = client?.activePackage;
@@ -130,6 +261,43 @@ export default function ClientDetailScreen() {
 
   const refreshing = clientsLoading || sessionsLoading;
   const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); };
+
+  const renewPackage = async (pkgType: PackageType, totalSessions: number) => {
+    if (!profile?.id) return;
+    setShowRenewForm(false);
+    if (pkg) {
+      await supabase.from('packages').update({ status: 'expired' }).eq('id', pkg.id);
+    }
+    await supabase.from('packages').insert({
+      coach_id: profile.id,
+      client_id: id,
+      package_type: pkgType,
+      total_sessions: totalSessions,
+      sessions_used: 0,
+      sessions_remaining: totalSessions,
+      status: 'active',
+      start_date: new Date().toISOString().slice(0, 10),
+    });
+    refetchClients();
+  };
+
+  const handleScheduleSession = async (date: string, time: string, notes: string) => {
+    const dt = new Date(`${date.trim()}T${time.trim()}:00`);
+    if (isNaN(dt.getTime())) {
+      Alert.alert('Invalid format', 'Use YYYY-MM-DD for date and HH:MM for time.');
+      return;
+    }
+    if (dt <= new Date()) {
+      Alert.alert('Past date', 'Please schedule a future session.');
+      return;
+    }
+    setShowScheduleForm(false);
+    const { error, session } = await scheduleSession(dt, notes);
+    if (error) { Alert.alert('Error', error); return; }
+    if (session && client?.name) {
+      scheduleSessionReminder(client.name, dt, session.id);
+    }
+  };
 
   const handleAddStrike = () => {
     if (strikes.length >= MAX_STRIKES) {
@@ -199,11 +367,32 @@ export default function ClientDetailScreen() {
           <Text style={styles.progressLabel}>
             {pkg.sessions_used} of {pkg.total_sessions} sessions used
           </Text>
+          {pkg.sessions_remaining === 0 && !showRenewForm && (
+            <Pressable style={styles.renewInlineBtn} onPress={() => setShowRenewForm(true)}>
+              <Ionicons name="refresh-outline" size={15} color={Colors.bg} />
+              <Text style={styles.renewInlineBtnText}>RENEW PACKAGE</Text>
+            </Pressable>
+          )}
         </View>
       ) : (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyText}>No active package</Text>
+          {!showRenewForm && (
+            <Pressable style={[styles.renewInlineBtn, { marginTop: 12 }]} onPress={() => setShowRenewForm(true)}>
+              <Ionicons name="add-outline" size={15} color={Colors.bg} />
+              <Text style={styles.renewInlineBtnText}>ADD PACKAGE</Text>
+            </Pressable>
+          )}
         </View>
+      )}
+
+      {/* Package renewal form */}
+      {showRenewForm && (
+        <RenewForm
+          initialType={pkg?.package_type ?? '1hr'}
+          onConfirm={(type, sessStr) => renewPackage(type, Number(sessStr))}
+          onCancel={() => setShowRenewForm(false)}
+        />
       )}
 
       {/* Log session CTA */}
@@ -215,6 +404,84 @@ export default function ClientDetailScreen() {
           <Ionicons name="add-circle-outline" size={20} color={Colors.bg} />
           <Text style={styles.logBtnText}>LOG A SESSION</Text>
         </Pressable>
+      )}
+
+      {/* Labels / Tags */}
+      <View style={[styles.sectionRow, { marginBottom: 10, marginTop: 4 }]}>
+        <Text style={styles.sectionTitle}>LABELS</Text>
+      </View>
+      <View style={styles.tagsRow}>
+        {PREDEFINED_TAGS.map((t) => {
+          const active = clientTags.includes(t.label);
+          return (
+            <Pressable
+              key={t.label}
+              style={[
+                styles.tagChip,
+                active && { backgroundColor: t.color + '25', borderColor: t.color },
+              ]}
+              onPress={() => toggleTag(id, t.label)}
+            >
+              <Text style={[styles.tagChipText, active && { color: t.color, fontWeight: '700' }]}>
+                {t.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {/* Upcoming scheduled sessions */}
+      <View style={[styles.sectionRow, { marginTop: 20, marginBottom: 10 }]}>
+        <Text style={styles.sectionTitle}>UPCOMING SESSIONS</Text>
+        {!showScheduleForm && (
+          <Pressable style={styles.scheduleAddBtn} onPress={() => setShowScheduleForm(true)}>
+            <Ionicons name="add" size={14} color={Colors.bg} />
+            <Text style={styles.scheduleAddBtnText}>SCHEDULE</Text>
+          </Pressable>
+        )}
+      </View>
+      {showScheduleForm && (
+        <ScheduleForm
+          onConfirm={handleScheduleSession}
+          onCancel={() => setShowScheduleForm(false)}
+        />
+      )}
+      {scheduledSessions.length === 0 && !showScheduleForm ? (
+        <View style={[styles.emptyCard, { marginBottom: 20 }]}>
+          <Text style={styles.emptyText}>No upcoming sessions scheduled</Text>
+        </View>
+      ) : (
+        scheduledSessions.map((s) => {
+          const dt = new Date(s.scheduled_at);
+          const dateStr = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+          const timeStr = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          return (
+            <Pressable
+              key={s.id}
+              style={styles.scheduledCard}
+              onLongPress={() =>
+                Alert.alert('Remove Session', 'Delete this scheduled session?', [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Delete', style: 'destructive', onPress: () => {
+                      cancelSessionReminder(s.id);
+                      deleteScheduledSession(s.id);
+                    },
+                  },
+                ])
+              }
+            >
+              <View style={styles.scheduledIconWrap}>
+                <Ionicons name="calendar-outline" size={18} color={Colors.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.scheduledDate}>{dateStr} · {timeStr}</Text>
+                {s.notes ? <Text style={styles.scheduledNotes}>{s.notes}</Text> : null}
+              </View>
+              <Text style={styles.scheduledHold}>Hold to delete</Text>
+            </Pressable>
+          );
+        })
       )}
 
       {/* Birthday */}
@@ -561,6 +828,95 @@ const styles = StyleSheet.create({
     alignItems: 'center', marginBottom: 14, borderWidth: 1, borderColor: Colors.border,
   },
   emptyText: { ...Typography.body, color: Colors.textSecondary },
+
+  // Renew form
+  renewInlineBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: Colors.accent, borderRadius: 10, paddingVertical: 10, marginTop: 14,
+  },
+  renewInlineBtnText: { color: Colors.bg, fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
+  renewCard: {
+    backgroundColor: Colors.surface, borderRadius: 14, padding: 16,
+    borderWidth: 1, borderColor: Colors.accent + '50', marginBottom: 14,
+  },
+  renewTitle: { ...Typography.label, color: Colors.accent, marginBottom: 12 },
+  renewSegmented: {
+    flexDirection: 'row', backgroundColor: Colors.bg, borderRadius: 10,
+    borderWidth: 1, borderColor: Colors.border, padding: 3, marginBottom: 14, gap: 3,
+  },
+  renewSegment: { flex: 1, paddingVertical: 9, borderRadius: 8, alignItems: 'center' },
+  renewSegmentActive: { backgroundColor: Colors.accent },
+  renewSegmentText: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary },
+  renewSegmentTextActive: { color: Colors.bg },
+  renewLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: 8 },
+  renewInput: {
+    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 10, padding: 11, color: Colors.textPrimary, fontSize: 15, marginBottom: 12,
+  },
+  renewBtns: { flexDirection: 'row', gap: 8 },
+  renewCancel: {
+    flex: 1, paddingVertical: 11, borderRadius: 10,
+    borderWidth: 1, borderColor: Colors.border, alignItems: 'center',
+  },
+  renewCancelText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
+  renewConfirm: {
+    flex: 1, paddingVertical: 11, borderRadius: 10,
+    backgroundColor: Colors.accent, alignItems: 'center',
+  },
+  renewConfirmText: { color: Colors.bg, fontWeight: '800', fontSize: 13 },
+
+  // Tags / Labels
+  tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
+  tagChip: {
+    paddingHorizontal: 13, paddingVertical: 7, borderRadius: 20,
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+  },
+  tagChipText: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary },
+
+  // Schedule add button
+  scheduleAddBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.accent, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
+  },
+  scheduleAddBtnText: { color: Colors.bg, fontSize: 11, fontWeight: '800' },
+
+  // Schedule form
+  scheduleCard: {
+    backgroundColor: Colors.surface, borderRadius: 14, padding: 16,
+    borderWidth: 1, borderColor: Colors.accent + '50', marginBottom: 14,
+  },
+  scheduleFormTitle: { ...Typography.label, color: Colors.accent, marginBottom: 12 },
+  scheduleFormLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: 6 },
+  scheduleFormInput: {
+    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 10, padding: 11, color: Colors.textPrimary, fontSize: 15, marginBottom: 12,
+  },
+  scheduleBtns: { flexDirection: 'row', gap: 8 },
+  scheduleCancel: {
+    flex: 1, paddingVertical: 11, borderRadius: 10,
+    borderWidth: 1, borderColor: Colors.border, alignItems: 'center',
+  },
+  scheduleCancelText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
+  scheduleConfirm: {
+    flex: 1, paddingVertical: 11, borderRadius: 10,
+    backgroundColor: Colors.accent, alignItems: 'center',
+  },
+  scheduleConfirmText: { color: Colors.bg, fontWeight: '800', fontSize: 13 },
+
+  // Scheduled session cards
+  scheduledCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: Colors.surface, borderRadius: 12, padding: 12,
+    marginBottom: 8, borderWidth: 1, borderColor: Colors.border,
+  },
+  scheduledIconWrap: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: Colors.accent + '15', borderWidth: 1, borderColor: Colors.accent + '40',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  scheduledDate: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
+  scheduledNotes: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
+  scheduledHold: { ...Typography.caption, color: Colors.textSecondary, fontSize: 10 },
 
   // Birthday
   bdDisplay: {

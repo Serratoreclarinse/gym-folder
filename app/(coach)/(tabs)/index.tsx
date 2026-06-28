@@ -84,9 +84,10 @@ export default function CoachDashboard() {
   }, [cLoading]);
 
   const activeClients = clients.filter((c) => c.activePackage?.status === 'active').length;
-  const expiringCount = clients.filter(
-    (c) => c.activePackage?.status === 'active' && (c.activePackage?.sessions_remaining ?? 0) <= 3
-  ).length;
+  const packageAlertClients = clients.filter(
+    (c) => c.activePackage && c.activePackage.sessions_remaining <= 3,
+  );
+  const expiringCount = packageAlertClients.length;
 
   const today = new Date().toISOString().split('T')[0];
   const todaySessions = sessions.filter((s) => s.session_date === today).length;
@@ -188,6 +189,52 @@ export default function CoachDashboard() {
         <Ionicons name="warning-outline" size={18} color="#fff" />
         <Text style={styles.emergencyBtnText}>EMERGENCY NOTICE</Text>
       </Pressable>
+
+      {/* Package Alerts */}
+      {packageAlertClients.length > 0 && (
+        <>
+          <View style={styles.strikeSectionHeader}>
+            <Text style={styles.sectionTitle}>PACKAGE ALERTS</Text>
+            <View style={[styles.strikeBadge, { backgroundColor: '#FF980020', borderColor: '#FF980060' }]}>
+              <Text style={[styles.strikeBadgeText, { color: '#FF9800' }]}>{packageAlertClients.length}</Text>
+            </View>
+          </View>
+          {packageAlertClients.map((c) => {
+            const isExpired = c.activePackage!.sessions_remaining === 0;
+            const color = isExpired ? Colors.danger : '#FF9800';
+            const initials = c.name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
+            return (
+              <Pressable
+                key={c.id}
+                style={({ pressed }) => [
+                  styles.strikeAlertCard,
+                  { borderColor: color + '50' },
+                  pressed && { opacity: 0.75 },
+                ]}
+                onPress={() => router.push(`/(coach)/client/${c.id}`)}
+              >
+                <View style={[styles.strikeAvatar, { backgroundColor: color + '18', borderColor: color + '40' }]}>
+                  <Text style={[styles.strikeAvatarText, { color }]}>{initials}</Text>
+                </View>
+                <View style={styles.strikeAlertInfo}>
+                  <Text style={styles.strikeAlertName}>{c.name}</Text>
+                  <Text style={[styles.strikeAlertDate, { color }]}>
+                    {isExpired
+                      ? 'Package expired — tap to renew'
+                      : `${c.activePackage!.sessions_remaining} session${c.activePackage!.sessions_remaining !== 1 ? 's' : ''} remaining`}
+                  </Text>
+                </View>
+                <View style={[styles.pkgAlertBadge, { backgroundColor: color + '18', borderColor: color + '40' }]}>
+                  <Text style={[styles.pkgAlertBadgeText, { color }]}>
+                    {isExpired ? 'EXPIRED' : `${c.activePackage!.sessions_remaining} LEFT`}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+          <View style={{ height: 8 }} />
+        </>
+      )}
 
       {/* Strike Alerts */}
       {strikeAlerts.length > 0 && (
@@ -408,6 +455,11 @@ const styles = StyleSheet.create({
   },
   strikePip: { width: 7, height: 7, borderRadius: 4 },
   strikeCountText: { fontSize: 11, fontWeight: '800' },
+  pkgAlertBadge: {
+    borderRadius: 8, paddingHorizontal: 9, paddingVertical: 5,
+    borderWidth: 1, alignItems: 'center', justifyContent: 'center',
+  },
+  pkgAlertBadgeText: { fontSize: 11, fontWeight: '800' },
   waitlistNotice: {
     flexDirection: 'row',
     alignItems: 'center',
