@@ -19,6 +19,7 @@ import { useStrikes } from '@/hooks/useStrikes';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { ClientProgressTab } from '@/components/ClientProgressTab';
 import { ClientNotesTab } from '@/components/ClientNotesTab';
+import { ClientFilesTab } from '@/components/ClientFilesTab';
 import { Colors, Typography } from '@/constants/theme';
 
 const PACKAGE_LABEL: Record<string, string> = {
@@ -365,14 +366,6 @@ export default function ClientDetailScreen() {
     </>
   );
 
-  // ── Files Tab ────────────────────────────────────────────────
-  const FilesContent = () => (
-    <View style={styles.filesEmpty}>
-      <Ionicons name="folder-outline" size={52} color={Colors.border} />
-      <Text style={styles.filesEmptyTitle}>No files yet</Text>
-      <Text style={styles.filesEmptySub}>File uploads coming soon</Text>
-    </View>
-  );
 
   return (
     <ScrollView
@@ -415,7 +408,7 @@ export default function ClientDetailScreen() {
       {activeTab === 'sessions' && <SessionsContent />}
       {activeTab === 'progress' && <ClientProgressTab clientId={id} />}
       {activeTab === 'notes' && <ClientNotesTab clientId={id} />}
-      {activeTab === 'files' && <FilesContent />}
+      {activeTab === 'files' && <ClientFilesTab clientId={id} />}
     </ScrollView>
   );
 }
@@ -539,11 +532,6 @@ const styles = StyleSheet.create({
     ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic',
     marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: Colors.border,
   },
-
-  // Files
-  filesEmpty: { alignItems: 'center', paddingTop: 60, gap: 8 },
-  filesEmptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 12 },
-  filesEmptySub: { ...Typography.body, color: Colors.textSecondary },
 
   // Strike inline input
   strikeInputCard: {
