@@ -329,12 +329,48 @@ export default function LogSessionScreen() {
           original_duration: Number(duration),
           current_duration: Number(duration),
           is_active: true,
+          is_paused: false,
         });
-        Alert.alert(
-          'Session Started!',
-          `Timer started for ${selectedClient?.name} (${duration} min). Check your Dashboard.`,
-          [{ text: 'OK', onPress: () => router.back() }]
-        );
+
+        const hasExercises = validExercises.length > 0;
+        if (hasExercises) {
+          Alert.alert(
+            'Session Started!',
+            `Timer started for ${selectedClient?.name}. Gusto mo bang gawin ang exercises step by step?`,
+            [
+              {
+                text: 'Dashboard nalang',
+                onPress: () => router.back(),
+              },
+              {
+                text: 'Start Exercises',
+                onPress: () => {
+                  router.back();
+                  router.push({
+                    pathname: '/(coach)/guided-workout',
+                    params: {
+                      exercises: JSON.stringify(validExercises),
+                      clientId: selectedClientId,
+                      pkgId: pkg.id,
+                      coachId: profile.id,
+                      sessionDate,
+                      durationMinutes: duration,
+                      sessionNotes: sessionNotes.trim(),
+                      clientName: selectedClient?.name ?? '',
+                      alreadySaved: 'true',
+                    },
+                  } as any);
+                },
+              },
+            ]
+          );
+        } else {
+          Alert.alert(
+            'Session Started!',
+            `Timer started for ${selectedClient?.name} (${duration} min). Check your Dashboard.`,
+            [{ text: 'OK', onPress: () => router.back() }]
+          );
+        }
       } else {
         Alert.alert(
           'Session logged!',

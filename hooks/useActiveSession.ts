@@ -12,6 +12,8 @@ export type ActiveSession = {
   original_duration: number;
   current_duration: number;
   is_active: boolean;
+  is_paused: boolean;
+  pause_started_at: string | null;
 };
 
 export type SessionExtension = {
@@ -44,7 +46,7 @@ export function useActiveSession() {
 
     const { data: aData } = await supabase
       .from('active_sessions')
-      .select('id, coach_id, client_id, session_id, start_time, original_duration, current_duration, is_active')
+      .select('id, coach_id, client_id, session_id, start_time, original_duration, current_duration, is_active, is_paused, pause_started_at')
       .eq('coach_id', profile.id)
       .eq('is_active', true)
       .maybeSingle();
@@ -56,7 +58,12 @@ export function useActiveSession() {
         .eq('id', aData.client_id)
         .single();
 
-      setActiveSession({ ...aData, client_name: clientData?.name ?? 'Client' });
+      setActiveSession({
+        ...aData,
+        client_name: clientData?.name ?? 'Client',
+        is_paused: aData.is_paused ?? false,
+        pause_started_at: aData.pause_started_at ?? null,
+      });
 
       const { data: extData } = await supabase
         .from('session_extensions')
@@ -139,6 +146,30 @@ export function useActiveSession() {
     return { error: null };
   };
 
+  const pauseSession = async (): Promise<{ error: string | null }> => {
+    if (!activeSession) return { error: 'No active session' };
+    const { error } = await supabase
+      .from('active_sessions')
+      .update({ is_paused: true, pause_started_at: new Date().toISOString() })
+      .eq('id', activeSession.id);
+    if (error) return { error: error.message };
+    setActiveSession((prev) => prev ? { ...prev, is_paused: true, pause_started_at: new Date().toISOString() } : null);
+    return { error: null };
+  };
+
+  const resumeSession = async (): Promise<{ error: string | null }> => {
+    if (!activeSession || !activeSession.pause_started_at) return { error: 'Not paused' };
+    const pausedMins = Math.ceil((Date.now() - new Date(activeSession.pause_started_at).getTime()) / 60000);
+    const newDuration = activeSession.current_duration + Math.max(1, pausedMins);
+    const { error } = await supabase
+      .from('active_sessions')
+      .update({ is_paused: false, pause_started_at: null, current_duration: newDuration })
+      .eq('id', activeSession.id);
+    if (error) return { error: error.message };
+    setActiveSession((prev) => prev ? { ...prev, is_paused: false, pause_started_at: null, current_duration: newDuration } : null);
+    return { error: null };
+  };
+
   const endSession = async (): Promise<{ error: string | null }> => {
     if (!activeSession) return { error: 'No active session' };
     const { error } = await supabase
@@ -151,5 +182,5 @@ export function useActiveSession() {
     return { error: null };
   };
 
-  return { activeSession, nextSession, extensions, loading, refetch: load, extendSession, endSession };
+  return { activeSession, nextSession, extensions, loading, refetch: load, extendSession, endSession, pauseSession, resumeSession };
 }

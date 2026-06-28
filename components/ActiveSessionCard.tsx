@@ -185,11 +185,15 @@ export function ActiveSessionCard({
   nextSession,
   onExtend,
   onEnd,
+  onPause,
+  onResume,
 }: {
   activeSession: ActiveSession;
   nextSession: NextSession | null;
   onExtend: (minutes: number, reason: string) => Promise<{ error: string | null }>;
   onEnd: () => Promise<{ error: string | null }>;
+  onPause: () => Promise<{ error: string | null }>;
+  onResume: () => Promise<{ error: string | null }>;
 }) {
   const [remainingSecs, setRemainingSecs] = useState(0);
   const [showExtend, setShowExtend] = useState(false);
@@ -202,6 +206,8 @@ export function ActiveSessionCard({
   );
 
   useEffect(() => {
+    if (activeSession.is_paused) return;
+
     alerted5Ref.current = false;
     timesUpFiredRef.current = false;
 
@@ -224,15 +230,16 @@ export function ActiveSessionCard({
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [activeSession.start_time, activeSession.current_duration]);
+  }, [activeSession.start_time, activeSession.current_duration, activeSession.is_paused]);
 
   const mins = Math.floor(remainingSecs / 60);
   const secs = remainingSecs % 60;
   const display = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 
-  const isRed = remainingSecs <= 300;
-  const isYellow = !isRed && remainingSecs <= 600;
-  const timerColor = isRed ? Colors.accent : isYellow ? '#FF9800' : '#4CAF50';
+  const isPaused = activeSession.is_paused;
+  const isRed = !isPaused && remainingSecs <= 300;
+  const isYellow = !isPaused && !isRed && remainingSecs <= 600;
+  const timerColor = isPaused ? Colors.textSecondary : isRed ? Colors.accent : isYellow ? '#FF9800' : '#4CAF50';
 
   const startedAt = new Date(activeSession.start_time).toLocaleTimeString([], {
     hour: '2-digit', minute: '2-digit',
@@ -274,7 +281,7 @@ export function ActiveSessionCard({
         {/* Header row */}
         <View style={s.topRow}>
           <View style={[s.liveDot, { backgroundColor: timerColor }]} />
-          <Text style={s.liveLabel}>LIVE SESSION</Text>
+          <Text style={s.liveLabel}>{isPaused ? 'PAUSED' : 'LIVE SESSION'}</Text>
           <Text style={[s.timer, { color: timerColor }]}>{display}</Text>
         </View>
 
@@ -295,12 +302,29 @@ export function ActiveSessionCard({
 
         {/* Buttons */}
         <View style={s.btnRow}>
+          {isPaused ? (
+            <Pressable
+              style={({ pressed }) => [s.extendBtn, { borderColor: '#4CAF5060', backgroundColor: '#4CAF5010' }, pressed && { opacity: 0.75 }]}
+              onPress={async () => { const { error } = await onResume(); if (error) Alert.alert('Error', error); }}
+            >
+              <Ionicons name="play-circle-outline" size={16} color="#4CAF50" />
+              <Text style={[s.extendBtnText, { color: '#4CAF50' }]}>RESUME</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              style={({ pressed }) => [s.extendBtn, pressed && { opacity: 0.75 }]}
+              onPress={async () => { const { error } = await onPause(); if (error) Alert.alert('Error', error); }}
+            >
+              <Ionicons name="pause-circle-outline" size={16} color={Colors.accent} />
+              <Text style={s.extendBtnText}>PAUSE</Text>
+            </Pressable>
+          )}
           <Pressable
-            style={({ pressed }) => [s.extendBtn, pressed && { opacity: 0.75 }]}
+            style={({ pressed }) => [s.extendBtn, { borderColor: Colors.border, backgroundColor: 'transparent' }, pressed && { opacity: 0.75 }]}
             onPress={() => setShowExtend(true)}
           >
-            <Ionicons name="add-circle-outline" size={16} color={Colors.accent} />
-            <Text style={s.extendBtnText}>EXTEND</Text>
+            <Ionicons name="add-circle-outline" size={16} color={Colors.textPrimary} />
+            <Text style={[s.extendBtnText, { color: Colors.textPrimary }]}>EXTEND</Text>
           </Pressable>
           <Pressable
             style={({ pressed }) => [s.endBtn, pressed && { opacity: 0.75 }]}

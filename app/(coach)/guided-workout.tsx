@@ -35,6 +35,8 @@ export default function GuidedWorkoutScreen() {
     durationMinutes: string;
     sessionNotes: string;
     clientName: string;
+    resume?: string;
+    alreadySaved?: string;
   }>();
 
   const exercises: Exercise[] = JSON.parse(params.exercises ?? '[]');
@@ -188,19 +190,21 @@ export default function GuidedWorkoutScreen() {
 
   const handleFinish = async () => {
     setPhase('saving');
-    const elapsed = Math.round((Date.now() - startTime) / 60000);
-    const finalDuration = Math.max(Number(params.durationMinutes) || elapsed, elapsed);
     try {
-      const { error } = await supabase.from('workout_sessions').insert({
-        package_id: params.pkgId,
-        client_id: params.clientId,
-        coach_id: params.coachId,
-        session_date: params.sessionDate,
-        duration_minutes: finalDuration,
-        exercises,
-        notes: params.sessionNotes || null,
-      });
-      if (error) throw error;
+      if (params.alreadySaved !== 'true') {
+        const elapsed = Math.round((Date.now() - startTime) / 60000);
+        const finalDuration = Math.max(Number(params.durationMinutes) || elapsed, elapsed);
+        const { error } = await supabase.from('workout_sessions').insert({
+          package_id: params.pkgId,
+          client_id: params.clientId,
+          coach_id: params.coachId,
+          session_date: params.sessionDate,
+          duration_minutes: finalDuration,
+          exercises,
+          notes: params.sessionNotes || null,
+        });
+        if (error) throw error;
+      }
       await AsyncStorage.removeItem(WORKOUT_KEY);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setPhase('summary');
@@ -394,8 +398,8 @@ export default function GuidedWorkoutScreen() {
             {totalExercises} exercises · {Math.round((Date.now() - startTime) / 60000)} min
           </Text>
           <Pressable style={styles.primaryBtn} onPress={handleFinish}>
-            <Ionicons name="save-outline" size={22} color={Colors.bg} />
-            <Text style={styles.primaryBtnText}>FINISH & SAVE</Text>
+            <Ionicons name={params.alreadySaved === 'true' ? 'checkmark-circle-outline' : 'save-outline'} size={22} color={Colors.bg} />
+            <Text style={styles.primaryBtnText}>{params.alreadySaved === 'true' ? 'DONE' : 'FINISH & SAVE'}</Text>
           </Pressable>
         </View>
       )}
