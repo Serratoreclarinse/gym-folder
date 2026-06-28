@@ -12,6 +12,9 @@ import { useWaitlist } from '@/hooks/useWaitlist';
 import { useBirthdays, getDaysUntilBirthday, formatBirthday } from '@/hooks/useBirthdays';
 import { useAvailability } from '@/hooks/useAvailability';
 import { useAnnouncements } from '@/hooks/useAnnouncements';
+import { useActiveSession } from '@/hooks/useActiveSession';
+import { ActiveSessionCard } from '@/components/ActiveSessionCard';
+import { NextSessionCard } from '@/components/NextSessionCard';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { Colors, Typography } from '@/constants/theme';
 
@@ -51,11 +54,12 @@ export default function CoachDashboard() {
   const { getTodayInfo } = useAvailability();
   const todaySchedule = getTodayInfo();
   const { pinnedAnnouncement, togglePin } = useAnnouncements();
+  const { activeSession, nextSession, extendSession, endSession, refetch: refetchTimer } = useActiveSession();
 
   const refreshing = cLoading || sLoading;
-  const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); };
+  const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); };
 
-  useFocusEffect(useCallback(() => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); }, []));
+  useFocusEffect(useCallback(() => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); }, []));
 
   // fire a local notification once per calendar day for today's client birthdays
   const notifiedRef = useRef(false);
@@ -134,6 +138,25 @@ export default function CoachDashboard() {
         <StatCard label="This Week" value={String(weekSessions)} />
         <StatCard label="Expiring Soon" value={expiringCount > 0 ? `⚠ ${expiringCount}` : '—'} />
       </View>
+
+      {/* Active session timer */}
+      {activeSession && (
+        <ActiveSessionCard
+          activeSession={activeSession}
+          nextSession={nextSession}
+          onExtend={extendSession}
+          onEnd={async () => {
+            const result = await endSession();
+            if (!result.error) refetchTimer();
+            return result;
+          }}
+        />
+      )}
+
+      {/* Next scheduled session */}
+      {nextSession && (
+        <NextSessionCard nextSession={nextSession} />
+      )}
 
       {/* Today's availability */}
       {todaySchedule && (

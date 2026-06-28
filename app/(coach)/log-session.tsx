@@ -291,7 +291,7 @@ export default function LogSessionScreen() {
 
     setLoading(true);
     try {
-      const { error } = await supabase.from('workout_sessions').insert({
+      const { data: sessionData, error } = await supabase.from('workout_sessions').insert({
         package_id: pkg.id,
         client_id: selectedClientId,
         coach_id: profile.id,
@@ -301,7 +301,7 @@ export default function LogSessionScreen() {
         exercises: validExercises,
         notes: sessionNotes.trim() || null,
         session_type: sessionType,
-      });
+      }).select('id').single();
 
       if (error) {
         Alert.alert('Error', error.message);
@@ -312,11 +312,36 @@ export default function LogSessionScreen() {
         await scheduleSessionReminder(selectedClient?.name ?? 'Client', sessionDate, sessionTime.trim());
       }
 
-      Alert.alert(
-        'Session logged!',
-        `${selectedClient?.name}'s session has been recorded. Sessions remaining: ${pkg.sessions_remaining - 1}`,
-        [{ text: 'OK', onPress: () => router.back() }]
-      );
+      // Try to start the session timer
+      const { data: existingActive } = await supabase
+        .from('active_sessions')
+        .select('id')
+        .eq('coach_id', profile.id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!existingActive && sessionData?.id) {
+        await supabase.from('active_sessions').insert({
+          coach_id: profile.id,
+          client_id: selectedClientId,
+          session_id: sessionData.id,
+          start_time: new Date().toISOString(),
+          original_duration: Number(duration),
+          current_duration: Number(duration),
+          is_active: true,
+        });
+        Alert.alert(
+          'Session Started!',
+          `Timer started for ${selectedClient?.name} (${duration} min). Check your Dashboard.`,
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+      } else {
+        Alert.alert(
+          'Session logged!',
+          `${selectedClient?.name}'s session recorded. Sessions remaining: ${pkg.sessions_remaining - 1}${existingActive ? '\n\nNote: Timer not started — a session is already active.' : ''}`,
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+      }
     } catch (err: unknown) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to save session');
     } finally {
