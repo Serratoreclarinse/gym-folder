@@ -195,15 +195,17 @@ export function ActiveSessionCard({
   onPause: () => Promise<{ error: string | null }>;
   onResume: () => Promise<{ error: string | null }>;
 }) {
-  const [remainingSecs, setRemainingSecs] = useState(0);
+  const endTime = new Date(
+    new Date(activeSession.start_time).getTime() + activeSession.current_duration * 60 * 1000,
+  );
+
+  const [remainingSecs, setRemainingSecs] = useState(() =>
+    Math.max(0, Math.floor((endTime.getTime() - Date.now()) / 1000)),
+  );
   const [showExtend, setShowExtend] = useState(false);
   const [showTimesUp, setShowTimesUp] = useState(false);
   const alerted5Ref = useRef(false);
   const timesUpFiredRef = useRef(false);
-
-  const endTime = new Date(
-    new Date(activeSession.start_time).getTime() + activeSession.current_duration * 60 * 1000,
-  );
 
   useEffect(() => {
     if (activeSession.is_paused) return;
@@ -300,38 +302,40 @@ export function ActiveSessionCard({
           </View>
         </View>
 
-        {/* Buttons */}
-        <View style={s.btnRow}>
-          {isPaused ? (
+        {/* Buttons — top row: PAUSE/RESUME + END, bottom row: EXTEND */}
+        <View style={s.btnCol}>
+          <View style={s.btnRow}>
+            {isPaused ? (
+              <Pressable
+                style={({ pressed }) => [s.pauseBtn, { borderColor: '#4CAF5060', backgroundColor: '#4CAF5010' }, pressed && { opacity: 0.75 }]}
+                onPress={async () => { const { error } = await onResume(); if (error) Alert.alert('Error', error); }}
+              >
+                <Ionicons name="play-circle-outline" size={16} color="#4CAF50" />
+                <Text style={[s.pauseBtnText, { color: '#4CAF50' }]}>RESUME</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={({ pressed }) => [s.pauseBtn, pressed && { opacity: 0.75 }]}
+                onPress={async () => { const { error } = await onPause(); if (error) Alert.alert('Error', error); }}
+              >
+                <Ionicons name="pause-circle-outline" size={16} color={Colors.accent} />
+                <Text style={s.pauseBtnText}>PAUSE</Text>
+              </Pressable>
+            )}
             <Pressable
-              style={({ pressed }) => [s.extendBtn, { borderColor: '#4CAF5060', backgroundColor: '#4CAF5010' }, pressed && { opacity: 0.75 }]}
-              onPress={async () => { const { error } = await onResume(); if (error) Alert.alert('Error', error); }}
+              style={({ pressed }) => [s.endBtn, pressed && { opacity: 0.75 }]}
+              onPress={handleEndSession}
             >
-              <Ionicons name="play-circle-outline" size={16} color="#4CAF50" />
-              <Text style={[s.extendBtnText, { color: '#4CAF50' }]}>RESUME</Text>
+              <Ionicons name="stop-circle-outline" size={16} color={Colors.textPrimary} />
+              <Text style={s.endBtnText}>END</Text>
             </Pressable>
-          ) : (
-            <Pressable
-              style={({ pressed }) => [s.extendBtn, pressed && { opacity: 0.75 }]}
-              onPress={async () => { const { error } = await onPause(); if (error) Alert.alert('Error', error); }}
-            >
-              <Ionicons name="pause-circle-outline" size={16} color={Colors.accent} />
-              <Text style={s.extendBtnText}>PAUSE</Text>
-            </Pressable>
-          )}
+          </View>
           <Pressable
-            style={({ pressed }) => [s.extendBtn, { borderColor: Colors.border, backgroundColor: 'transparent' }, pressed && { opacity: 0.75 }]}
+            style={({ pressed }) => [s.extendBtn, pressed && { opacity: 0.75 }]}
             onPress={() => setShowExtend(true)}
           >
-            <Ionicons name="add-circle-outline" size={16} color={Colors.textPrimary} />
-            <Text style={[s.extendBtnText, { color: Colors.textPrimary }]}>EXTEND</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [s.endBtn, pressed && { opacity: 0.75 }]}
-            onPress={handleEndSession}
-          >
-            <Ionicons name="stop-circle-outline" size={16} color={Colors.textPrimary} />
-            <Text style={s.endBtnText}>END</Text>
+            <Ionicons name="add-circle-outline" size={16} color={Colors.accent} />
+            <Text style={s.extendBtnText}>EXTEND TIME</Text>
           </Pressable>
         </View>
       </View>
@@ -384,11 +388,18 @@ const s = StyleSheet.create({
   clientName: { ...Typography.subtitle, color: Colors.textPrimary, marginBottom: 2 },
   meta: { ...Typography.caption, color: Colors.textSecondary },
 
-  btnRow: { flexDirection: 'row', gap: 10 },
-  extendBtn: {
+  btnCol: { gap: 8 },
+  btnRow: { flexDirection: 'row', gap: 8 },
+  pauseBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     borderWidth: 1.5, borderColor: Colors.accent + '60', borderRadius: 10,
     paddingVertical: 10, backgroundColor: Colors.accent + '10',
+  },
+  pauseBtnText: { color: Colors.accent, fontWeight: '800', fontSize: 13, letterSpacing: 0.5 },
+  extendBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    borderWidth: 1.5, borderColor: Colors.accent + '40', borderRadius: 10,
+    paddingVertical: 10, backgroundColor: Colors.accent + '08',
   },
   extendBtnText: { color: Colors.accent, fontWeight: '800', fontSize: 13, letterSpacing: 0.5 },
   endBtn: {

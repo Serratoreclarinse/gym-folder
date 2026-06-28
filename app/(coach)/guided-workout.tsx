@@ -50,6 +50,7 @@ export default function GuidedWorkoutScreen() {
   const [restRunning, setRestRunning] = useState(false);
   const [elapsedSecs, setElapsedSecs] = useState(0);
   const [startTime] = useState(() => Date.now());
+  const [sessionAlreadySaved, setSessionAlreadySaved] = useState(params.alreadySaved === 'true');
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const saveProgress = async (currentExIdx: number, currentSetIdx: number) => {
@@ -65,6 +66,7 @@ export default function GuidedWorkoutScreen() {
         durationMinutes: params.durationMinutes,
         sessionNotes: params.sessionNotes,
         clientName: params.clientName,
+        alreadySaved: params.alreadySaved === 'true',
         savedAt: Date.now(),
       }));
     } catch {}
@@ -81,6 +83,7 @@ export default function GuidedWorkoutScreen() {
           const saved = JSON.parse(data);
           setExIdx(saved.exIdx ?? 0);
           setSetIdx(saved.setIdx ?? 0);
+          if (saved.alreadySaved) setSessionAlreadySaved(true);
         }
       });
     } else {
@@ -164,7 +167,7 @@ export default function GuidedWorkoutScreen() {
     const nextSetIdx = setIdx + 1;
     setSetIdx(nextSetIdx);
     setPhase('set');
-    saveProgress(exIdx, nextSetIdx);
+    void saveProgress(exIdx, nextSetIdx);
   };
 
   const handleNextSet = () => {
@@ -172,7 +175,7 @@ export default function GuidedWorkoutScreen() {
     const nextSetIdx = setIdx + 1;
     setSetIdx(nextSetIdx);
     setPhase('set');
-    saveProgress(exIdx, nextSetIdx);
+    void saveProgress(exIdx, nextSetIdx);
   };
 
   const handleNextExercise = () => {
@@ -180,7 +183,7 @@ export default function GuidedWorkoutScreen() {
     setExIdx(nextExIdx);
     setSetIdx(0);
     setPhase('set');
-    saveProgress(nextExIdx, 0);
+    void saveProgress(nextExIdx, 0);
   };
 
   const adjustRest = (delta: number) => {
@@ -191,7 +194,7 @@ export default function GuidedWorkoutScreen() {
   const handleFinish = async () => {
     setPhase('saving');
     try {
-      if (params.alreadySaved !== 'true') {
+      if (!sessionAlreadySaved) {
         const elapsed = Math.round((Date.now() - startTime) / 60000);
         const finalDuration = Math.max(Number(params.durationMinutes) || elapsed, elapsed);
         const { error } = await supabase.from('workout_sessions').insert({
@@ -398,8 +401,8 @@ export default function GuidedWorkoutScreen() {
             {totalExercises} exercises · {Math.round((Date.now() - startTime) / 60000)} min
           </Text>
           <Pressable style={styles.primaryBtn} onPress={handleFinish}>
-            <Ionicons name={params.alreadySaved === 'true' ? 'checkmark-circle-outline' : 'save-outline'} size={22} color={Colors.bg} />
-            <Text style={styles.primaryBtnText}>{params.alreadySaved === 'true' ? 'DONE' : 'FINISH & SAVE'}</Text>
+            <Ionicons name={sessionAlreadySaved ? 'checkmark-circle-outline' : 'save-outline'} size={22} color={Colors.bg} />
+            <Text style={styles.primaryBtnText}>{sessionAlreadySaved ? 'DONE' : 'FINISH & SAVE'}</Text>
           </Pressable>
         </View>
       )}

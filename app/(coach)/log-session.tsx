@@ -345,8 +345,7 @@ export default function LogSessionScreen() {
               {
                 text: 'Start Exercises',
                 onPress: () => {
-                  router.back();
-                  router.push({
+                  router.replace({
                     pathname: '/(coach)/guided-workout',
                     params: {
                       exercises: JSON.stringify(validExercises),
