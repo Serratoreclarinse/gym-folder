@@ -4,7 +4,6 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 import { Ionicons } from '@expo/vector-icons';
 import { useClients, type ClientWithPackage } from '@/hooks/useClients';
 import { getDaysUntilBirthday } from '@/hooks/useBirthdays';
-import { useClientLabels, PREDEFINED_TAGS } from '@/hooks/useClientLabels';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { Colors, Typography } from '@/constants/theme';
 
@@ -28,7 +27,7 @@ function PackageBadge({ remaining, status }: { remaining: number; status: string
   );
 }
 
-function ClientCard({ client, tags }: { client: ClientWithPackage; tags: string[] }) {
+function ClientCard({ client }: { client: ClientWithPackage }) {
   const pkg = client.activePackage;
   const initials = client.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
   const hasBday = client.birthday != null && getDaysUntilBirthday(client.birthday) <= 3;
@@ -55,24 +54,6 @@ function ClientCard({ client, tags }: { client: ClientWithPackage; tags: string[
         ) : (
           <Text style={styles.packageType}>No active package</Text>
         )}
-        {tags.length > 0 && (
-          <View style={styles.tagsRow}>
-            {tags.slice(0, 3).map((t) => {
-              const cfg = PREDEFINED_TAGS.find((p) => p.label === t);
-              return (
-                <View
-                  key={t}
-                  style={[styles.tagPill, cfg && { backgroundColor: cfg.color + '22', borderColor: cfg.color + '80' }]}
-                >
-                  <Text style={[styles.tagPillText, cfg && { color: cfg.color }]}>{t}</Text>
-                </View>
-              );
-            })}
-            {tags.length > 3 && (
-              <Text style={styles.tagMore}>+{tags.length - 3}</Text>
-            )}
-          </View>
-        )}
       </View>
 
       <View style={styles.rightCol}>
@@ -87,15 +68,14 @@ function ClientCard({ client, tags }: { client: ClientWithPackage; tags: string[
 
 export default function CoachClientsScreen() {
   const { clients, loading, error, refetch } = useClients();
-  const { tagsFor, refetch: refetchLabels } = useClientLabels();
 
-  useFocusEffect(useCallback(() => { refetch(); refetchLabels(); }, [refetch, refetchLabels]));
+  useFocusEffect(useCallback(() => { refetch(); }, [refetch]));
 
   return (
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={() => { refetch(); refetchLabels(); }} tintColor={Colors.accent} />}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={Colors.accent} />}
     >
       {error && <ErrorBanner message={error} onRetry={refetch} />}
       <View style={styles.header}>
@@ -115,7 +95,7 @@ export default function CoachClientsScreen() {
           <Text style={styles.emptySub}>Tap "Add Client" to get started</Text>
         </View>
       ) : (
-        clients.map((c) => <ClientCard key={c.id} client={c} tags={tagsFor(c.id)} />)
+        clients.map((c) => <ClientCard key={c.id} client={c} />)
       )}
     </ScrollView>
   );
@@ -173,11 +153,4 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', paddingTop: 80, gap: 8 },
   emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 12 },
   emptySub: { ...Typography.body, color: Colors.textSecondary },
-  tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 6 },
-  tagPill: {
-    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12,
-    backgroundColor: Colors.border, borderWidth: 1, borderColor: Colors.border,
-  },
-  tagPillText: { fontSize: 10, fontWeight: '700', color: Colors.textSecondary },
-  tagMore: { ...Typography.caption, color: Colors.textSecondary, fontSize: 10, alignSelf: 'center' },
 });

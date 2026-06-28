@@ -17,7 +17,6 @@ import { useAuth } from '@/context/AuthContext';
 import { useClients } from '@/hooks/useClients';
 import { useSessions } from '@/hooks/useSessions';
 import { useStrikes } from '@/hooks/useStrikes';
-import { useClientLabels, PREDEFINED_TAGS } from '@/hooks/useClientLabels';
 import { useScheduledSessions } from '@/hooks/useScheduledSessions';
 import { scheduleSessionReminder, cancelSessionReminder } from '@/lib/notifications';
 import { ErrorBanner } from '@/components/ErrorBanner';
@@ -246,9 +245,7 @@ export default function ClientDetailScreen() {
   const { clients, loading: clientsLoading, error: clientsError, refetch: refetchClients } = useClients();
   const { sessions, loading: sessionsLoading, error: sessionsError, refetch: refetchSessions } = useSessions(id);
   const { strikes, refetch: refetchStrikes, addStrike, removeStrike } = useStrikes(id);
-  const { tagsFor, toggleTag } = useClientLabels(id);
   const { sessions: scheduledSessions, scheduleSession, deleteSession: deleteScheduledSession } = useScheduledSessions(id);
-  const clientTags = tagsFor(id);
 
   const client = clients.find((c) => c.id === id);
   const pkg = client?.activePackage;
@@ -405,30 +402,6 @@ export default function ClientDetailScreen() {
           <Text style={styles.logBtnText}>LOG A SESSION</Text>
         </Pressable>
       )}
-
-      {/* Labels / Tags */}
-      <View style={[styles.sectionRow, { marginBottom: 10, marginTop: 4 }]}>
-        <Text style={styles.sectionTitle}>LABELS</Text>
-      </View>
-      <View style={styles.tagsRow}>
-        {PREDEFINED_TAGS.map((t) => {
-          const active = clientTags.includes(t.label);
-          return (
-            <Pressable
-              key={t.label}
-              style={[
-                styles.tagChip,
-                active && { backgroundColor: t.color + '25', borderColor: t.color },
-              ]}
-              onPress={() => toggleTag(id, t.label)}
-            >
-              <Text style={[styles.tagChipText, active && { color: t.color, fontWeight: '700' }]}>
-                {t.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
 
       {/* Upcoming scheduled sessions */}
       <View style={[styles.sectionRow, { marginTop: 20, marginBottom: 10 }]}>
@@ -864,14 +837,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent, alignItems: 'center',
   },
   renewConfirmText: { color: Colors.bg, fontWeight: '800', fontSize: 13 },
-
-  // Tags / Labels
-  tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
-  tagChip: {
-    paddingHorizontal: 13, paddingVertical: 7, borderRadius: 20,
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
-  },
-  tagChipText: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary },
 
   // Schedule add button
   scheduleAddBtn: {
