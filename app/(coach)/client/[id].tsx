@@ -24,6 +24,7 @@ import { ErrorBanner } from '@/components/ErrorBanner';
 import { ClientProgressTab } from '@/components/ClientProgressTab';
 import { ClientNotesTab } from '@/components/ClientNotesTab';
 import { ClientFilesTab } from '@/components/ClientFilesTab';
+import { ClientGoalsTab } from '@/components/ClientGoalsTab';
 import { Colors, Typography } from '@/constants/theme';
 
 const PACKAGE_LABEL: Record<string, string> = {
@@ -39,7 +40,7 @@ const PACKAGE_OPTIONS: { value: PackageType; label: string }[] = [
   { value: '1hr', label: '1 hr' },
 ];
 
-type Tab = 'overview' | 'sessions' | 'progress' | 'notes' | 'files';
+type Tab = 'overview' | 'sessions' | 'progress' | 'goals' | 'notes' | 'files';
 
 const MAX_STRIKES = 3;
 
@@ -657,7 +658,7 @@ export default function ClientDetailScreen() {
         style={styles.tabBar}
         contentContainerStyle={styles.tabBarContent}
       >
-        {(['overview', 'sessions', 'progress', 'notes', 'files'] as Tab[]).map((tab) => (
+        {(['overview', 'sessions', 'progress', 'goals', 'notes', 'files'] as Tab[]).map((tab) => (
           <Pressable
             key={tab}
             style={[styles.tabBtn, activeTab === tab && styles.tabBtnActive]}
@@ -667,6 +668,7 @@ export default function ClientDetailScreen() {
               {tab === 'overview' ? 'Overview'
                 : tab === 'sessions' ? `Sessions${sessions.length > 0 ? ` (${sessions.length})` : ''}`
                 : tab === 'progress' ? 'Progress'
+                : tab === 'goals' ? 'Goals'
                 : tab === 'notes' ? 'Notes'
                 : 'Files'}
             </Text>
@@ -678,6 +680,7 @@ export default function ClientDetailScreen() {
       {activeTab === 'overview' && <OverviewContent />}
       {activeTab === 'sessions' && <SessionsContent />}
       {activeTab === 'progress' && <ClientProgressTab clientId={id} />}
+      {activeTab === 'goals' && <ClientGoalsTab clientId={id} />}
       {activeTab === 'notes' && <ClientNotesTab clientId={id} />}
       {activeTab === 'files' && <ClientFilesTab clientId={id} />}
     </ScrollView>
