@@ -1,6 +1,7 @@
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useClientData, type ClientPackage } from '@/hooks/useClientData';
+import { useClientAnnouncements } from '@/hooks/useClientAnnouncements';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { Colors, Typography } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,6 +11,13 @@ const PKG_LABEL: Record<string, string> = {
   '30min': '30-Minute Sessions',
   '45min': '45-Minute Sessions',
   '1hr':   '1-Hour Sessions',
+};
+
+const TYPE_ICON: Record<string, { name: string; color: string }> = {
+  emergency: { name: 'warning-outline',   color: '#FF4D4D' },
+  holiday:   { name: 'calendar-outline',  color: '#4CAF50' },
+  promo:     { name: 'pricetag-outline',  color: '#9C27B0' },
+  general:   { name: 'megaphone-outline', color: Colors.accent },
 };
 
 // ─── Status helpers ──────────────────────────────────────────
@@ -28,18 +36,14 @@ function packageStatusLabel(pkg: ClientPackage): string {
 
 // ─── Package card ────────────────────────────────────────────
 function PackageCard({ pkg }: { pkg: ClientPackage }) {
-  const color      = packageColor(pkg);
-  const pct        = pkg.total_sessions > 0 ? pkg.sessions_used / pkg.total_sessions : 0;
+  const color       = packageColor(pkg);
+  const pct         = pkg.total_sessions > 0 ? pkg.sessions_used / pkg.total_sessions : 0;
   const statusLabel = packageStatusLabel(pkg);
-
-  // Divide total into equal segments for the segmented progress bar
-  const segments   = Math.min(pkg.total_sessions, 20); // cap visual segments at 20
-  const filledSegs = Math.round(pct * segments);
+  const segments    = Math.min(pkg.total_sessions, 20);
+  const filledSegs  = Math.round(pct * segments);
 
   return (
     <View style={[styles.pkgCard, { borderColor: color + '40' }]}>
-
-      {/* Top row: type + status badge */}
       <View style={styles.pkgTop}>
         <Text style={styles.pkgType}>{PKG_LABEL[pkg.package_type] ?? pkg.package_type}</Text>
         <View style={[styles.statusPill, { backgroundColor: color + '18', borderColor: color + '50' }]}>
@@ -47,13 +51,11 @@ function PackageCard({ pkg }: { pkg: ClientPackage }) {
         </View>
       </View>
 
-      {/* Hero number */}
       <View style={styles.heroRow}>
         <Text style={[styles.heroNumber, { color }]}>{pkg.sessions_remaining}</Text>
         <Text style={styles.heroLabel}>sessions{'\n'}remaining</Text>
       </View>
 
-      {/* Segmented progress bar */}
       <View style={styles.segmentRow}>
         {Array.from({ length: segments }).map((_, i) => (
           <View
@@ -67,7 +69,6 @@ function PackageCard({ pkg }: { pkg: ClientPackage }) {
         ))}
       </View>
 
-      {/* Stats row */}
       <View style={styles.statsRow}>
         <Stat label="TOTAL"     value={String(pkg.total_sessions)} />
         <View style={styles.statDivider} />
@@ -76,7 +77,6 @@ function PackageCard({ pkg }: { pkg: ClientPackage }) {
         <Stat label="REMAINING" value={String(pkg.sessions_remaining)} color={color} />
       </View>
 
-      {/* Start date */}
       <Text style={styles.startDate}>
         Package started{' '}
         {new Date(pkg.start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
@@ -94,7 +94,7 @@ function Stat({ label, value, color }: { label: string; value: string; color?: s
   );
 }
 
-// ─── Recent session row (compact) ───────────────────────────
+// ─── Recent session row ──────────────────────────────────────
 function RecentSessionRow({
   session,
 }: {
@@ -112,7 +112,7 @@ function RecentSessionRow({
       <View style={styles.recentInfo}>
         <Text style={styles.recentDate}>{date}  ·  {session.duration_minutes} min</Text>
         <Text style={styles.recentExercises} numberOfLines={1}>
-          {topExercises}{extra}
+          {topExercises || 'No exercises recorded'}{extra}
         </Text>
       </View>
       <Text style={styles.recentCoach}>{session.coach_name}</Text>
@@ -124,9 +124,17 @@ function RecentSessionRow({
 export default function ClientProgressScreen() {
   const { profile } = useAuth();
   const firstName = profile?.name?.split(' ')[0] ?? 'there';
-  const { pkg, sessions, loading, error, refetch } = useClientData();
+  const { pkg, sessions, coachInfo, nextScheduled, loading, error, refetch } = useClientData();
+  const { announcements } = useClientAnnouncements(pkg?.coach_id ?? null);
 
   const recentSessions = sessions.slice(0, 3);
+
+  const formatScheduled = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+      + ' at '
+      + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  };
 
   return (
     <ScrollView
@@ -143,6 +151,45 @@ export default function ClientProgressScreen() {
       </View>
 
       {error && <ErrorBanner message={error} onRetry={refetch} />}
+
+      {/* Next scheduled session */}
+      {nextScheduled && (
+        <View style={styles.nextCard}>
+          <View style={styles.nextIcon}>
+            <Ionicons name="calendar" size={22} color={Colors.accent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.nextLabel}>NEXT SESSION</Text>
+            <Text style={styles.nextDate}>{formatScheduled(nextScheduled.scheduled_at)}</Text>
+            {nextScheduled.notes ? (
+              <Text style={styles.nextNotes}>{nextScheduled.notes}</Text>
+            ) : null}
+          </View>
+        </View>
+      )}
+
+      {/* Coach announcements */}
+      {announcements.length > 0 && announcements.slice(0, 2).map((ann) => {
+        const icon = TYPE_ICON[ann.type] ?? TYPE_ICON.general;
+        return (
+          <View
+            key={ann.id}
+            style={[
+              styles.annBanner,
+              ann.type === 'emergency' && styles.annBannerEmergency,
+            ]}
+          >
+            <Ionicons name={icon.name as any} size={16} color={icon.color} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.annTitle, { color: icon.color }]}>{ann.title}</Text>
+              <Text style={styles.annMsg} numberOfLines={2}>{ann.message}</Text>
+            </View>
+            {ann.is_pinned && (
+              <Ionicons name="pin" size={12} color={icon.color} style={{ opacity: 0.7 }} />
+            )}
+          </View>
+        );
+      })}
 
       {/* Package status */}
       <Text style={styles.sectionTitle}>MY PACKAGE</Text>
@@ -176,6 +223,42 @@ export default function ClientProgressScreen() {
           )}
         </View>
       )}
+
+      {/* Coach contact shortcut */}
+      {coachInfo && (coachInfo.phone || coachInfo.whatsapp) && (
+        <>
+          <Text style={[styles.sectionTitle, { marginTop: 28 }]}>MY COACH</Text>
+          <View style={styles.coachCard}>
+            <View style={styles.coachAvatar}>
+              <Text style={styles.coachInitials}>
+                {coachInfo.name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)}
+              </Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.coachName}>{coachInfo.name}</Text>
+              <Text style={styles.coachSub}>Your personal trainer</Text>
+            </View>
+            <View style={styles.coachActions}>
+              {coachInfo.whatsapp && (
+                <Pressable
+                  style={styles.coachActionBtn}
+                  onPress={() => Linking.openURL(`whatsapp://send?phone=${coachInfo.whatsapp!.replace(/\D/g, '')}`)}
+                >
+                  <Ionicons name="logo-whatsapp" size={20} color="#25D366" />
+                </Pressable>
+              )}
+              {coachInfo.phone && (
+                <Pressable
+                  style={styles.coachActionBtn}
+                  onPress={() => Linking.openURL(`tel:${coachInfo.phone}`)}
+                >
+                  <Ionicons name="call-outline" size={20} color={Colors.accent} />
+                </Pressable>
+              )}
+            </View>
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -184,11 +267,51 @@ const styles = StyleSheet.create({
   scroll:   { flex: 1, backgroundColor: Colors.bg },
   content:  { padding: 20, paddingBottom: 48 },
 
-  header:   { marginBottom: 28 },
+  header:   { marginBottom: 20 },
   greeting: { ...Typography.title, color: Colors.textPrimary, marginBottom: 4 },
   date:     { ...Typography.body, color: Colors.textSecondary },
 
   sectionTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 14 },
+
+  // Next session card
+  nextCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: Colors.accent + '12',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.accent + '40',
+  },
+  nextIcon: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: Colors.accent + '20',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  nextLabel: { ...Typography.label, color: Colors.accent, fontSize: 10, marginBottom: 3 },
+  nextDate:  { ...Typography.body, color: Colors.textPrimary, fontWeight: '700' },
+  nextNotes: { ...Typography.caption, color: Colors.textSecondary, marginTop: 3 },
+
+  // Announcement banner
+  annBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: Colors.accent + '10',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: Colors.accent + '30',
+  },
+  annBannerEmergency: {
+    backgroundColor: '#FF4D4D12',
+    borderColor: '#FF4D4D40',
+  },
+  annTitle: { ...Typography.caption, fontWeight: '700', marginBottom: 2 },
+  annMsg:   { ...Typography.caption, color: Colors.textSecondary, lineHeight: 17 },
 
   // Package card
   pkgCard: {
@@ -251,6 +374,34 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
+  },
+
+  // Coach card
+  coachCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  coachAvatar: {
+    width: 46, height: 46, borderRadius: 23,
+    backgroundColor: Colors.accent + '18',
+    borderWidth: 1.5, borderColor: Colors.accent + '40',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  coachInitials: { fontSize: 16, fontWeight: '800', color: Colors.accent },
+  coachName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700', marginBottom: 2 },
+  coachSub:  { ...Typography.caption, color: Colors.textSecondary },
+  coachActions: { flexDirection: 'row', gap: 8 },
+  coachActionBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: Colors.bg,
+    borderWidth: 1, borderColor: Colors.border,
+    justifyContent: 'center', alignItems: 'center',
   },
 
   // Empty states

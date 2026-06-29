@@ -142,7 +142,7 @@ export function NoShowModal({
                 client_id: selectedClientId,
                 package_id: pkg.id,
                 session_date: getDateOffset(dayOffset),
-                duration_minutes: 0,
+                duration_minutes: 1,
                 exercises: [],
                 notes: 'No-show',
                 status: 'absent',

@@ -5,10 +5,12 @@ import * as ImagePicker from 'expo-image-picker';
 import QRCode from 'react-native-qrcode-svg';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { useClientData } from '@/hooks/useClientData';
 import { Colors, Typography } from '@/constants/theme';
 
 export default function ClientProfileScreen() {
   const { profile, signOut, refreshProfile } = useAuth();
+  const { coachInfo } = useClientData();
   const [editing, setEditing] = useState(false);
   const [phone, setPhone] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
@@ -112,6 +114,58 @@ export default function ClientProfileScreen() {
             <QRCode value={profile.id} size={180} color={Colors.textPrimary} backgroundColor={Colors.surface} />
           </View>
         </View>
+      )}
+
+      {/* My Coach */}
+      {coachInfo && (
+        <>
+          <View style={[styles.sectionHeader, { marginTop: 4 }]}>
+            <Text style={styles.sectionLabel}>MY COACH</Text>
+          </View>
+          <View style={[styles.infoSection, { marginBottom: 24 }]}>
+            <View style={[styles.infoRow, styles.infoRowBorder]}>
+              <Ionicons name="person-outline" size={18} color={Colors.accent} style={styles.rowIcon} />
+              <View style={styles.rowContent}>
+                <Text style={styles.infoLabel}>Name</Text>
+                <Text style={styles.infoValue}>{coachInfo.name}</Text>
+              </View>
+            </View>
+            {coachInfo.phone && (
+              <SocialRow
+                icon="call-outline"
+                label="Phone"
+                value={coachInfo.phone}
+                onPress={() => Linking.openURL(`tel:${coachInfo.phone}`)}
+              />
+            )}
+            {coachInfo.whatsapp && (
+              <SocialRow
+                icon="logo-whatsapp"
+                label="WhatsApp"
+                value={coachInfo.whatsapp}
+                iconColor="#25D366"
+                onPress={() => Linking.openURL(`whatsapp://send?phone=${coachInfo.whatsapp!.replace(/\D/g, '')}`)}
+              />
+            )}
+            {coachInfo.instagram && (
+              <SocialRow
+                icon="logo-instagram"
+                label="Instagram"
+                value={`@${coachInfo.instagram}`}
+                iconColor="#E1306C"
+                onPress={() => Linking.openURL(`https://instagram.com/${coachInfo.instagram}`)}
+                last
+              />
+            )}
+            {!coachInfo.phone && !coachInfo.whatsapp && !coachInfo.instagram && (
+              <View style={[styles.infoRow]}>
+                <Text style={[styles.infoValue, { color: Colors.textSecondary, fontSize: 13 }]}>
+                  No contact info available yet
+                </Text>
+              </View>
+            )}
+          </View>
+        </>
       )}
 
       {/* Contact & Social */}
