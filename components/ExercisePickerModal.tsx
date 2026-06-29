@@ -218,6 +218,7 @@ export function ExercisePickerModal({
               data={filteredResults}
               keyExtractor={(item) => `${item.isCustom ? 'c' : 'l'}-${item.name}`}
               keyboardShouldPersistTaps="handled"
+              style={{ flex: 1 }}
               contentContainerStyle={s.listContent}
               ListEmptyComponent={
                 <View style={s.emptyContainer}>

@@ -211,7 +211,7 @@ export function ImpromptuSessionModal({
           <Pressable onPress={handleClose} hitSlop={12} style={s.closeBtn}>
             <Ionicons name="close" size={22} color={Colors.textSecondary} />
           </Pressable>
-          <Text style={s.headerTitle}>IMPROMPTU SESSION</Text>
+          <Text style={s.headerTitle}>QUICK SESSION</Text>
           <View style={{ width: 36 }} />
         </View>
 

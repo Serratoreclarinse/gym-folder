@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ExercisePickerModal } from '@/components/ExercisePickerModal';
 import * as Notifications from 'expo-notifications';
 import {
@@ -230,6 +230,7 @@ export default function LogSessionScreen() {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [pickerTargetId, setPickerTargetId] = useState<string | null>(null);
+  const pickerTargetRef = useRef<string | null>(null);
 
   useEffect(() => {
     Notifications.requestPermissionsAsync();
@@ -599,7 +600,7 @@ export default function LogSessionScreen() {
             onChange={updateExercise}
             onRemove={removeExercise}
             onToggleSuperset={toggleSuperset}
-            onOpenPicker={(id) => setPickerTargetId(id)}
+            onOpenPicker={(id) => { pickerTargetRef.current = id; setPickerTargetId(id); }}
           />
         ))}
 
@@ -687,9 +688,11 @@ export default function LogSessionScreen() {
       {/* Exercise Library Picker */}
       <ExercisePickerModal
         visible={pickerTargetId !== null}
-        onClose={() => setPickerTargetId(null)}
+        onClose={() => { pickerTargetRef.current = null; setPickerTargetId(null); }}
         onSelect={(name) => {
-          if (pickerTargetId) updateExercise(pickerTargetId, 'exercise_name', name);
+          const targetId = pickerTargetRef.current;
+          if (targetId) updateExercise(targetId, 'exercise_name', name);
+          pickerTargetRef.current = null;
           setPickerTargetId(null);
         }}
       />

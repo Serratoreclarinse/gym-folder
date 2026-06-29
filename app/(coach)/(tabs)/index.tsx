@@ -261,13 +261,13 @@ export default function CoachDashboard() {
         </Pressable>
       </View>
 
-      {/* Impromptu session */}
+      {/* Quick session */}
       <Pressable
         style={({ pressed }) => [styles.impromptuBtn, pressed && { opacity: 0.8 }]}
         onPress={() => setImpromptuVisible(true)}
       >
         <Ionicons name="flash" size={18} color={Colors.bg} />
-        <Text style={styles.impromptuBtnText}>IMPROMPTU SESSION</Text>
+        <Text style={styles.impromptuBtnText}>QUICK SESSION</Text>
       </Pressable>
 
       <ImpromptuSessionModal
