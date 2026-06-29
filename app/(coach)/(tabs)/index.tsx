@@ -12,8 +12,9 @@ import { useWaitlist } from '@/hooks/useWaitlist';
 import { useBirthdays, getDaysUntilBirthday, formatBirthday } from '@/hooks/useBirthdays';
 import { useAvailability } from '@/hooks/useAvailability';
 import { useAnnouncements } from '@/hooks/useAnnouncements';
-import { useActiveSession } from '@/hooks/useActiveSession';
+import { useActiveSessionContext } from '@/context/ActiveSessionContext';
 import { ActiveSessionCard } from '@/components/ActiveSessionCard';
+import { ImpromptuSessionModal } from '@/components/ImpromptuSessionModal';
 import { NextSessionCard } from '@/components/NextSessionCard';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { Colors, Typography } from '@/constants/theme';
@@ -54,7 +55,8 @@ export default function CoachDashboard() {
   const { getTodayInfo } = useAvailability();
   const todaySchedule = getTodayInfo();
   const { pinnedAnnouncement, togglePin } = useAnnouncements();
-  const { activeSession, nextSession, extendSession, endSession, cancelSession, pauseSession, resumeSession, refetch: refetchTimer } = useActiveSession();
+  const { activeSession, nextSession, extendSession, endSession, cancelSession, pauseSession, resumeSession, refetch: refetchTimer } = useActiveSessionContext();
+  const [impromptuVisible, setImpromptuVisible] = useState(false);
   const [pausedWorkout, setPausedWorkout] = useState<any | null>(null);
 
   const refreshing = cLoading || sLoading;
@@ -258,6 +260,20 @@ export default function CoachDashboard() {
           <Text style={styles.quickBtnSecondaryText}>REVENUE</Text>
         </Pressable>
       </View>
+
+      {/* Impromptu session */}
+      <Pressable
+        style={({ pressed }) => [styles.impromptuBtn, pressed && { opacity: 0.8 }]}
+        onPress={() => setImpromptuVisible(true)}
+      >
+        <Ionicons name="flash" size={18} color={Colors.bg} />
+        <Text style={styles.impromptuBtnText}>IMPROMPTU SESSION</Text>
+      </Pressable>
+
+      <ImpromptuSessionModal
+        visible={impromptuVisible}
+        onClose={() => setImpromptuVisible(false)}
+      />
 
       {/* Emergency notice quick action */}
       <Pressable
@@ -592,6 +608,13 @@ const styles = StyleSheet.create({
   },
   availDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4CAF50' },
   availText: { ...Typography.caption, color: '#4CAF50', flex: 1 },
+
+  // Impromptu session button
+  impromptuBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#FF8C00', borderRadius: 14, paddingVertical: 14, marginBottom: 16,
+  },
+  impromptuBtnText: { color: Colors.bg, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
 
   // Emergency button
   emergencyBtn: {
