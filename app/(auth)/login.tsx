@@ -138,11 +138,13 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     marginBottom: 8,
     lineHeight: 44,
+    textAlign: 'center',
   },
   sub: {
     ...Typography.body,
     color: Colors.textSecondary,
     marginBottom: 40,
+    textAlign: 'center',
   },
   error: {
     color: Colors.danger,
