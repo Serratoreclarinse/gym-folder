@@ -117,7 +117,7 @@ export function ExercisePickerModal({
     if (muscleFilter === 'Custom') {
       return customExercises
         .filter((e) => !q || e.name.toLowerCase().includes(q))
-        .map((e) => ({ name: e.name, muscle: e.muscle_group, isCustom: true }));
+        .map((e) => ({ name: e.name, muscle: e.muscle_group, primary: e.muscle_group, secondary: [] as string[], isCustom: true }));
     }
 
     const libraryResults = EXERCISE_LIBRARY
@@ -126,12 +126,12 @@ export function ExercisePickerModal({
         const matchesSearch = !q || e.name.toLowerCase().includes(q);
         return matchesMuscle && matchesSearch;
       })
-      .map((e) => ({ name: e.name, muscle: e.muscle, isCustom: false }));
+      .map((e) => ({ name: e.name, muscle: e.muscle, primary: e.primary, secondary: e.secondary, isCustom: false }));
 
     const customResults = muscleFilter === 'All'
       ? customExercises
           .filter((e) => !q || e.name.toLowerCase().includes(q))
-          .map((e) => ({ name: e.name, muscle: e.muscle_group, isCustom: true }))
+          .map((e) => ({ name: e.name, muscle: e.muscle_group, primary: e.muscle_group, secondary: [] as string[], isCustom: true }))
       : [];
 
     return [...customResults, ...libraryResults];
@@ -248,8 +248,11 @@ export function ExercisePickerModal({
                           <Text style={s.customBadgeText}>CUSTOM</Text>
                         </View>
                       )}
-                      <Text style={s.itemMuscle}>{item.muscle}</Text>
+                      <Text style={s.itemPrimary}>{item.primary}</Text>
                     </View>
+                    {item.secondary.length > 0 && (
+                      <Text style={s.itemSecondary}>+{item.secondary.join(' · ')}</Text>
+                    )}
                   </View>
                   <Ionicons name="add-circle-outline" size={22} color={Colors.accent} />
                 </Pressable>
@@ -307,7 +310,8 @@ const s = StyleSheet.create({
   itemLeft: { flex: 1, marginRight: 12 },
   itemName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
   itemMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
-  itemMuscle: { ...Typography.caption, color: Colors.textSecondary },
+  itemPrimary: { ...Typography.caption, color: Colors.accent, fontWeight: '700' },
+  itemSecondary: { ...Typography.caption, color: Colors.textSecondary, marginTop: 1, fontSize: 11 },
   customBadge: {
     backgroundColor: Colors.accent + '20', borderRadius: 6,
     paddingHorizontal: 6, paddingVertical: 2,
