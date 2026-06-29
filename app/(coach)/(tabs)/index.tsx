@@ -15,6 +15,7 @@ import { useAnnouncements } from '@/hooks/useAnnouncements';
 import { useActiveSessionContext } from '@/context/ActiveSessionContext';
 import { ActiveSessionCard } from '@/components/ActiveSessionCard';
 import { ImpromptuSessionModal } from '@/components/ImpromptuSessionModal';
+import { NoShowModal } from '@/components/NoShowModal';
 import { NextSessionCard } from '@/components/NextSessionCard';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { Colors, Typography } from '@/constants/theme';
@@ -57,6 +58,7 @@ export default function CoachDashboard() {
   const { pinnedAnnouncement, togglePin } = useAnnouncements();
   const { activeSession, nextSession, extendSession, endSession, cancelSession, pauseSession, resumeSession, refetch: refetchTimer } = useActiveSessionContext();
   const [impromptuVisible, setImpromptuVisible] = useState(false);
+  const [noShowVisible, setNoShowVisible] = useState(false);
   const [pausedWorkout, setPausedWorkout] = useState<any | null>(null);
 
   const refreshing = cLoading || sLoading;
@@ -261,18 +263,32 @@ export default function CoachDashboard() {
         </Pressable>
       </View>
 
-      {/* Quick session */}
-      <Pressable
-        style={({ pressed }) => [styles.impromptuBtn, pressed && { opacity: 0.8 }]}
-        onPress={() => setImpromptuVisible(true)}
-      >
-        <Ionicons name="flash" size={18} color={Colors.bg} />
-        <Text style={styles.impromptuBtnText}>QUICK SESSION</Text>
-      </Pressable>
+      {/* Quick session + No-show row */}
+      <View style={styles.sessionActionRow}>
+        <Pressable
+          style={({ pressed }) => [styles.quickSessionBtn, pressed && { opacity: 0.8 }]}
+          onPress={() => setImpromptuVisible(true)}
+        >
+          <Ionicons name="flash" size={16} color={Colors.bg} />
+          <Text style={styles.quickSessionBtnText}>QUICK SESSION</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.noShowBtn, pressed && { opacity: 0.8 }]}
+          onPress={() => setNoShowVisible(true)}
+        >
+          <Ionicons name="person-remove-outline" size={16} color="#FFA500" />
+          <Text style={styles.noShowBtnText}>NO-SHOW</Text>
+        </Pressable>
+      </View>
 
       <ImpromptuSessionModal
         visible={impromptuVisible}
         onClose={() => setImpromptuVisible(false)}
+      />
+      <NoShowModal
+        visible={noShowVisible}
+        onClose={() => setNoShowVisible(false)}
+        onLogged={() => { refetchSessions(); refetchClients(); }}
       />
 
       {/* Emergency notice quick action */}
@@ -441,23 +457,33 @@ export default function CoachDashboard() {
           <Text style={styles.emptyText}>No sessions logged yet</Text>
         </View>
       ) : (
-        recentSessions.map((s) => (
-          <Pressable
-            key={s.id}
-            style={styles.sessionRow}
-            onPress={() => router.push(`/(coach)/client/${s.client_id}`)}
-          >
-            <View style={styles.sessionDot} />
-            <View style={styles.sessionInfo}>
-              <Text style={styles.sessionClient}>{s.client_name}</Text>
-              <Text style={styles.sessionMeta}>
-                {new Date(s.session_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                {'  ·  '}{s.duration_minutes} min{'  ·  '}{s.exercises.length} exercises
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
-          </Pressable>
-        ))
+        recentSessions.map((s) => {
+          const isNoShow = s.status === 'absent';
+          return (
+            <Pressable
+              key={s.id}
+              style={styles.sessionRow}
+              onPress={() => router.push(`/(coach)/client/${s.client_id}`)}
+            >
+              <View style={[styles.sessionDot, isNoShow && { backgroundColor: '#FFA500' }]} />
+              <View style={styles.sessionInfo}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={styles.sessionClient}>{s.client_name}</Text>
+                  {isNoShow && (
+                    <View style={styles.noShowBadge}>
+                      <Text style={styles.noShowBadgeText}>NO-SHOW</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.sessionMeta}>
+                  {new Date(s.session_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  {isNoShow ? '' : `${'  ·  '}${s.duration_minutes} min${'  ·  '}${s.exercises.length} exercises`}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
+            </Pressable>
+          );
+        })
       )}
     </ScrollView>
   );
@@ -599,6 +625,12 @@ const styles = StyleSheet.create({
   sessionInfo: { flex: 1 },
   sessionClient: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
   sessionMeta: { ...Typography.caption, color: Colors.textSecondary },
+  noShowBadge: {
+    backgroundColor: '#FFA50020', borderRadius: 6,
+    paddingHorizontal: 6, paddingVertical: 2,
+    borderWidth: 1, borderColor: '#FFA50050',
+  },
+  noShowBadgeText: { color: '#FFA500', fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
 
   // Availability banner
   availBanner: {
@@ -609,12 +641,19 @@ const styles = StyleSheet.create({
   availDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4CAF50' },
   availText: { ...Typography.caption, color: '#4CAF50', flex: 1 },
 
-  // Impromptu session button
-  impromptuBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: '#FF8C00', borderRadius: 14, paddingVertical: 14, marginBottom: 16,
+  // Quick session + No-show row
+  sessionActionRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  quickSessionBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    backgroundColor: '#FF8C00', borderRadius: 14, paddingVertical: 14,
   },
-  impromptuBtnText: { color: Colors.bg, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+  quickSessionBtnText: { color: Colors.bg, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+  noShowBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    backgroundColor: Colors.surface, borderRadius: 14, paddingVertical: 14,
+    borderWidth: 1.5, borderColor: '#FFA50050',
+  },
+  noShowBtnText: { color: '#FFA500', fontSize: 13, fontWeight: '800', letterSpacing: 1 },
 
   // Emergency button
   emergencyBtn: {
