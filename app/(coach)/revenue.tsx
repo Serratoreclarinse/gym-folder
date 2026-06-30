@@ -8,6 +8,7 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -188,6 +189,141 @@ function CollapseSection({
       </Pressable>
       {expanded && <View style={styles.sectionBody}>{children}</View>}
     </View>
+  );
+}
+
+// ─── Report Generator ────────────────────────────────────────────────────────
+
+type ReportPeriod = { key: string; label: string } | { key: 'all'; label: string };
+
+function buildCSV(payments: Payment[], periodLabel: string): string {
+  const now = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const paid = payments.filter((p) => p.status === 'paid');
+  const pending = payments.filter((p) => p.status === 'pending');
+  const paidTotal = paid.reduce((s, p) => s + p.amount, 0);
+  const pendingTotal = pending.reduce((s, p) => s + p.amount, 0);
+
+  const header = `ELEVAT3 Revenue Report – ${periodLabel}\nGenerated: ${now}\n\n`;
+  const cols = 'DATE,CLIENT,PACKAGE,AMOUNT (OMR),METHOD,STATUS,NOTES\n';
+  const rows = payments
+    .slice()
+    .sort((a, b) => b.payment_date.localeCompare(a.payment_date))
+    .map((p) =>
+      [
+        p.payment_date,
+        `"${p.client_name}"`,
+        `"${p.package_type}"`,
+        p.amount.toFixed(3),
+        METHOD_LABEL[p.payment_method],
+        p.status === 'paid' ? 'Paid' : 'Pending',
+        p.notes ? `"${p.notes.replace(/"/g, '""')}"` : '',
+      ].join(',')
+    )
+    .join('\n');
+
+  const summary = `\n\nSUMMARY\nPaid Total,OMR ${paidTotal.toFixed(3)}\nPending Total,OMR ${pendingTotal.toFixed(3)}\nTotal Records,${payments.length}\nPaid Records,${paid.length}\nPending Records,${pending.length}`;
+
+  return header + cols + rows + summary;
+}
+
+function ReportModal({
+  visible,
+  payments,
+  onClose,
+}: {
+  visible: boolean;
+  payments: Payment[];
+  onClose: () => void;
+}) {
+  const allMonthKeys = [...new Set(payments.map((p) => p.payment_date.slice(0, 7)))].sort().reverse();
+
+  const now = new Date();
+  const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthKey = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`;
+
+  const periods: { key: string; label: string }[] = [
+    { key: 'all', label: 'All Time' },
+    { key: thisMonthKey, label: fmtMonth(thisMonthKey) },
+    ...(allMonthKeys.includes(lastMonthKey) ? [{ key: lastMonthKey, label: fmtMonth(lastMonthKey) }] : []),
+    ...allMonthKeys.filter((k) => k !== thisMonthKey && k !== lastMonthKey).map((k) => ({ key: k, label: fmtMonth(k) })),
+  ];
+
+  const [selectedKey, setSelectedKey] = useState('all');
+
+  const filtered = selectedKey === 'all'
+    ? payments
+    : payments.filter((p) => p.payment_date.startsWith(selectedKey));
+
+  const paidFiltered = filtered.filter((p) => p.status === 'paid');
+  const paidTotal = paidFiltered.reduce((s, p) => s + p.amount, 0);
+  const pendingCount = filtered.filter((p) => p.status === 'pending').length;
+  const periodLabel = periods.find((p) => p.key === selectedKey)?.label ?? 'All Time';
+
+  const handleShare = async () => {
+    const csv = buildCSV(filtered, periodLabel);
+    try {
+      await Share.share({ message: csv, title: `Revenue Report – ${periodLabel}` });
+    } catch {
+      Alert.alert('Error', 'Could not open share sheet.');
+    }
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={rp.root}>
+        <Pressable style={rp.overlay} onPress={onClose} />
+        <View style={rp.sheet}>
+          <View style={rp.handle} />
+          <Text style={rp.title}>GENERATE REPORT</Text>
+
+          <Text style={rp.label}>SELECT PERIOD</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }} contentContainerStyle={{ gap: 8 }}>
+            {periods.map((p) => (
+              <Pressable
+                key={p.key}
+                style={[rp.chip, selectedKey === p.key && rp.chipActive]}
+                onPress={() => setSelectedKey(p.key)}
+              >
+                <Text style={[rp.chipText, selectedKey === p.key && rp.chipTextActive]}>{p.label}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          <View style={rp.preview}>
+            <View style={rp.previewRow}>
+              <Text style={rp.previewLabel}>Records</Text>
+              <Text style={rp.previewValue}>{filtered.length}</Text>
+            </View>
+            <View style={rp.previewRow}>
+              <Text style={rp.previewLabel}>Paid Total</Text>
+              <Text style={[rp.previewValue, { color: Colors.accent }]}>{fmt(paidTotal)}</Text>
+            </View>
+            {pendingCount > 0 && (
+              <View style={rp.previewRow}>
+                <Text style={rp.previewLabel}>Pending</Text>
+                <Text style={[rp.previewValue, { color: '#FFA500' }]}>{pendingCount} record{pendingCount !== 1 ? 's' : ''}</Text>
+              </View>
+            )}
+            <Text style={rp.previewNote}>Exports as CSV — open in Excel, Sheets, or email to accounting.</Text>
+          </View>
+
+          <Pressable
+            style={[rp.shareBtn, filtered.length === 0 && { opacity: 0.4 }]}
+            onPress={handleShare}
+            disabled={filtered.length === 0}
+          >
+            <Ionicons name="share-outline" size={18} color={Colors.bg} />
+            <Text style={rp.shareBtnText}>Share Report</Text>
+          </Pressable>
+
+          <Pressable style={rp.cancelBtn} onPress={onClose}>
+            <Text style={rp.cancelText}>Cancel</Text>
+          </Pressable>
+          <View style={{ height: 24 }} />
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -405,6 +541,7 @@ export default function RevenueScreen() {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const [showModal, setShowModal] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+  const [showReport, setShowReport] = useState(false);
 
   useFocusEffect(useCallback(() => { refetch(); }, []));
 
@@ -512,7 +649,13 @@ export default function RevenueScreen() {
 
         {/* ── Bar chart ──────────────────────────────────────────── */}
         <View style={styles.chartCard}>
-          <Text style={styles.chartTitle}>EARNINGS — LAST 6 MONTHS</Text>
+          <View style={styles.chartHeader}>
+            <Text style={styles.chartTitle}>EARNINGS — LAST 6 MONTHS</Text>
+            <Pressable style={styles.reportBtn} onPress={() => setShowReport(true)}>
+              <Ionicons name="document-text-outline" size={15} color={Colors.accent} />
+              <Text style={styles.reportBtnText}>Report</Text>
+            </Pressable>
+          </View>
           {allTimeTotal === 0 ? (
             <Text style={styles.chartEmpty}>No paid records yet</Text>
           ) : (
@@ -611,6 +754,13 @@ export default function RevenueScreen() {
         onClose={() => setShowModal(false)}
         onSave={handleSave}
       />
+
+      {/* ── Report Modal ── */}
+      <ReportModal
+        visible={showReport}
+        payments={payments}
+        onClose={() => setShowReport(false)}
+      />
     </View>
   );
 }
@@ -639,7 +789,15 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border,
     padding: 16, marginBottom: 16, overflow: 'hidden',
   },
-  chartTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 14 },
+  chartHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  chartTitle: { ...Typography.label, color: Colors.textSecondary },
+  reportBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: Colors.accent + '18', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderWidth: 1, borderColor: Colors.accent + '40',
+  },
+  reportBtnText: { fontSize: 12, fontWeight: '700', color: Colors.accent },
   chartEmpty: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', paddingVertical: 24 },
 
   // Tabs
@@ -779,4 +937,52 @@ const fm = StyleSheet.create({
     paddingVertical: 13, alignItems: 'center',
   },
   saveText: { color: Colors.bg, fontWeight: '800', fontSize: 15 },
+});
+
+// Report modal styles
+const rp = StyleSheet.create({
+  root: { flex: 1, justifyContent: 'flex-end' },
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
+  sheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 22, borderTopRightRadius: 22,
+    borderWidth: 1, borderBottomWidth: 0, borderColor: Colors.border,
+    paddingHorizontal: 20, paddingTop: 12,
+  },
+  handle: {
+    width: 36, height: 4, borderRadius: 2,
+    backgroundColor: Colors.border, alignSelf: 'center', marginBottom: 20,
+  },
+  title: { ...Typography.label, color: Colors.textPrimary, fontWeight: '800', letterSpacing: 1.5, marginBottom: 20 },
+  label: { ...Typography.label, color: Colors.textSecondary, marginBottom: 10 },
+
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
+  },
+  chipActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+  chipText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
+  chipTextActive: { color: Colors.bg },
+
+  preview: {
+    backgroundColor: Colors.bg, borderRadius: 14,
+    borderWidth: 1, borderColor: Colors.border,
+    padding: 16, marginBottom: 20, gap: 10,
+  },
+  previewRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  previewLabel: { ...Typography.body, color: Colors.textSecondary },
+  previewValue: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700' },
+  previewNote: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic', marginTop: 4 },
+
+  shareBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: Colors.accent, borderRadius: 14,
+    paddingVertical: 14, marginBottom: 10,
+  },
+  shareBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 15 },
+  cancelBtn: {
+    borderRadius: 14, borderWidth: 1, borderColor: Colors.border,
+    paddingVertical: 13, alignItems: 'center',
+  },
+  cancelText: { color: Colors.textSecondary, fontWeight: '700', fontSize: 15 },
 });
