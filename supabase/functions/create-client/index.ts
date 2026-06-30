@@ -41,22 +41,39 @@ serve(async (req) => {
     }
     if (total_sessions < 1) throw new Error('total_sessions must be at least 1');
 
-    // Create the auth user (email confirmed, invite email sent automatically)
-    const { data: newUser, error: createErr } = await adminClient.auth.admin.createUser({
-      email,
-      email_confirm: true,
-      user_metadata: { name, role: 'client' },
-    });
-    if (createErr) throw new Error(createErr.message);
+    const normalizedEmail = email.trim().toLowerCase();
 
-    const userId = newUser.user.id;
+    // Check if user already exists
+    const { data: existingProfile } = await adminClient
+      .from('profiles')
+      .select('id, role')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
 
-    // Update profile: set phone (trigger already set name + email)
-    if (phone) {
-      await adminClient
-        .from('profiles')
-        .update({ phone })
-        .eq('id', userId);
+    let userId: string;
+    let isNewUser = false;
+
+    if (existingProfile) {
+      if (existingProfile.role === 'coach') {
+        throw new Error('This email belongs to a coach account and cannot be added as a client.');
+      }
+      // Existing client — reuse their account, just add a new package
+      userId = existingProfile.id;
+    } else {
+      // New user — create auth account
+      const { data: newUser, error: createErr } = await adminClient.auth.admin.createUser({
+        email: normalizedEmail,
+        email_confirm: true,
+        user_metadata: { name, role: 'client' },
+      });
+      if (createErr) throw new Error(createErr.message);
+      userId = newUser.user.id;
+      isNewUser = true;
+
+      // Update profile: set phone (trigger already set name + email)
+      if (phone) {
+        await adminClient.from('profiles').update({ phone }).eq('id', userId);
+      }
     }
 
     // Create the package
@@ -73,11 +90,10 @@ serve(async (req) => {
       .single();
     if (pkgErr) throw new Error(pkgErr.message);
 
-    // Send password-reset so client can set their own password
-    await adminClient.auth.admin.generateLink({
-      type: 'recovery',
-      email,
-    });
+    // Send password-reset link only for new users
+    if (isNewUser) {
+      await adminClient.auth.admin.generateLink({ type: 'recovery', email: normalizedEmail });
+    }
 
     return new Response(
       JSON.stringify({ user_id: userId, package_id: pkg.id }),
