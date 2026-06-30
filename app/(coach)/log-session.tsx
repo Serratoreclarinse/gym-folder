@@ -38,6 +38,26 @@ type Exercise = {
 };
 
 const QUICK_DURATIONS = [30, 45, 60, 90] as const;
+
+const TIME_SLOTS = [
+  '5:00 AM', '5:30 AM',
+  '6:00 AM', '6:30 AM',
+  '7:00 AM', '7:30 AM',
+  '8:00 AM', '8:30 AM',
+  '9:00 AM', '9:30 AM',
+  '10:00 AM', '10:30 AM',
+  '11:00 AM', '11:30 AM',
+  '12:00 PM', '12:30 PM',
+  '1:00 PM', '1:30 PM',
+  '2:00 PM', '2:30 PM',
+  '3:00 PM', '3:30 PM',
+  '4:00 PM', '4:30 PM',
+  '5:00 PM', '5:30 PM',
+  '6:00 PM', '6:30 PM',
+  '7:00 PM', '7:30 PM',
+  '8:00 PM', '8:30 PM',
+  '9:00 PM',
+] as const;
 const todayISO = () => new Date().toISOString().split('T')[0];
 const uid = () => Math.random().toString(36).slice(2);
 const blankExercise = (): Exercise => ({ id: uid(), exercise_name: '', sets: '', reps: '', weight: '', duration: '', notes: '', isSuperset: false });
@@ -397,6 +417,7 @@ export default function LogSessionScreen() {
     pkg.sessions_remaining > 0 &&
     !!sessionDate &&
     Number(duration) > 0 &&
+    (mode === 'quick' || !!sessionTime.trim()) &&
     (mode === 'quick' || exercises.some((e) => e.exercise_name.trim()));
 
   const handleSave = async () => {
@@ -715,14 +736,38 @@ export default function LogSessionScreen() {
               </View>
             </View>
             <View style={styles.field}>
-              <Text style={styles.label}>START TIME (OPTIONAL)</Text>
+              <Text style={styles.label}>START TIME</Text>
+              {/* Quick-pick hour slots */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.timeChipsScroll}
+                contentContainerStyle={styles.timeChipsContent}
+              >
+                {TIME_SLOTS.map((slot) => {
+                  const active = sessionTime.trim().toUpperCase() === slot.toUpperCase();
+                  return (
+                    <Pressable
+                      key={slot}
+                      style={[styles.timeChip, active && styles.timeChipActive]}
+                      onPress={() => setSessionTime(slot)}
+                    >
+                      <Text style={[styles.timeChipText, active && styles.timeChipTextActive]}>
+                        {slot}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
               <TextInput
                 style={styles.input}
                 value={sessionTime}
                 onChangeText={setSessionTime}
-                placeholder="e.g. 09:00 AM"
+                placeholder="or type manually…"
                 placeholderTextColor={Colors.textSecondary}
+                returnKeyType="done"
               />
+              <Text style={styles.timeFormatHint}>Format: 9:00 AM  or  14:30</Text>
             </View>
           </>
         )}
@@ -1181,6 +1226,25 @@ const styles = StyleSheet.create({
   },
   saveBtnDisabled: { opacity: 0.35 },
   saveBtnText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
+  timeChipsScroll: { marginBottom: 8 },
+  timeChipsContent: { gap: 6, paddingVertical: 2 },
+  timeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+  },
+  timeChipActive: { borderColor: Colors.accent, backgroundColor: Colors.accent },
+  timeChipText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '600' },
+  timeChipTextActive: { color: Colors.bg, fontWeight: '700' },
+  timeFormatHint: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 5,
+    letterSpacing: 0.2,
+  },
   lastWeightHint: {
     fontSize: 11,
     color: Colors.accent,

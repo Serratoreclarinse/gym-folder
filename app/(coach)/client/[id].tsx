@@ -287,7 +287,6 @@ export default function ClientDetailScreen() {
       package_type: pkgType,
       total_sessions: totalSessions,
       sessions_used: 0,
-      sessions_remaining: totalSessions,
       status: 'active',
       start_date: new Date().toISOString().slice(0, 10),
       ...(durationWeeks && Number(durationWeeks) > 0 ? { duration_weeks: Number(durationWeeks) } : {}),
@@ -355,7 +354,6 @@ export default function ClientDetailScreen() {
               .from('packages')
               .update({
                 total_sessions: pkg.total_sessions + 1,
-                sessions_remaining: pkg.sessions_remaining + 1,
               })
               .eq('id', pkg.id)
               .eq('coach_id', profile?.id ?? '');
