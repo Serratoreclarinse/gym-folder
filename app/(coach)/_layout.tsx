@@ -58,6 +58,10 @@ export default function CoachRootLayout() {
         name="schedule-session"
         options={{ title: 'Schedule Session', presentation: 'modal', animation: 'slide_from_bottom' }}
       />
+      <Stack.Screen
+        name="guide"
+        options={{ title: 'User Guide' }}
+      />
     </Stack>
   );
 }

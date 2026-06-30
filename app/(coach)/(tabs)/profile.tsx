@@ -347,6 +347,16 @@ export default function CoachProfileScreen() {
         </View>
       )}
 
+      {/* Guide */}
+      <Pressable
+        style={({ pressed }) => [styles.guideBtn, pressed && { opacity: 0.7 }]}
+        onPress={() => router.push('/(coach)/guide')}
+      >
+        <Ionicons name="book-outline" size={16} color={Colors.accent} />
+        <Text style={styles.guideBtnText}>User Guide</Text>
+        <Ionicons name="chevron-forward" size={14} color={Colors.accent} style={{ marginLeft: 'auto' }} />
+      </Pressable>
+
       {/* Sign out */}
       <Pressable
         style={({ pressed }) => [styles.signOutBtn, pressed && { opacity: 0.7 }]}
@@ -470,6 +480,13 @@ const styles = StyleSheet.create({
     paddingVertical: 11, alignItems: 'center',
   },
   saveBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 14 },
+  guideBtn: {
+    width: '100%', borderRadius: 12, paddingVertical: 14, marginBottom: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderWidth: 1, borderColor: Colors.accent + '50',
+    backgroundColor: Colors.accent + '08', paddingHorizontal: 16,
+  },
+  guideBtnText: { color: Colors.accent, fontSize: 15, fontWeight: '700' },
   signOutBtn: {
     width: '100%', borderRadius: 12, paddingVertical: 15,
     alignItems: 'center', borderWidth: 1, borderColor: Colors.danger,

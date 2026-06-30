@@ -59,6 +59,10 @@ export default function ClientLayout() {
           tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="guide"
+        options={{ href: null, title: 'User Guide' }}
+      />
     </Tabs>
   );
 }
