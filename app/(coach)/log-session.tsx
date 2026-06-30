@@ -513,10 +513,10 @@ export default function LogSessionScreen() {
         if (hasExercises) {
           Alert.alert(
             'Session Started!',
-            `Timer started for ${selectedClient?.name}. Gusto mo bang gawin ang exercises step by step?`,
+            `Timer started for ${selectedClient?.name}. Would you like to do the exercises step by step?`,
             [
               {
-                text: 'Dashboard nalang',
+                text: 'Back to Dashboard',
                 onPress: () => router.back(),
               },
               {

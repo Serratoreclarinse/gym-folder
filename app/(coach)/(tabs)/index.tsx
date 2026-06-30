@@ -14,7 +14,6 @@ import { getDaysUntilBirthday } from '@/hooks/useBirthdays';
 import { useAnnouncements } from '@/hooks/useAnnouncements';
 import { useActiveSessionContext } from '@/context/ActiveSessionContext';
 import { ActiveSessionCard } from '@/components/ActiveSessionCard';
-import { NoShowModal } from '@/components/NoShowModal';
 import { NextSessionCard } from '@/components/NextSessionCard';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { Colors, Typography } from '@/constants/theme';
@@ -107,8 +106,7 @@ export default function CoachDashboard() {
   const { totalCount: waitlistCount, refetch: refetchWaitlist } = useWaitlist(profile?.id);
   const { requests: bookingRequests, refetch: refetchBookingReqs, respond: respondToRequest } = useCoachBookingRequests();
   const { pinnedAnnouncement, togglePin } = useAnnouncements();
-  const { activeSession, nextSession, extendSession, endSession, cancelSession, moveSession, refetch: refetchTimer } = useActiveSessionContext();
-  const [noShowVisible, setNoShowVisible] = useState(false);
+  const { activeSession, nextSession, extendSession, endSession, cancelSession, refetch: refetchTimer } = useActiveSessionContext();
   const [pausedWorkout, setPausedWorkout] = useState<any | null>(null);
   const [showPicker, setShowPicker] = useState(false);
 
@@ -219,12 +217,6 @@ export default function CoachDashboard() {
       </View>
     </View>
 
-    <NoShowModal
-      visible={noShowVisible}
-      onClose={() => setNoShowVisible(false)}
-      onLogged={() => { refetchSessions(); refetchClients(); }}
-    />
-
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
@@ -238,13 +230,6 @@ export default function CoachDashboard() {
         >
           <Ionicons name="add-circle-outline" size={20} color={Colors.bg} />
           <Text style={styles.actionPrimaryText}>LOG SESSION</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.actionBtn, styles.actionBorder, pressed && { opacity: 0.85 }]}
-          onPress={() => setNoShowVisible(true)}
-        >
-          <Ionicons name="person-remove-outline" size={20} color="#FFA500" />
-          <Text style={styles.actionWarningText}>NO-SHOW</Text>
         </Pressable>
       </View>
 
@@ -294,7 +279,6 @@ export default function CoachDashboard() {
           activeSession={activeSession}
           nextSession={nextSession}
           onExtend={extendSession}
-          onMove={moveSession}
           onEnd={async () => {
             const result = await endSession();
             if (!result.error) refetchTimer();
