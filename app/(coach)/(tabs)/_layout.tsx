@@ -38,10 +38,7 @@ export default function CoachTabsLayout() {
           />
           <Tabs.Screen
             name="clients"
-            options={{
-              title: 'Clients',
-              tabBarIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} />,
-            }}
+            options={{ href: null }}
           />
           <Tabs.Screen
             name="sessions"
