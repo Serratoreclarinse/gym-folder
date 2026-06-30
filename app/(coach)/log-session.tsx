@@ -22,6 +22,7 @@ import { useClients } from '@/hooks/useClients';
 import { useExerciseHistory, RecentExercise } from '@/hooks/useExerciseHistory';
 import { useTemplates } from '@/hooks/useTemplates';
 import { Colors, Typography } from '@/constants/theme';
+import { sendPushNotification } from '@/lib/pushNotifications';
 
 type Exercise = {
   id: string;
@@ -424,6 +425,14 @@ export default function LogSessionScreen() {
         await scheduleSessionReminder(selectedClient?.name ?? 'Client', sessionDate, sessionTime.trim());
       }
 
+      const sessionsLeft = pkg.sessions_remaining - 1;
+      if (sessionsLeft > 0 && sessionsLeft <= 3) {
+        await sendPushNotification(selectedClientId, {
+          title: '⚠️ Package Almost Empty',
+          body: `Only ${sessionsLeft} session${sessionsLeft !== 1 ? 's' : ''} left in your package. Contact your coach to renew soon!`,
+        });
+      }
+
       // Try to start the session timer
       const { data: existingActive } = await supabase
         .from('active_sessions')
@@ -565,7 +574,7 @@ export default function LogSessionScreen() {
         )}
 
         {/* Package warning */}
-        {selectedClient && pkg && pkg.sessions_remaining <= 2 && pkg.sessions_remaining > 0 && (
+        {selectedClient && pkg && pkg.sessions_remaining <= 3 && pkg.sessions_remaining > 0 && (
           <View style={styles.warningBanner}>
             <Ionicons name="warning-outline" size={16} color="#FFA500" />
             <Text style={styles.warningText}>

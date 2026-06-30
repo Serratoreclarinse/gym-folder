@@ -26,6 +26,7 @@ import { ClientNotesTab } from '@/components/ClientNotesTab';
 import { ClientFilesTab } from '@/components/ClientFilesTab';
 import { ClientGoalsTab } from '@/components/ClientGoalsTab';
 import { Colors, Typography } from '@/constants/theme';
+import { sendPushNotification } from '@/lib/pushNotifications';
 
 const PACKAGE_LABEL: Record<string, string> = {
   '30min': '30 min',
@@ -325,6 +326,18 @@ export default function ClientDetailScreen() {
     const result = await addStrike(reason);
     if (result.autoDeducted) {
       Alert.alert('3 Strikes!', `${client?.name ?? 'Client'} reached 3 strikes — 1 session auto-deducted from their package and strikes reset to 0.`);
+      await sendPushNotification(id, {
+        title: '⚡ 3 Strikes — Session Deducted',
+        body: '3 strikes recorded. 1 session has been deducted from your package. Strikes reset to 0.',
+      });
+    } else {
+      const newCount = strikes.length + 1;
+      await sendPushNotification(id, {
+        title: `⚡ Strike ${newCount} of ${MAX_STRIKES} Recorded`,
+        body: reason
+          ? `Reason: ${reason}`
+          : `You now have ${newCount} of ${MAX_STRIKES} strikes.`,
+      });
     }
   };
 
