@@ -1,5 +1,5 @@
 import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import QRCode from 'react-native-qrcode-svg';
@@ -11,11 +11,22 @@ import { Colors, Typography } from '@/constants/theme';
 export default function ClientProfileScreen() {
   const { profile, signOut, refreshProfile } = useAuth();
   const { coachInfo } = useClientData();
+  const [timeWindow, setTimeWindow] = useState(() => Math.floor(Date.now() / 30000));
+  const [secondsLeft, setSecondsLeft] = useState(() => 30 - Math.floor((Date.now() % 30000) / 1000));
   const [editing, setEditing] = useState(false);
   const [phone, setPhone] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [instagram, setInstagram] = useState('');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const tick = setInterval(() => {
+      const now = Date.now();
+      setTimeWindow(Math.floor(now / 30000));
+      setSecondsLeft(30 - Math.floor((now % 30000) / 1000));
+    }, 1000);
+    return () => clearInterval(tick);
+  }, []);
 
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -111,8 +122,14 @@ export default function ClientProfileScreen() {
           <Text style={styles.qrTitle}>MY QR CODE</Text>
           <Text style={styles.qrSub}>Show this to your coach to check in</Text>
           <View style={styles.qrWrap}>
-            <QRCode value={profile.id} size={180} color={Colors.textPrimary} backgroundColor={Colors.surface} />
+            <QRCode
+              value={`${profile.id}:${timeWindow}`}
+              size={180}
+              color={Colors.textPrimary}
+              backgroundColor={Colors.surface}
+            />
           </View>
+          <Text style={styles.qrExpiry}>Refreshes in {secondsLeft}s</Text>
         </View>
       )}
 
@@ -313,6 +330,7 @@ const styles = StyleSheet.create({
   qrTitle: { ...Typography.label, color: Colors.accent, letterSpacing: 1.5 },
   qrSub: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 12 },
   qrWrap: { padding: 16, backgroundColor: Colors.surface, borderRadius: 14, borderWidth: 1, borderColor: Colors.border },
+  qrExpiry: { ...Typography.caption, color: Colors.textSecondary, marginTop: 10, textAlign: 'center' },
 
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 10 },
   sectionLabel: { ...Typography.label, color: Colors.textSecondary },

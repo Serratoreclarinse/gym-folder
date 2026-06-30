@@ -147,10 +147,27 @@ export default function QRScannerScreen() {
       return;
     }
 
-    // Validate UUID format
-    if (!isValidUUID(value)) {
+    // Parse rotating QR format: "userId:timeWindow"
+    const parts = value.split(':');
+    if (parts.length !== 2) {
       setProcessing(false);
-      setModalState({ type: 'error', message: 'This QR code is not a valid client ID.' });
+      setModalState({ type: 'error', message: 'Invalid QR format. Ask client to refresh their app.' });
+      return;
+    }
+    const [clientId, windowStr] = parts;
+    const qrWindow = parseInt(windowStr, 10);
+
+    if (!isValidUUID(clientId) || isNaN(qrWindow)) {
+      setProcessing(false);
+      setModalState({ type: 'error', message: 'This QR code is not valid.' });
+      return;
+    }
+
+    // Reject QRs older than 1 window (~60s tolerance for clock drift)
+    const currentWindow = Math.floor(Date.now() / 30000);
+    if (Math.abs(currentWindow - qrWindow) > 1) {
+      setProcessing(false);
+      setModalState({ type: 'error', message: 'QR code has expired. Ask client to show their current QR.' });
       return;
     }
 
@@ -162,7 +179,7 @@ export default function QRScannerScreen() {
         sessions_remaining,
         client:profiles!packages_client_id_fkey ( id, name )
       `)
-      .eq('client_id', value)
+      .eq('client_id', clientId)
       .eq('coach_id', profile.id)
       .eq('status', 'active')
       .order('created_at', { ascending: false })
@@ -195,7 +212,7 @@ export default function QRScannerScreen() {
     const today = new Date().toISOString().split('T')[0];
     const { error: insertError } = await supabase.from('workout_sessions').insert({
       package_id: pkg.id,
-      client_id: value,
+      client_id: clientId,
       coach_id: profile.id,
       session_date: today,
       duration_minutes: 60,
