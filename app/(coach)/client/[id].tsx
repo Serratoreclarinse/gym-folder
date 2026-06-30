@@ -120,15 +120,18 @@ function BirthdayEditForm({
 
 function RenewForm({
   initialType,
+  initialWeeks,
   onConfirm,
   onCancel,
 }: {
   initialType: PackageType;
-  onConfirm: (type: PackageType, sessions: string) => void;
+  initialWeeks: string;
+  onConfirm: (type: PackageType, sessions: string, weeks: string) => void;
   onCancel: () => void;
 }) {
   const [pkgType, setPkgType] = useState<PackageType>(initialType);
   const [sessions, setSessions] = useState('');
+  const [weeks, setWeeks] = useState(initialWeeks);
   const isValid = sessions.trim() !== '' && Number(sessions) > 0;
   return (
     <View style={styles.renewCard}>
@@ -151,12 +154,22 @@ function RenewForm({
         style={styles.renewInput}
         value={sessions}
         onChangeText={(v) => setSessions(v.replace(/[^0-9]/g, ''))}
-        placeholder="e.g. 10"
+        placeholder="e.g. 12"
         placeholderTextColor={Colors.textSecondary}
         keyboardType="number-pad"
         autoFocus
+        returnKeyType="next"
+      />
+      <Text style={styles.renewLabel}>Duration (weeks) <Text style={{ color: Colors.textSecondary, fontWeight: '400' }}>— optional</Text></Text>
+      <TextInput
+        style={styles.renewInput}
+        value={weeks}
+        onChangeText={(v) => setWeeks(v.replace(/[^0-9]/g, ''))}
+        placeholder="e.g. 6"
+        placeholderTextColor={Colors.textSecondary}
+        keyboardType="number-pad"
         returnKeyType="done"
-        onSubmitEditing={() => isValid && onConfirm(pkgType, sessions)}
+        onSubmitEditing={() => isValid && onConfirm(pkgType, sessions, weeks)}
       />
       <View style={styles.renewBtns}>
         <Pressable style={styles.renewCancel} onPress={onCancel}>
@@ -165,7 +178,7 @@ function RenewForm({
         <Pressable
           style={[styles.renewConfirm, !isValid && { opacity: 0.4 }]}
           disabled={!isValid}
-          onPress={() => onConfirm(pkgType, sessions)}
+          onPress={() => onConfirm(pkgType, sessions, weeks)}
         >
           <Text style={styles.renewConfirmText}>RENEW</Text>
         </Pressable>
@@ -261,7 +274,7 @@ export default function ClientDetailScreen() {
   const refreshing = clientsLoading || sessionsLoading;
   const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); };
 
-  const renewPackage = async (pkgType: PackageType, totalSessions: number) => {
+  const renewPackage = async (pkgType: PackageType, totalSessions: number, durationWeeks: string | null) => {
     if (!profile?.id) return;
     setShowRenewForm(false);
     if (pkg) {
@@ -276,6 +289,7 @@ export default function ClientDetailScreen() {
       sessions_remaining: totalSessions,
       status: 'active',
       start_date: new Date().toISOString().slice(0, 10),
+      ...(durationWeeks && Number(durationWeeks) > 0 ? { duration_weeks: Number(durationWeeks) } : {}),
     });
     refetchClients();
   };
@@ -312,6 +326,27 @@ export default function ClientDetailScreen() {
     if (result.autoDeducted) {
       Alert.alert('3 Strikes!', `${client?.name ?? 'Client'} reached 3 strikes — 1 session auto-deducted from their package and strikes reset to 0.`);
     }
+  };
+
+  const handleFreeSession = () => {
+    if (!pkg) return;
+    Alert.alert(
+      'Give Free Session',
+      `Add 1 complimentary session to ${client?.name ?? 'this client'}'s package?\n\nThis won't deduct from their purchased count — it's a bonus session from you.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Give Free Session',
+          onPress: async () => {
+            await supabase.from('packages').update({
+              total_sessions: pkg.total_sessions + 1,
+              sessions_remaining: pkg.sessions_remaining + 1,
+            }).eq('id', pkg.id);
+            refetchClients();
+          },
+        },
+      ],
+    );
   };
 
   const handleRemoveStrike = (strikeId: string) => {
@@ -384,6 +419,24 @@ export default function ClientDetailScreen() {
           <Text style={styles.progressLabel}>
             {pkg.sessions_used} of {pkg.total_sessions} sessions used
           </Text>
+          {pkg.duration_weeks && (() => {
+            const days = Math.max(0, Math.floor((Date.now() - new Date(pkg.start_date + 'T00:00:00').getTime()) / 86_400_000));
+            const currentWeek = Math.min(Math.ceil((days + 1) / 7), pkg.duration_weeks);
+            const rate = pkg.total_sessions / pkg.duration_weeks;
+            const expected = Math.min(pkg.total_sessions, (days / 7) * rate);
+            const onTrack = pkg.sessions_used >= Math.floor(expected);
+            const paceLabel = Number.isInteger(rate) ? `${rate}x/week` : `${Math.floor(rate)}-${Math.ceil(rate)}x/week`;
+            return (
+              <View style={styles.durationRow}>
+                <Text style={styles.durationInfo}>{pkg.total_sessions} sessions · {pkg.duration_weeks} weeks · {paceLabel}</Text>
+                <View style={[styles.trackBadge, !onTrack && styles.trackBadgeBehind]}>
+                  <Text style={[styles.trackText, !onTrack && styles.trackTextBehind]}>
+                    Week {currentWeek}/{pkg.duration_weeks} · {onTrack ? 'On Track' : 'Behind'}
+                  </Text>
+                </View>
+              </View>
+            );
+          })()}
           {pkg.sessions_remaining === 0 && !showRenewForm && (
             <Pressable style={styles.renewInlineBtn} onPress={() => setShowRenewForm(true)}>
               <Ionicons name="refresh-outline" size={15} color={Colors.bg} />
@@ -407,7 +460,8 @@ export default function ClientDetailScreen() {
       {showRenewForm && (
         <RenewForm
           initialType={pkg?.package_type ?? '1hr'}
-          onConfirm={(type, sessStr) => renewPackage(type, Number(sessStr))}
+          initialWeeks={pkg?.duration_weeks ? String(pkg.duration_weeks) : ''}
+          onConfirm={(type, sessStr, weeksStr) => renewPackage(type, Number(sessStr), weeksStr || null)}
           onCancel={() => setShowRenewForm(false)}
         />
       )}
@@ -420,6 +474,14 @@ export default function ClientDetailScreen() {
         >
           <Ionicons name="add-circle-outline" size={20} color={Colors.bg} />
           <Text style={styles.logBtnText}>LOG A SESSION</Text>
+        </Pressable>
+      )}
+
+      {/* Give free session */}
+      {pkg && (
+        <Pressable style={styles.freeSessionBtn} onPress={handleFreeSession}>
+          <Ionicons name="gift-outline" size={16} color="#4CAF50" />
+          <Text style={styles.freeSessionBtnText}>Give Free Session</Text>
         </Pressable>
       )}
 
@@ -743,7 +805,17 @@ const styles = StyleSheet.create({
   statusTextExpired: { color: Colors.textSecondary },
   progressTrack: { height: 6, backgroundColor: Colors.border, borderRadius: 3, overflow: 'hidden', marginBottom: 8 },
   progressFill: { height: '100%', backgroundColor: Colors.accent, borderRadius: 3 },
-  progressLabel: { ...Typography.caption, color: Colors.textSecondary },
+  progressLabel: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 10 },
+  durationRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+  durationInfo: { ...Typography.caption, color: Colors.textSecondary, flex: 1 },
+  trackBadge: {
+    backgroundColor: '#4CAF5018', borderRadius: 7,
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderWidth: 1, borderColor: '#4CAF5040',
+  },
+  trackBadgeBehind: { backgroundColor: '#FFA50018', borderColor: '#FFA50040' },
+  trackText: { fontSize: 11, fontWeight: '700', color: '#4CAF50' },
+  trackTextBehind: { color: '#FFA500' },
 
   // Log button
   logBtn: {
@@ -751,6 +823,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent, borderRadius: 13, paddingVertical: 14, marginBottom: 28,
   },
   logBtnText: { color: Colors.bg, fontSize: 13, fontWeight: '800', letterSpacing: 1.1 },
+
+  freeSessionBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    borderRadius: 13, paddingVertical: 12, marginTop: -18, marginBottom: 28,
+    borderWidth: 1, borderColor: '#4CAF5050',
+    backgroundColor: '#4CAF5010',
+  },
+  freeSessionBtnText: { color: '#4CAF50', fontSize: 13, fontWeight: '700' },
 
   // Section
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },

@@ -34,7 +34,7 @@ serve(async (req) => {
       .single();
     if (callerProfile?.role !== 'coach') throw new Error('Only coaches can create clients');
 
-    const { name, email, phone, package_type, total_sessions } = await req.json();
+    const { name, email, phone, package_type, total_sessions, duration_weeks } = await req.json();
 
     if (!name || !email || !package_type || !total_sessions) {
       throw new Error('Missing required fields: name, email, package_type, total_sessions');
@@ -85,6 +85,7 @@ serve(async (req) => {
         package_type,
         total_sessions: Number(total_sessions),
         start_date: new Date().toISOString().split('T')[0],
+        ...(duration_weeks && Number(duration_weeks) > 0 ? { duration_weeks: Number(duration_weeks) } : {}),
       })
       .select()
       .single();

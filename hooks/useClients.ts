@@ -10,6 +10,7 @@ export type ClientPackage = {
   sessions_remaining: number;
   status: 'active' | 'expired';
   start_date: string;
+  duration_weeks: number | null;
 };
 
 export type ClientWithPackage = {
@@ -46,6 +47,7 @@ export function useClients() {
         sessions_remaining,
         status,
         start_date,
+        duration_weeks,
         client:profiles!packages_client_id_fkey (
           id, name, email, phone, birthday
         )
@@ -73,6 +75,7 @@ export function useClients() {
         sessions_remaining: row.sessions_remaining,
         status: row.status,
         start_date: row.start_date,
+        duration_weeks: row.duration_weeks ?? null,
       };
 
       if (!clientMap.has(c.id)) {

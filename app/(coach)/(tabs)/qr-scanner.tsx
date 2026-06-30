@@ -18,6 +18,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useClients } from '@/hooks/useClients';
 import { saveInBodyLink } from '@/hooks/useClientFiles';
+import { sendPushNotification } from '@/lib/pushNotifications';
 import { Colors, Typography } from '@/constants/theme';
 
 const SCAN_SIZE = 260;
@@ -34,6 +35,7 @@ type ScannedClient = {
 type ModalState =
   | { type: 'confirm'; client: ScannedClient; wasLast: boolean; scanTime: Date }
   | { type: 'error'; message: string }
+  | { type: 'not-assigned' }
   | { type: 'no-sessions'; client: ScannedClient }
   | { type: 'web-link'; url: string; isInBody: boolean }
   | null;
@@ -186,12 +188,16 @@ export default function QRScannerScreen() {
       .limit(1)
       .maybeSingle();
 
-    if (error || !pkg) {
+    if (error) {
       setProcessing(false);
-      setModalState({
-        type: 'error',
-        message: 'Client not found or not assigned to you.',
-      });
+      setModalState({ type: 'error', message: error.message });
+      return;
+    }
+
+    if (!pkg) {
+      setProcessing(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setModalState({ type: 'not-assigned' });
       return;
     }
 
@@ -235,6 +241,21 @@ export default function QRScannerScreen() {
       .gte('scheduled_at', `${today}T00:00:00`)
       .lte('scheduled_at', `${today}T23:59:59`)
       .in('status', ['pending', 'client_confirmed']);
+
+    // Push notification to client
+    const sessionsLeft = remaining - 1;
+    await sendPushNotification(clientId, {
+      title: '✅ Session Logged!',
+      body: sessionsLeft > 0
+        ? `Great workout! ${sessionsLeft} session${sessionsLeft !== 1 ? 's' : ''} remaining.`
+        : 'Great workout! Your package is now complete.',
+    });
+    if (sessionsLeft > 0 && sessionsLeft <= 2) {
+      await sendPushNotification(clientId, {
+        title: '⚠️ Low on Sessions',
+        body: `Only ${sessionsLeft} session${sessionsLeft !== 1 ? 's' : ''} left. Consider renewing soon.`,
+      });
+    }
 
     setProcessing(false);
 
@@ -418,6 +439,32 @@ export default function QRScannerScreen() {
             </View>
           </View>
         )}
+      </Modal>
+
+      {/* ── MODAL: Not assigned ──────────────────────────────── */}
+      <Modal visible={modalState?.type === 'not-assigned'} transparent animationType="fade">
+        <View style={styles.modalBg}>
+          <View style={styles.modalCard}>
+            <View style={[styles.modalHeader, styles.modalHeaderDanger]}>
+              <Ionicons name="person-remove-outline" size={28} color={Colors.danger} />
+              <Text style={[styles.modalHeaderText, { color: Colors.danger }]}>
+                Not Your Client
+              </Text>
+            </View>
+            <Text style={styles.errorNote}>
+              This client is not assigned to you.{'\n\n'}
+              They may be registered under a different coach.
+            </Text>
+            <View style={styles.modalBtns}>
+              <Pressable
+                style={[styles.primaryModalBtn, { backgroundColor: Colors.danger }]}
+                onPress={closeModal}
+              >
+                <Text style={styles.primaryModalBtnText}>TRY AGAIN</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       {/* ── MODAL: Error ──────────────────────────────────────── */}

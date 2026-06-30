@@ -9,6 +9,7 @@ import { useClients } from '@/hooks/useClients';
 import { useSessions } from '@/hooks/useSessions';
 import { useStrikeAlerts } from '@/hooks/useStrikeAlerts';
 import { useWaitlist } from '@/hooks/useWaitlist';
+import { useCoachBookingRequests } from '@/hooks/useBookingRequests';
 import { useBirthdays, getDaysUntilBirthday, formatBirthday } from '@/hooks/useBirthdays';
 import { useAvailability } from '@/hooks/useAvailability';
 import { useAnnouncements } from '@/hooks/useAnnouncements';
@@ -52,6 +53,7 @@ export default function CoachDashboard() {
   const { sessions, loading: sLoading, error: sError, refetch: refetchSessions } = useSessions();
   const { alerts: strikeAlerts, refetch: refetchStrikes } = useStrikeAlerts();
   const { totalCount: waitlistCount, refetch: refetchWaitlist } = useWaitlist(profile?.id);
+  const { requests: bookingRequests, refetch: refetchBookingReqs, respond: respondToRequest } = useCoachBookingRequests();
   const { all: allBirthdays } = useBirthdays(clients);
   const { getTodayInfo } = useAvailability();
   const todaySchedule = getTodayInfo();
@@ -62,7 +64,7 @@ export default function CoachDashboard() {
   const [pausedWorkout, setPausedWorkout] = useState<any | null>(null);
 
   const refreshing = cLoading || sLoading;
-  const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); };
+  const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); };
 
   useFocusEffect(useCallback(() => {
     refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer();
@@ -450,6 +452,55 @@ export default function CoachDashboard() {
         </Pressable>
       )}
 
+      {/* Booking / renewal requests */}
+      {bookingRequests.length > 0 && (
+        <>
+          <View style={styles.strikeSectionHeader}>
+            <Text style={styles.sectionTitle}>CLIENT REQUESTS</Text>
+            <View style={[styles.strikeBadge, { backgroundColor: Colors.accent + '20', borderColor: Colors.accent + '50' }]}>
+              <Text style={[styles.strikeBadgeText, { color: Colors.accent }]}>{bookingRequests.length}</Text>
+            </View>
+          </View>
+          {bookingRequests.map((req) => (
+            <View key={req.id} style={styles.reqCard}>
+              <View style={styles.reqCardTop}>
+                <View style={[styles.reqTypeBadge, req.type === 'renewal' && styles.reqTypeBadgeRenew]}>
+                  <Ionicons
+                    name={req.type === 'renewal' ? 'refresh-outline' : 'calendar-outline'}
+                    size={13}
+                    color={req.type === 'renewal' ? '#4CAF50' : Colors.accent}
+                  />
+                  <Text style={[styles.reqTypeText, req.type === 'renewal' && { color: '#4CAF50' }]}>
+                    {req.type === 'renewal' ? 'Renewal' : 'Booking'}
+                  </Text>
+                </View>
+                <Text style={styles.reqClientName}>{req.client_name}</Text>
+              </View>
+              {(req.preferred_date || req.preferred_time) && (
+                <Text style={styles.reqDateTime}>
+                  {[req.preferred_date, req.preferred_time].filter(Boolean).join(' · ')}
+                </Text>
+              )}
+              {req.notes && <Text style={styles.reqNotes}>{req.notes}</Text>}
+              <View style={styles.reqActions}>
+                <Pressable
+                  style={styles.reqDeclineBtn}
+                  onPress={() => respondToRequest(req.id, 'declined')}
+                >
+                  <Text style={styles.reqDeclineBtnText}>Decline</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.reqAcceptBtn}
+                  onPress={() => respondToRequest(req.id, 'accepted')}
+                >
+                  <Text style={styles.reqAcceptBtnText}>Accept</Text>
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </>
+      )}
+
       {/* Recent sessions */}
       <Text style={styles.sectionTitle}>RECENT SESSIONS</Text>
       {recentSessions.length === 0 ? (
@@ -601,6 +652,34 @@ const styles = StyleSheet.create({
     borderColor: Colors.accent + '35',
   },
   waitlistNoticeText: { ...Typography.caption, color: Colors.accent, flex: 1 },
+
+  // Booking request cards
+  reqCard: {
+    backgroundColor: Colors.surface, borderRadius: 14, padding: 14,
+    marginBottom: 10, borderWidth: 1, borderColor: Colors.border, gap: 8,
+  },
+  reqCardTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reqTypeBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
+    backgroundColor: Colors.accent + '18', borderWidth: 1, borderColor: Colors.accent + '40',
+  },
+  reqTypeBadgeRenew: { backgroundColor: '#4CAF5018', borderColor: '#4CAF5040' },
+  reqTypeText: { fontSize: 12, fontWeight: '700', color: Colors.accent },
+  reqClientName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700', flex: 1 },
+  reqDateTime: { ...Typography.caption, color: Colors.textSecondary },
+  reqNotes: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic' },
+  reqActions: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  reqDeclineBtn: {
+    flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  reqDeclineBtnText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
+  reqAcceptBtn: {
+    flex: 2, paddingVertical: 8, borderRadius: 10, alignItems: 'center',
+    backgroundColor: Colors.accent,
+  },
+  reqAcceptBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 13 },
   emptyState: {
     backgroundColor: Colors.surface,
     borderRadius: 16,

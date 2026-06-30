@@ -12,6 +12,7 @@ export type ClientPackage = {
   sessions_remaining: number;
   status: 'active' | 'expired';
   start_date: string;
+  duration_weeks: number | null;
 };
 
 export type ClientSession = {
@@ -21,6 +22,7 @@ export type ClientSession = {
   exercises: Exercise[];
   notes: string | null;
   coach_name: string;
+  coach_id: string;
   status: string | null;
 };
 
@@ -46,6 +48,7 @@ export function useClientData() {
   const [sessions, setSessions] = useState<ClientSession[]>([]);
   const [coachInfo, setCoachInfo] = useState<CoachInfo | null>(null);
   const [nextScheduled, setNextScheduled] = useState<NextScheduledSession | null>(null);
+  const [upcomingScheduled, setUpcomingScheduled] = useState<NextScheduledSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,6 +72,7 @@ export function useClientData() {
           sessions_remaining,
           status,
           start_date,
+          duration_weeks,
           coach:profiles!packages_coach_id_fkey ( id, name, phone, whatsapp, instagram )
         `)
         .eq('client_id', user.id)
@@ -81,6 +85,7 @@ export function useClientData() {
         .from('workout_sessions')
         .select(`
           id,
+          coach_id,
           session_date,
           duration_minutes,
           exercises,
@@ -98,9 +103,7 @@ export function useClientData() {
         .eq('client_id', user.id)
         .gte('scheduled_at', new Date().toISOString())
         .in('status', ['pending', 'client_confirmed'])
-        .order('scheduled_at', { ascending: true })
-        .limit(1)
-        .maybeSingle(),
+        .order('scheduled_at', { ascending: true }),
     ]);
 
     if (pkgResult.error) {
@@ -116,6 +119,7 @@ export function useClientData() {
         sessions_remaining: row.sessions_remaining,
         status: row.status,
         start_date: row.start_date,
+        duration_weeks: row.duration_weeks ?? null,
       });
       if (row.coach) {
         setCoachInfo({
@@ -135,6 +139,7 @@ export function useClientData() {
       setSessions(
         (sessionsResult.data ?? []).map((row) => ({
           id: row.id,
+          coach_id: (row as any).coach_id,
           session_date: row.session_date,
           duration_minutes: row.duration_minutes,
           exercises: row.exercises as Exercise[],
@@ -145,16 +150,18 @@ export function useClientData() {
       );
     }
 
-    if (!scheduledResult.error && scheduledResult.data) {
-      const r = scheduledResult.data as any;
-      setNextScheduled({
+    if (!scheduledResult.error) {
+      const all: NextScheduledSession[] = (scheduledResult.data ?? []).map((r: any) => ({
         id: r.id,
         scheduled_at: r.scheduled_at,
         duration_minutes: r.duration_minutes ?? 60,
         notes: r.notes ?? null,
         client_confirmed_at: r.client_confirmed_at ?? null,
-      });
+      }));
+      setUpcomingScheduled(all);
+      setNextScheduled(all[0] ?? null);
     } else {
+      setUpcomingScheduled([]);
       setNextScheduled(null);
     }
 
@@ -163,5 +170,5 @@ export function useClientData() {
 
   useEffect(() => { fetch(); }, [fetch]);
 
-  return { pkg, sessions, coachInfo, nextScheduled, loading, error, refetch: fetch };
+  return { pkg, sessions, coachInfo, nextScheduled, upcomingScheduled, loading, error, refetch: fetch };
 }

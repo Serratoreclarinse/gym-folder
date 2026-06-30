@@ -22,8 +22,10 @@ const PACKAGE_OPTIONS: { value: PackageType; label: string }[] = [
   { value: '1hr', label: '1 Hour' },
 ];
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 function Field({
-  label, value, onChangeText, placeholder, keyboardType, required,
+  label, value, onChangeText, placeholder, keyboardType, required, error,
 }: {
   label: string;
   value: string;
@@ -31,12 +33,13 @@ function Field({
   placeholder?: string;
   keyboardType?: 'default' | 'email-address' | 'phone-pad' | 'number-pad';
   required?: boolean;
+  error?: string;
 }) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}{required ? <Text style={{ color: Colors.accent }}> *</Text> : ''}</Text>
       <TextInput
-        style={styles.input}
+        style={[styles.input, !!error && styles.inputError]}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
@@ -45,6 +48,7 @@ function Field({
         autoCapitalize={keyboardType === 'email-address' ? 'none' : 'words'}
         autoCorrect={false}
       />
+      {!!error && <Text style={styles.fieldError}>{error}</Text>}
     </View>
   );
 }
@@ -52,16 +56,28 @@ function Field({
 export default function AddClientScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [emailTouched, setEmailTouched] = useState(false);
   const [phone, setPhone] = useState('');
   const [packageType, setPackageType] = useState<PackageType>('1hr');
   const [totalSessions, setTotalSessions] = useState('');
+  const [durationWeeks, setDurationWeeks] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const isValid = name.trim() && email.trim() && totalSessions.trim() && Number(totalSessions) > 0;
+  const isEmailValid = EMAIL_RE.test(email.trim());
+  const emailError = emailTouched && email.trim() && !isEmailValid
+    ? 'Enter a valid email address (e.g. jane@example.com)'
+    : '';
+
+  const isValid = name.trim() && email.trim() && isEmailValid && totalSessions.trim() && Number(totalSessions) > 0;
 
   const handleSubmit = async () => {
-    if (!isValid) {
+    setEmailTouched(true);
+    if (!name.trim() || !email.trim() || !totalSessions.trim() || Number(totalSessions) <= 0) {
       Alert.alert('Missing fields', 'Please fill in name, email, and number of sessions.');
+      return;
+    }
+    if (!isEmailValid) {
+      Alert.alert('Invalid email', 'Please enter a valid email address before continuing.');
       return;
     }
 
@@ -74,6 +90,7 @@ export default function AddClientScreen() {
           phone: phone.trim() || null,
           package_type: packageType,
           total_sessions: Number(totalSessions),
+          ...(durationWeeks && Number(durationWeeks) > 0 ? { duration_weeks: Number(durationWeeks) } : {}),
         },
       });
 
@@ -101,8 +118,16 @@ export default function AddClientScreen() {
         {/* Client info section */}
         <Text style={styles.sectionTitle}>CLIENT INFO</Text>
         <Field label="Full Name" value={name} onChangeText={setName} placeholder="Jane Smith" required />
-        <Field label="Email" value={email} onChangeText={setEmail} placeholder="jane@example.com" keyboardType="email-address" required />
-        <Field label="Phone" value={phone} onChangeText={setPhone} placeholder="+1 555 000 0000" keyboardType="phone-pad" />
+        <Field
+          label="Email"
+          value={email}
+          onChangeText={(v) => { setEmail(v); if (!emailTouched && v.includes('@')) setEmailTouched(true); }}
+          placeholder="jane@example.com"
+          keyboardType="email-address"
+          required
+          error={emailError}
+        />
+        <Field label="Phone" value={phone} onChangeText={setPhone} placeholder="+63 912 345 6789" keyboardType="phone-pad" />
 
         {/* Package section */}
         <Text style={[styles.sectionTitle, { marginTop: 28 }]}>PACKAGE</Text>
@@ -130,11 +155,24 @@ export default function AddClientScreen() {
             style={styles.input}
             value={totalSessions}
             onChangeText={(v) => setTotalSessions(v.replace(/[^0-9]/g, ''))}
-            placeholder="e.g. 10"
+            placeholder="e.g. 12"
             placeholderTextColor={Colors.textSecondary}
             keyboardType="number-pad"
           />
-          <Text style={styles.hint}>The number of sessions the client purchased in this package</Text>
+          <Text style={styles.hint}>Number of sessions in this package</Text>
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Duration (weeks) <Text style={{ color: Colors.textSecondary, fontWeight: '400' }}>— optional</Text></Text>
+          <TextInput
+            style={styles.input}
+            value={durationWeeks}
+            onChangeText={(v) => setDurationWeeks(v.replace(/[^0-9]/g, ''))}
+            placeholder="e.g. 6"
+            placeholderTextColor={Colors.textSecondary}
+            keyboardType="number-pad"
+          />
+          <Text style={styles.hint}>How many weeks should these sessions be consumed?</Text>
         </View>
 
         {/* Summary preview */}
@@ -143,6 +181,7 @@ export default function AddClientScreen() {
             <Ionicons name="checkmark-circle" size={16} color={Colors.accent} />
             <Text style={styles.previewText}>
               {name} · {PACKAGE_OPTIONS.find(o => o.value === packageType)?.label} · {totalSessions} sessions
+              {durationWeeks && Number(durationWeeks) > 0 ? ` · ${durationWeeks} weeks` : ''}
             </Text>
           </View>
         )}
@@ -180,6 +219,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   hint: { ...Typography.caption, color: Colors.textSecondary, marginTop: 6 },
+  inputError: { borderColor: Colors.accent },
+  fieldError: { ...Typography.caption, color: Colors.accent, marginTop: 5 },
   segmented: {
     flexDirection: 'row',
     backgroundColor: Colors.surface,

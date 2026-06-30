@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useClientData, type ClientPackage } from '@/hooks/useClientData';
 import { useClientAnnouncements } from '@/hooks/useClientAnnouncements';
+import { useClientBookingRequests } from '@/hooks/useBookingRequests';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { supabase } from '@/lib/supabase';
+import { registerPushToken, sendPushNotification } from '@/lib/pushNotifications';
 import { Colors, Typography } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -83,6 +85,32 @@ function PackageCard({ pkg }: { pkg: ClientPackage }) {
         Package started{' '}
         {new Date(pkg.start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
       </Text>
+
+      {pkg.duration_weeks && (() => {
+        const days = Math.max(0, Math.floor((Date.now() - new Date(pkg.start_date + 'T00:00:00').getTime()) / 86_400_000));
+        const currentWeek = Math.min(Math.ceil((days + 1) / 7), pkg.duration_weeks);
+        const rate = pkg.total_sessions / pkg.duration_weeks;
+        const expected = Math.min(pkg.total_sessions, (days / 7) * rate);
+        const onTrack = pkg.sessions_used >= Math.floor(expected);
+        const timelinePct = Math.min(currentWeek / pkg.duration_weeks, 1);
+        const paceLabel = Number.isInteger(rate) ? `${rate}x/week` : `${Math.floor(rate)}-${Math.ceil(rate)}x/week`;
+        return (
+          <View style={styles.timeline}>
+            <View style={styles.timelineHeader}>
+              <Text style={styles.timelineLabel}>SCHEDULE · {paceLabel}</Text>
+              <View style={[styles.timelineTrack, !onTrack && styles.timelineTrackBehind]}>
+                <Text style={[styles.timelineTrackText, !onTrack && { color: '#FFA500' }]}>
+                  {onTrack ? '✓ On Track' : '⚠ Behind'}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.timelineWeek}>Week {currentWeek} of {pkg.duration_weeks}</Text>
+            <View style={styles.timelineBar}>
+              <View style={[styles.timelineFill, { width: `${timelinePct * 100}%` }]} />
+            </View>
+          </View>
+        );
+      })()}
     </View>
   );
 }
@@ -139,17 +167,72 @@ function formatCountdown(secs: number): string {
 
 // ─── Screen ──────────────────────────────────────────────────
 export default function ClientProgressScreen() {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const firstName = profile?.name?.split(' ')[0] ?? 'there';
-  const { pkg, sessions, coachInfo, nextScheduled, loading, error, refetch } = useClientData();
+  const { pkg, sessions, coachInfo, nextScheduled, upcomingScheduled, loading, error, refetch } = useClientData();
   const { announcements } = useClientAnnouncements(pkg?.coach_id ?? null);
+  const { requests: bookingRequests, submitRequest, refetch: refetchRequests } = useClientBookingRequests(
+    pkg?.coach_id ?? null,
+    pkg?.id ?? null,
+  );
 
   const recentSessions = sessions.slice(0, 3);
+
+  // ── Push token registration ─────────────────────────────────
+  useEffect(() => {
+    if (user?.id) registerPushToken(user.id);
+  }, [user?.id]);
+
+  // ── Strike count ────────────────────────────────────────────
+  const [strikeCount, setStrikeCount] = useState(0);
+  useEffect(() => {
+    if (!user?.id || !pkg?.coach_id) return;
+    supabase
+      .from('strikes')
+      .select('id', { count: 'exact' })
+      .eq('client_id', user.id)
+      .eq('coach_id', pkg.coach_id)
+      .then(({ count }) => setStrikeCount(count ?? 0));
+  }, [user?.id, pkg?.coach_id]);
+
+  // ── Booking request modal ────────────────────────────────────
+  const [requestModal, setRequestModal] = useState<'booking' | 'renewal' | null>(null);
+  const [reqDate, setReqDate] = useState('');
+  const [reqTime, setReqTime] = useState('');
+  const [reqNotes, setReqNotes] = useState('');
+  const [submittingRequest, setSubmittingRequest] = useState(false);
+
+  const handleSubmitRequest = async () => {
+    if (!requestModal) return;
+    setSubmittingRequest(true);
+    const { error: reqErr } = await submitRequest({
+      type: requestModal,
+      preferred_date: reqDate || undefined,
+      preferred_time: reqTime || undefined,
+      notes: reqNotes || undefined,
+    });
+    setSubmittingRequest(false);
+    if (reqErr) {
+      Alert.alert('Error', reqErr);
+      return;
+    }
+    // Notify coach
+    if (pkg?.coach_id) {
+      await sendPushNotification(pkg.coach_id, {
+        title: requestModal === 'renewal' ? '🔄 Package Renewal Request' : '📅 Session Booking Request',
+        body: `${profile?.name ?? 'A client'} has sent a ${requestModal === 'renewal' ? 'renewal' : 'booking'} request.`,
+      });
+    }
+    setRequestModal(null);
+    setReqDate(''); setReqTime(''); setReqNotes('');
+    Alert.alert('Sent!', `Your ${requestModal === 'renewal' ? 'renewal' : 'booking'} request has been sent to your coach.`);
+  };
 
   // ── Countdown timer ─────────────────────────────────────────
   const [secondsUntil, setSecondsUntil] = useState<number>(0);
   const [confirming, setConfirming] = useState(false);
   const [localConfirmed, setLocalConfirmed] = useState(false);
+  const [cancelling, setCancelling] = useState<string | null>(null);
 
   useEffect(() => {
     setLocalConfirmed(false);
@@ -176,6 +259,32 @@ export default function ClientProgressScreen() {
     setConfirming(false);
   };
 
+  const handleCancel = (id: string) => {
+    if (cancelling) return;
+    Alert.alert(
+      'Cancel Session',
+      'Are you sure you want to cancel this session?',
+      [
+        { text: 'Keep It', style: 'cancel' },
+        {
+          text: 'Cancel Session', style: 'destructive',
+          onPress: async () => {
+            setCancelling(id);
+            const { data, error: err } = await supabase.rpc('client_cancel_session', { p_session_id: id });
+            setCancelling(null);
+            if (err) {
+              Alert.alert('Error', 'Could not cancel. Please try again.');
+            } else if (data === 'too_late') {
+              Alert.alert('Too Late', 'Sessions can only be cancelled more than 3 hours before they start.');
+            } else {
+              refetch();
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const formatScheduled = (iso: string) => {
     const d = new Date(iso);
     return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
@@ -198,6 +307,99 @@ export default function ClientProgressScreen() {
       </View>
 
       {error && <ErrorBanner message={error} onRetry={refetch} />}
+
+      {/* Strike warning */}
+      {strikeCount > 0 && (
+        <View style={styles.strikeBanner}>
+          <Ionicons name="warning-outline" size={16} color="#FFA500" />
+          <Text style={styles.strikeBannerText}>
+            {strikeCount} of 3 strike{strikeCount !== 1 ? 's' : ''} — 3 strikes deducts 1 session
+          </Text>
+        </View>
+      )}
+
+      {/* Quick actions */}
+      {pkg && coachInfo && (
+        <View style={styles.quickActions}>
+          <Pressable style={styles.quickBtn} onPress={() => setRequestModal('booking')}>
+            <Ionicons name="calendar-outline" size={16} color={Colors.accent} />
+            <Text style={styles.quickBtnText}>Request Session</Text>
+          </Pressable>
+          {(pkg.sessions_remaining <= 2) && (
+            <Pressable style={[styles.quickBtn, styles.quickBtnRenew]} onPress={() => setRequestModal('renewal')}>
+              <Ionicons name="refresh-outline" size={16} color="#4CAF50" />
+              <Text style={[styles.quickBtnText, { color: '#4CAF50' }]}>Renew Package</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+
+      {/* Pending requests (recent) */}
+      {bookingRequests.filter((r) => r.status === 'pending').length > 0 && (
+        <View style={styles.pendingRequestBanner}>
+          <Ionicons name="time-outline" size={14} color={Colors.textSecondary} />
+          <Text style={styles.pendingRequestText}>
+            {bookingRequests.filter((r) => r.status === 'pending').length} request
+            {bookingRequests.filter((r) => r.status === 'pending').length !== 1 ? 's' : ''} pending — waiting for coach
+          </Text>
+        </View>
+      )}
+
+      {/* Booking request modal */}
+      <Modal visible={requestModal !== null} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalSheetHandle} />
+            <Text style={styles.modalSheetTitle}>
+              {requestModal === 'renewal' ? 'Request Package Renewal' : 'Request a Session'}
+            </Text>
+
+            <Text style={styles.reqLabel}>PREFERRED DATE</Text>
+            <TextInput
+              style={styles.reqInput}
+              value={reqDate}
+              onChangeText={setReqDate}
+              placeholder="e.g. July 5, 2025 (optional)"
+              placeholderTextColor={Colors.textSecondary + '60'}
+            />
+
+            <Text style={styles.reqLabel}>PREFERRED TIME</Text>
+            <TextInput
+              style={styles.reqInput}
+              value={reqTime}
+              onChangeText={setReqTime}
+              placeholder="e.g. 9:00 AM (optional)"
+              placeholderTextColor={Colors.textSecondary + '60'}
+            />
+
+            <Text style={styles.reqLabel}>NOTES</Text>
+            <TextInput
+              style={[styles.reqInput, { height: 72, textAlignVertical: 'top' }]}
+              value={reqNotes}
+              onChangeText={setReqNotes}
+              placeholder={requestModal === 'renewal' ? 'Preferred package type or anything else…' : 'Anything specific you want to work on?'}
+              placeholderTextColor={Colors.textSecondary + '60'}
+              multiline
+            />
+
+            <Pressable
+              style={[styles.reqSubmitBtn, submittingRequest && { opacity: 0.5 }]}
+              onPress={handleSubmitRequest}
+              disabled={submittingRequest}
+            >
+              <Text style={styles.reqSubmitBtnText}>
+                {submittingRequest ? 'Sending…' : 'Send Request to Coach'}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={styles.reqCancelBtn}
+              onPress={() => { setRequestModal(null); setReqDate(''); setReqTime(''); setReqNotes(''); }}
+            >
+              <Text style={styles.reqCancelBtnText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       {/* Next scheduled session */}
       {nextScheduled && (
@@ -237,7 +439,86 @@ export default function ClientProgressScreen() {
               <Text style={styles.confirmBtnText}>{confirming ? 'Confirming…' : 'Confirm Attendance'}</Text>
             </Pressable>
           )}
+
+          {/* Cancel button */}
+          {secondsUntil > 10800 ? (
+            <Pressable
+              style={[styles.cancelBtn, cancelling === nextScheduled.id && { opacity: 0.5 }]}
+              onPress={() => handleCancel(nextScheduled.id)}
+              disabled={cancelling === nextScheduled.id}
+            >
+              <Ionicons name="close-circle-outline" size={15} color={Colors.accent} />
+              <Text style={styles.cancelBtnText}>
+                {cancelling === nextScheduled.id ? 'Cancelling…' : 'Cancel Session'}
+              </Text>
+            </Pressable>
+          ) : (
+            <View style={styles.cancelBtnLocked}>
+              <Ionicons name="lock-closed-outline" size={13} color={Colors.textSecondary} />
+              <Text style={styles.cancelBtnLockedText}>Cannot cancel — less than 3 hrs away</Text>
+            </View>
+          )}
         </View>
+      )}
+
+      {/* Additional upcoming sessions */}
+      {upcomingScheduled.length > 1 && (
+        <>
+          <Text style={[styles.sectionTitle, { marginTop: 4 }]}>UPCOMING SESSIONS</Text>
+          {upcomingScheduled.slice(1).map((s) => {
+            const secsUntil = Math.max(0, Math.floor((new Date(s.scheduled_at).getTime() - Date.now()) / 1000));
+            const canCancel = secsUntil > 10800;
+            const isConfirmed = !!s.client_confirmed_at;
+            return (
+              <View key={s.id} style={styles.upcomingCard}>
+                <View style={styles.upcomingCardHeader}>
+                  <View style={styles.upcomingIcon}>
+                    <Ionicons name="calendar-outline" size={15} color={Colors.textSecondary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.upcomingDate}>{formatScheduled(s.scheduled_at)}</Text>
+                    <Text style={styles.upcomingMeta}>{s.duration_minutes} min</Text>
+                  </View>
+                  {isConfirmed && (
+                    <Ionicons name="checkmark-circle" size={18} color="#4CAF50" />
+                  )}
+                </View>
+                <View style={styles.upcomingActions}>
+                  {!isConfirmed && (
+                    <Pressable
+                      style={styles.upcomingConfirmBtn}
+                      onPress={async () => {
+                        const { error: err } = await supabase.rpc('client_confirm_session', { p_session_id: s.id });
+                        if (!err) refetch();
+                        else Alert.alert('Error', 'Could not confirm.');
+                      }}
+                    >
+                      <Ionicons name="checkmark" size={13} color={Colors.bg} />
+                      <Text style={styles.upcomingConfirmBtnText}>Confirm</Text>
+                    </Pressable>
+                  )}
+                  {canCancel ? (
+                    <Pressable
+                      style={[styles.upcomingCancelBtn, cancelling === s.id && { opacity: 0.5 }]}
+                      onPress={() => handleCancel(s.id)}
+                      disabled={cancelling === s.id}
+                    >
+                      <Ionicons name="close" size={13} color={Colors.accent} />
+                      <Text style={styles.upcomingCancelBtnText}>
+                        {cancelling === s.id ? 'Cancelling…' : 'Cancel'}
+                      </Text>
+                    </Pressable>
+                  ) : (
+                    <View style={styles.upcomingLockedCancel}>
+                      <Ionicons name="lock-closed-outline" size={12} color={Colors.textSecondary} />
+                      <Text style={styles.upcomingLockedText}>Too late to cancel</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            );
+          })}
+        </>
       )}
 
       {/* Coach announcements */}
@@ -438,7 +719,23 @@ const styles = StyleSheet.create({
   statLabel:   { ...Typography.label, color: Colors.textSecondary, fontSize: 10 },
   statDivider: { width: 1, height: 28, backgroundColor: Colors.border },
 
-  startDate: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center' },
+  startDate: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center', marginBottom: 16 },
+
+  timeline: {
+    borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: 14,
+  },
+  timelineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  timelineLabel: { ...Typography.label, color: Colors.textSecondary, fontSize: 10 },
+  timelineTrack: {
+    backgroundColor: '#4CAF5015', borderRadius: 6,
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderWidth: 1, borderColor: '#4CAF5040',
+  },
+  timelineTrackBehind: { backgroundColor: '#FFA50015', borderColor: '#FFA50040' },
+  timelineTrackText: { fontSize: 11, fontWeight: '700', color: '#4CAF50' },
+  timelineWeek: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 8 },
+  timelineBar: { height: 4, backgroundColor: Colors.border, borderRadius: 2, overflow: 'hidden' },
+  timelineFill: { height: '100%', backgroundColor: '#4CAF50', borderRadius: 2 },
 
   // Recent sessions
   recentCard: {
@@ -507,6 +804,113 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border,
     justifyContent: 'center', alignItems: 'center',
   },
+
+  // Strike warning
+  strikeBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#FFA50012', borderRadius: 10, padding: 12, marginBottom: 12,
+    borderWidth: 1, borderColor: '#FFA50040',
+  },
+  strikeBannerText: { color: '#FFA500', fontSize: 13, fontWeight: '600', flex: 1 },
+
+  // Quick actions
+  quickActions: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  quickBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    borderRadius: 12, paddingVertical: 10,
+    borderWidth: 1, borderColor: Colors.accent + '50',
+    backgroundColor: Colors.accent + '08',
+  },
+  quickBtnRenew: { borderColor: '#4CAF5050', backgroundColor: '#4CAF5008' },
+  quickBtnText: { color: Colors.accent, fontWeight: '700', fontSize: 13 },
+
+  // Pending requests banner
+  pendingRequestBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    backgroundColor: Colors.surface, borderRadius: 10, padding: 10, marginBottom: 12,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  pendingRequestText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '500' },
+
+  // Booking request modal (bottom sheet)
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 24, paddingBottom: 40,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  modalSheetHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: Colors.border, alignSelf: 'center', marginBottom: 20,
+  },
+  modalSheetTitle: {
+    ...Typography.subtitle, color: Colors.textPrimary,
+    fontWeight: '700', marginBottom: 20,
+  },
+  reqLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: 6, marginTop: 14 },
+  reqInput: {
+    backgroundColor: Colors.bg, borderRadius: 12, borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: 14, paddingVertical: 12, color: Colors.textPrimary, fontSize: 15,
+  },
+  reqSubmitBtn: {
+    backgroundColor: Colors.accent, borderRadius: 14, paddingVertical: 15,
+    alignItems: 'center', marginTop: 20,
+  },
+  reqSubmitBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 16 },
+  reqCancelBtn: { paddingVertical: 12, alignItems: 'center' },
+  reqCancelBtnText: { color: Colors.textSecondary, fontSize: 14 },
+
+  // Cancel button (next session card)
+  cancelBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    borderRadius: 10, paddingVertical: 8,
+    borderWidth: 1, borderColor: Colors.accent + '50',
+  },
+  cancelBtnText: { color: Colors.accent, fontWeight: '700', fontSize: 13 },
+  cancelBtnLocked: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    borderRadius: 10, paddingVertical: 8,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  cancelBtnLockedText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '500' },
+
+  // Upcoming sessions
+  upcomingCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 14, padding: 14,
+    marginBottom: 10,
+    borderWidth: 1, borderColor: Colors.border,
+    gap: 12,
+  },
+  upcomingCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  upcomingIcon: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: Colors.border,
+    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+  },
+  upcomingDate: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', fontSize: 13 },
+  upcomingMeta: { ...Typography.caption, color: Colors.textSecondary, marginTop: 1 },
+  upcomingActions: { flexDirection: 'row', gap: 8 },
+  upcomingConfirmBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    backgroundColor: Colors.accent, borderRadius: 9, paddingVertical: 8,
+  },
+  upcomingConfirmBtnText: { color: Colors.bg, fontWeight: '700', fontSize: 13 },
+  upcomingCancelBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    borderRadius: 9, paddingVertical: 8,
+    borderWidth: 1, borderColor: Colors.accent + '50',
+  },
+  upcomingCancelBtnText: { color: Colors.accent, fontWeight: '700', fontSize: 13 },
+  upcomingLockedCancel: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    borderRadius: 9, paddingVertical: 8,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  upcomingLockedText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '500' },
 
   // Empty states
   emptyCard: {

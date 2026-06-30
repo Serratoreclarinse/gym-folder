@@ -1,7 +1,9 @@
-import { RefreshControl, ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
-import { useState } from 'react';
+import { Alert, Modal, RefreshControl, ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
+import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useClientData, type ClientSession } from '@/hooks/useClientData';
+import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { Colors, Typography } from '@/constants/theme';
 
@@ -31,7 +33,11 @@ function ExerciseRow({ name, sets, reps, weight, notes }: {
 }
 
 // ─── Session card ────────────────────────────────────────────
-function SessionCard({ session }: { session: ClientSession }) {
+function SessionCard({ session, showRateBadge, onRate }: {
+  session: ClientSession;
+  showRateBadge?: boolean;
+  onRate?: () => void;
+}) {
   const isNoShow = session.status === 'absent';
   const date = new Date(session.session_date).toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
@@ -81,6 +87,13 @@ function SessionCard({ session }: { session: ClientSession }) {
           <Text style={styles.notesText}>{session.notes}</Text>
         </View>
       ) : null}
+
+      {showRateBadge && onRate && !isNoShow && (
+        <Pressable style={styles.ratePromptBtn} onPress={onRate}>
+          <Ionicons name="star-outline" size={14} color="#FFD700" />
+          <Text style={styles.ratePromptText}>Rate this session</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -91,12 +104,11 @@ function groupByMonth(sessions: ClientSession[]): { label: string; key: string; 
   for (const s of sessions) {
     const d = new Date(s.session_date + 'T00:00:00');
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(s);
   }
   return Array.from(map.entries())
-    .sort((a, b) => b[0].localeCompare(a[0])) // newest month first
+    .sort((a, b) => b[0].localeCompare(a[0]))
     .map(([key, items]) => ({
       key,
       label: new Date(key + '-01T00:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
@@ -106,12 +118,49 @@ function groupByMonth(sessions: ClientSession[]): { label: string; key: string; 
 
 // ─── Screen ──────────────────────────────────────────────────
 export default function ClientWorkoutsScreen() {
+  const { user } = useAuth();
   const { sessions, loading, error, refetch } = useClientData();
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
 
+  // ── Session rating ───────────────────────────────────────────
+  const [unratedSession, setUnratedSession] = useState<ClientSession | null>(null);
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [selectedRating, setSelectedRating] = useState(0);
+  const [submittingRating, setSubmittingRating] = useState(false);
+
+  useEffect(() => {
+    if (sessions.length === 0) return;
+    const recent = sessions[0];
+    if (recent.status === 'absent') return;
+    const sessionDate = new Date(recent.session_date + 'T00:00:00');
+    const diffHours = (Date.now() - sessionDate.getTime()) / 3600000;
+    if (diffHours > 48) return;
+    supabase
+      .from('session_ratings')
+      .select('id')
+      .eq('session_id', recent.id)
+      .maybeSingle()
+      .then(({ data }) => { if (!data) setUnratedSession(recent); });
+  }, [sessions]);
+
+  const handleSubmitRating = async () => {
+    if (!unratedSession || selectedRating === 0 || !user?.id) return;
+    setSubmittingRating(true);
+    const { error: rErr } = await supabase.from('session_ratings').insert({
+      session_id: unratedSession.id,
+      client_id: user.id,
+      coach_id: unratedSession.coach_id,
+      rating: selectedRating,
+    });
+    setSubmittingRating(false);
+    if (rErr) { Alert.alert('Error', 'Could not save rating. Please try again.'); return; }
+    setShowRatingModal(false);
+    setUnratedSession(null);
+    setSelectedRating(0);
+  };
+
   const allGroups = groupByMonth(sessions);
   const confirmedSessions = sessions.filter((s) => s.status !== 'absent');
-
   const displayedGroups = selectedMonth
     ? allGroups.filter((g) => g.key === selectedMonth)
     : allGroups;
@@ -190,9 +239,55 @@ export default function ClientWorkoutsScreen() {
             <Text style={styles.monthLabel}>{label.toUpperCase()}</Text>
             <Text style={styles.monthCount}>{items.length} session{items.length !== 1 ? 's' : ''}</Text>
           </View>
-          {items.map((s) => <SessionCard key={s.id} session={s} />)}
+          {items.map((s) => (
+            <SessionCard
+              key={s.id}
+              session={s}
+              showRateBadge={unratedSession?.id === s.id}
+              onRate={() => { setSelectedRating(0); setShowRatingModal(true); }}
+            />
+          ))}
         </View>
       ))}
+
+      {/* Rating modal */}
+      <Modal visible={showRatingModal} transparent animationType="fade">
+        <View style={styles.ratingBg}>
+          <View style={styles.ratingCard}>
+            <Ionicons name="star" size={32} color="#FFD700" style={{ alignSelf: 'center', marginBottom: 12 }} />
+            <Text style={styles.ratingTitle}>How was your session?</Text>
+            <Text style={styles.ratingSub}>Your rating helps your coach improve</Text>
+
+            <View style={styles.starsRow}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Pressable key={star} onPress={() => setSelectedRating(star)} hitSlop={8}>
+                  <Ionicons
+                    name={star <= selectedRating ? 'star' : 'star-outline'}
+                    size={44}
+                    color={star <= selectedRating ? '#FFD700' : Colors.border}
+                  />
+                </Pressable>
+              ))}
+            </View>
+
+            <View style={styles.ratingBtns}>
+              <Pressable
+                style={styles.ratingSkipBtn}
+                onPress={() => { setShowRatingModal(false); setSelectedRating(0); }}
+              >
+                <Text style={styles.ratingSkipText}>Maybe Later</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.ratingSubmitBtn, (selectedRating === 0 || submittingRating) && { opacity: 0.4 }]}
+                onPress={handleSubmitRating}
+                disabled={selectedRating === 0 || submittingRating}
+              >
+                <Text style={styles.ratingSubmitText}>{submittingRating ? 'Saving…' : 'Submit'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -201,7 +296,6 @@ const styles = StyleSheet.create({
   scroll:  { flex: 1, backgroundColor: Colors.bg },
   content: { padding: 20, paddingBottom: 48 },
 
-  // Summary chips
   summaryRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
   summaryChip: {
     flex: 1, backgroundColor: Colors.surface, borderRadius: 14,
@@ -210,7 +304,6 @@ const styles = StyleSheet.create({
   summaryNum:   { ...Typography.subtitle, color: Colors.accent, marginBottom: 2 },
   summaryLabel: { ...Typography.label, color: Colors.textSecondary, fontSize: 10, textAlign: 'center' },
 
-  // Month filter
   filterRow: { marginBottom: 20 },
   filterContent: { gap: 8, paddingRight: 4 },
   filterChip: {
@@ -221,7 +314,6 @@ const styles = StyleSheet.create({
   filterChipText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
   filterChipTextActive: { color: Colors.bg },
 
-  // Month group
   monthHeader: {
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'center', marginBottom: 12, marginTop: 4,
@@ -229,7 +321,6 @@ const styles = StyleSheet.create({
   monthLabel: { ...Typography.label, color: Colors.textSecondary },
   monthCount: { ...Typography.caption, color: Colors.textSecondary },
 
-  // Session card
   card: {
     backgroundColor: Colors.surface, borderRadius: 18,
     padding: 16, marginBottom: 12, borderWidth: 1, borderColor: Colors.border,
@@ -256,7 +347,6 @@ const styles = StyleSheet.create({
   noShowBadgeText: { color: '#FFA500', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
   noShowNote: { ...Typography.caption, color: '#FFA500', fontStyle: 'italic' },
 
-  // Exercise list
   exList:  { gap: 10 },
   exRow:   { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   exBullet: {
@@ -269,7 +359,6 @@ const styles = StyleSheet.create({
   exNotes: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic', marginTop: 1 },
   noExercises: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic' },
 
-  // Session notes
   notesBox: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 6,
     backgroundColor: Colors.bg, borderRadius: 10, padding: 10,
@@ -277,7 +366,38 @@ const styles = StyleSheet.create({
   },
   notesText: { ...Typography.caption, color: Colors.textSecondary, flex: 1, lineHeight: 18 },
 
-  // Empty state
+  // Rate prompt button (on session card)
+  ratePromptBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: Colors.border,
+    justifyContent: 'center',
+  },
+  ratePromptText: { color: '#FFD700', fontWeight: '700', fontSize: 13 },
+
+  // Rating modal
+  ratingBg: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'center', alignItems: 'center', padding: 24,
+  },
+  ratingCard: {
+    width: '100%', backgroundColor: Colors.surface, borderRadius: 24,
+    padding: 28, borderWidth: 1, borderColor: Colors.border,
+  },
+  ratingTitle: { ...Typography.subtitle, color: Colors.textPrimary, textAlign: 'center', marginBottom: 4 },
+  ratingSub:   { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center', marginBottom: 24 },
+  starsRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 28 },
+  ratingBtns: { flexDirection: 'row', gap: 10 },
+  ratingSkipBtn: {
+    flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  ratingSkipText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '600' },
+  ratingSubmitBtn: {
+    flex: 2, paddingVertical: 14, borderRadius: 12, alignItems: 'center',
+    backgroundColor: '#FFD700',
+  },
+  ratingSubmitText: { color: '#000', fontSize: 14, fontWeight: '800' },
+
   emptyState: { alignItems: 'center', paddingTop: 80, gap: 10 },
   emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 12 },
   emptySub:   { ...Typography.body, color: Colors.textSecondary, textAlign: 'center' },
