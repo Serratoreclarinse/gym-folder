@@ -14,7 +14,6 @@ import { getDaysUntilBirthday } from '@/hooks/useBirthdays';
 import { useAnnouncements } from '@/hooks/useAnnouncements';
 import { useActiveSessionContext } from '@/context/ActiveSessionContext';
 import { ActiveSessionCard } from '@/components/ActiveSessionCard';
-import { ImpromptuSessionModal } from '@/components/ImpromptuSessionModal';
 import { NoShowModal } from '@/components/NoShowModal';
 import { NextSessionCard } from '@/components/NextSessionCard';
 import { ErrorBanner } from '@/components/ErrorBanner';
@@ -109,7 +108,6 @@ export default function CoachDashboard() {
   const { requests: bookingRequests, refetch: refetchBookingReqs, respond: respondToRequest } = useCoachBookingRequests();
   const { pinnedAnnouncement, togglePin } = useAnnouncements();
   const { activeSession, nextSession, extendSession, endSession, cancelSession, pauseSession, resumeSession, refetch: refetchTimer } = useActiveSessionContext();
-  const [impromptuVisible, setImpromptuVisible] = useState(false);
   const [noShowVisible, setNoShowVisible] = useState(false);
   const [pausedWorkout, setPausedWorkout] = useState<any | null>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -219,7 +217,19 @@ export default function CoachDashboard() {
           <Text style={styles.statLabel}>This Week</Text>
         </View>
       </View>
+    </View>
 
+    <NoShowModal
+      visible={noShowVisible}
+      onClose={() => setNoShowVisible(false)}
+      onLogged={() => { refetchSessions(); refetchClients(); }}
+    />
+
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}
+    >
       {/* 2×2 Quick actions */}
       <View style={styles.actionsGrid}>
         <Pressable
@@ -231,7 +241,7 @@ export default function CoachDashboard() {
         </Pressable>
         <Pressable
           style={({ pressed }) => [styles.actionBtn, styles.actionOrange, pressed && { opacity: 0.85 }]}
-          onPress={() => setImpromptuVisible(true)}
+          onPress={() => router.push({ pathname: '/(coach)/log-session', params: { mode: 'quick' } } as any)}
         >
           <Ionicons name="flash" size={20} color="#fff" />
           <Text style={styles.actionWhiteText}>QUICK</Text>
@@ -259,23 +269,7 @@ export default function CoachDashboard() {
         <Ionicons name="warning-outline" size={18} color="#fff" />
         <Text style={styles.emergencyBtnText}>EMERGENCY NOTICE</Text>
       </Pressable>
-    </View>
 
-    <ImpromptuSessionModal
-      visible={impromptuVisible}
-      onClose={() => setImpromptuVisible(false)}
-    />
-    <NoShowModal
-      visible={noShowVisible}
-      onClose={() => setNoShowVisible(false)}
-      onLogged={() => { refetchSessions(); refetchClients(); }}
-    />
-
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}
-    >
       {/* Resume paused workout */}
       {pausedWorkout && (
         <Pressable
@@ -543,7 +537,7 @@ const styles = StyleSheet.create({
   statValue: { ...Typography.title, color: Colors.textPrimary, fontSize: 22, fontWeight: '800' },
   statLabel: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
   statDiv: { width: 1, height: 32, backgroundColor: Colors.border },
-  actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
+  actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4, marginBottom: 12 },
   actionBtn: {
     width: '47.5%', flexDirection: 'row', alignItems: 'center',
     justifyContent: 'center', gap: 8,

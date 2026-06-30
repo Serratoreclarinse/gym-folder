@@ -35,6 +35,7 @@ type Exercise = {
   isSuperset: boolean;
 };
 
+const QUICK_DURATIONS = [30, 45, 60, 90] as const;
 const todayISO = () => new Date().toISOString().split('T')[0];
 const uid = () => Math.random().toString(36).slice(2);
 const blankExercise = (): Exercise => ({ id: uid(), exercise_name: '', sets: '', reps: '', weight: '', duration: '', notes: '', isSuperset: false });
@@ -289,7 +290,7 @@ const calStyles = StyleSheet.create({
 
 export default function LogSessionScreen() {
   const { profile } = useAuth();
-  const params = useLocalSearchParams<{ clientId?: string; date?: string }>();
+  const params = useLocalSearchParams<{ clientId?: string; date?: string; mode?: string }>();
   const { clients } = useClients();
   const { history: exerciseHistory } = useExerciseHistory();
   const { templates, markUsed } = useTemplates();
@@ -301,6 +302,7 @@ export default function LogSessionScreen() {
   const [exercises, setExercises] = useState<Exercise[]>([blankExercise()]);
   const [sessionTime, setSessionTime] = useState(currentTimeStr());
   const [sessionNotes, setSessionNotes] = useState('');
+  const [mode, setMode] = useState<'full' | 'quick'>(params.mode === 'quick' ? 'quick' : 'full');
   const [loading, setLoading] = useState(false);
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -379,13 +381,13 @@ export default function LogSessionScreen() {
   };
 
   const canSave =
-    selectedClientId &&
-    pkg &&
+    !!selectedClientId &&
+    !!pkg &&
     pkg.status === 'active' &&
     pkg.sessions_remaining > 0 &&
-    sessionDate &&
+    !!sessionDate &&
     Number(duration) > 0 &&
-    exercises.some((e) => e.exercise_name.trim());
+    (mode === 'quick' || exercises.some((e) => e.exercise_name.trim()));
 
   const handleSave = async () => {
     if (!canSave || !profile?.id || !pkg) return;
@@ -537,6 +539,24 @@ export default function LogSessionScreen() {
     <KeyboardAvoidingView style={styles.kav} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
+        {/* Mode toggle */}
+        <View style={styles.modeToggle}>
+          <Pressable
+            style={[styles.modeBtn, mode === 'full' && styles.modeBtnActive]}
+            onPress={() => setMode('full')}
+          >
+            <Ionicons name="list-outline" size={15} color={mode === 'full' ? Colors.bg : Colors.textSecondary} />
+            <Text style={[styles.modeBtnText, mode === 'full' && styles.modeBtnTextActive]}>FULL LOG</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.modeBtn, mode === 'quick' && styles.modeBtnActive]}
+            onPress={() => setMode('quick')}
+          >
+            <Ionicons name="flash" size={15} color={mode === 'quick' ? Colors.bg : Colors.textSecondary} />
+            <Text style={[styles.modeBtnText, mode === 'quick' && styles.modeBtnTextActive]}>QUICK</Text>
+          </Pressable>
+        </View>
+
         {/* Client picker */}
         <Text style={styles.sectionTitle}>CLIENT</Text>
         <Pressable style={styles.pickerBtn} onPress={() => setShowClientPicker((v) => !v)}>
@@ -591,73 +611,114 @@ export default function LogSessionScreen() {
           </View>
         )}
 
-        {/* Date + Duration */}
+        {/* SESSION DETAILS */}
         <Text style={[styles.sectionTitle, { marginTop: 24 }]}>SESSION DETAILS</Text>
-        <View style={styles.field}>
-          <Text style={styles.label}>DATE</Text>
-          <Pressable style={styles.dateTrigger} onPress={() => setShowCalendar(v => !v)}>
-            <Ionicons name="calendar-outline" size={16} color={Colors.accent} />
-            <Text style={styles.dateTriggerText}>
-              {new Date(sessionDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-            </Text>
-            <Ionicons name={showCalendar ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.textSecondary} />
-          </Pressable>
-          {showCalendar && (
-            <CalendarPicker
-              value={sessionDate}
-              onChange={(iso) => { setSessionDate(iso); setShowCalendar(false); }}
-            />
-          )}
-        </View>
-        <View style={styles.field}>
-          <Text style={styles.label}>DURATION (MIN)</Text>
-          <TextInput
-            style={styles.input}
-            value={duration}
-            onChangeText={(v) => setDuration(v.replace(/[^0-9]/g, ''))}
-            keyboardType="number-pad"
-            placeholder="60"
-            placeholderTextColor={Colors.textSecondary}
-          />
-        </View>
 
-        {/* Session type — Gym vs Home */}
-        <View style={styles.field}>
-          <Text style={styles.label}>SESSION TYPE</Text>
-          <View style={styles.typeRow}>
-            {(['gym', 'home'] as const).map((t) => (
-              <Pressable
-                key={t}
-                style={[styles.typeBtn, sessionType === t && styles.typeBtnActive]}
-                onPress={() => setSessionType(t)}
-              >
-                <Ionicons
-                  name={t === 'gym' ? 'barbell-outline' : 'home-outline'}
-                  size={16}
-                  color={sessionType === t ? Colors.bg : Colors.textSecondary}
-                />
-                <Text style={[styles.typeBtnText, sessionType === t && styles.typeBtnTextActive]}>
-                  {t === 'gym' ? 'Gym' : 'Home'}
+        {mode === 'quick' ? (
+          <>
+            <View style={styles.field}>
+              <Text style={styles.label}>DURATION</Text>
+              <View style={styles.typeRow}>
+                {QUICK_DURATIONS.map((d) => (
+                  <Pressable
+                    key={d}
+                    style={[styles.typeBtn, duration === String(d) && styles.typeBtnActive]}
+                    onPress={() => setDuration(String(d))}
+                  >
+                    <Text style={[styles.typeBtnText, duration === String(d) && styles.typeBtnTextActive]}>
+                      {d}m
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+            <View style={styles.field}>
+              <Text style={styles.label}>SESSION TYPE</Text>
+              <View style={styles.typeRow}>
+                {(['gym', 'home'] as const).map((t) => (
+                  <Pressable
+                    key={t}
+                    style={[styles.typeBtn, sessionType === t && styles.typeBtnActive]}
+                    onPress={() => setSessionType(t)}
+                  >
+                    <Ionicons
+                      name={t === 'gym' ? 'barbell-outline' : 'home-outline'}
+                      size={16}
+                      color={sessionType === t ? Colors.bg : Colors.textSecondary}
+                    />
+                    <Text style={[styles.typeBtnText, sessionType === t && styles.typeBtnTextActive]}>
+                      {t === 'gym' ? 'Gym' : 'Home'}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          </>
+        ) : (
+          <>
+            <View style={styles.field}>
+              <Text style={styles.label}>DATE</Text>
+              <Pressable style={styles.dateTrigger} onPress={() => setShowCalendar(v => !v)}>
+                <Ionicons name="calendar-outline" size={16} color={Colors.accent} />
+                <Text style={styles.dateTriggerText}>
+                  {new Date(sessionDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
                 </Text>
+                <Ionicons name={showCalendar ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.textSecondary} />
               </Pressable>
-            ))}
-          </View>
-        </View>
+              {showCalendar && (
+                <CalendarPicker
+                  value={sessionDate}
+                  onChange={(iso) => { setSessionDate(iso); setShowCalendar(false); }}
+                />
+              )}
+            </View>
+            <View style={styles.field}>
+              <Text style={styles.label}>DURATION (MIN)</Text>
+              <TextInput
+                style={styles.input}
+                value={duration}
+                onChangeText={(v) => setDuration(v.replace(/[^0-9]/g, ''))}
+                keyboardType="number-pad"
+                placeholder="60"
+                placeholderTextColor={Colors.textSecondary}
+              />
+            </View>
+            <View style={styles.field}>
+              <Text style={styles.label}>SESSION TYPE</Text>
+              <View style={styles.typeRow}>
+                {(['gym', 'home'] as const).map((t) => (
+                  <Pressable
+                    key={t}
+                    style={[styles.typeBtn, sessionType === t && styles.typeBtnActive]}
+                    onPress={() => setSessionType(t)}
+                  >
+                    <Ionicons
+                      name={t === 'gym' ? 'barbell-outline' : 'home-outline'}
+                      size={16}
+                      color={sessionType === t ? Colors.bg : Colors.textSecondary}
+                    />
+                    <Text style={[styles.typeBtnText, sessionType === t && styles.typeBtnTextActive]}>
+                      {t === 'gym' ? 'Gym' : 'Home'}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+            <View style={styles.field}>
+              <Text style={styles.label}>START TIME (OPTIONAL)</Text>
+              <TextInput
+                style={styles.input}
+                value={sessionTime}
+                onChangeText={setSessionTime}
+                placeholder="e.g. 09:00 AM"
+                placeholderTextColor={Colors.textSecondary}
+              />
+            </View>
+          </>
+        )}
 
-        {/* Start time (optional) */}
-        <View style={styles.field}>
-          <Text style={styles.label}>START TIME (OPTIONAL)</Text>
-          <TextInput
-            style={styles.input}
-            value={sessionTime}
-            onChangeText={setSessionTime}
-            placeholder="e.g. 09:00 AM"
-            placeholderTextColor={Colors.textSecondary}
-          />
-        </View>
-
-        {/* Exercises */}
-        <View style={styles.exHeader}>
+        {/* Exercises — full mode only */}
+        {mode === 'full' && <View style={styles.exHeader}>
           <Text style={styles.sectionTitle}>EXERCISES</Text>
           <View style={styles.exHeaderBtns}>
             {templates.length > 0 && (
@@ -677,9 +738,9 @@ export default function LogSessionScreen() {
               <Text style={styles.addExBtnText}>ADD</Text>
             </Pressable>
           </View>
-        </View>
+        </View>}
 
-        {exercises.map((ex, i) => (
+        {mode === 'full' && exercises.map((ex, i) => (
           <ExerciseCard
             key={ex.id}
             exercise={ex}
@@ -710,18 +771,22 @@ export default function LogSessionScreen() {
           onPress={handleSave}
           disabled={!canSave || loading}
         >
-          <Text style={styles.saveBtnText}>{loading ? 'SAVING…' : 'SAVE SESSION'}</Text>
+          <Text style={styles.saveBtnText}>
+            {loading ? 'SAVING…' : mode === 'quick' ? 'START QUICK SESSION' : 'SAVE SESSION'}
+          </Text>
         </Pressable>
 
-        {/* Start Workout button */}
-        <Pressable
-          style={[styles.startWorkoutBtn, !canSave && styles.saveBtnDisabled]}
-          onPress={handleStartWorkout}
-          disabled={!canSave || loading}
-        >
-          <Ionicons name="play-circle-outline" size={20} color={Colors.accent} />
-          <Text style={styles.startWorkoutBtnText}>START WORKOUT</Text>
-        </Pressable>
+        {/* Start Workout button — full mode only */}
+        {mode === 'full' && (
+          <Pressable
+            style={[styles.startWorkoutBtn, !canSave && styles.saveBtnDisabled]}
+            onPress={handleStartWorkout}
+            disabled={!canSave || loading}
+          >
+            <Ionicons name="play-circle-outline" size={20} color={Colors.accent} />
+            <Text style={styles.startWorkoutBtnText}>START WORKOUT</Text>
+          </Pressable>
+        )}
       </ScrollView>
 
       {/* Template Picker Modal */}
@@ -841,6 +906,11 @@ const styles = StyleSheet.create({
   kav: { flex: 1, backgroundColor: Colors.bg },
   scroll: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
+  modeToggle: { flexDirection: 'row', backgroundColor: Colors.surface, borderRadius: 12, padding: 4, marginBottom: 24, borderWidth: 1, borderColor: Colors.border },
+  modeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 9 },
+  modeBtnActive: { backgroundColor: Colors.accent },
+  modeBtnText: { color: Colors.textSecondary, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
+  modeBtnTextActive: { color: Colors.bg },
   sectionTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 12 },
   pickerBtn: {
     flexDirection: 'row',
