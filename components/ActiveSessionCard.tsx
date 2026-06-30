@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ActiveSession, NextSession } from '@/hooks/useActiveSession';
+import { QRScanModal } from '@/components/QRScanModal';
 import { Colors, Typography } from '@/constants/theme';
 
 // ── Extend modal — at module scope (has TextInputs) ─────────────────────────
@@ -206,6 +207,8 @@ export function ActiveSessionCard({
   );
   const [showExtend, setShowExtend] = useState(false);
   const [showTimesUp, setShowTimesUp] = useState(false);
+  const [showQRScan, setShowQRScan] = useState(false);
+  const [checkedIn, setCheckedIn] = useState(false);
   const alerted5Ref = useRef(false);
   const timesUpFiredRef = useRef(false);
 
@@ -358,6 +361,23 @@ export function ActiveSessionCard({
             <Text style={s.extendBtnText}>EXTEND TIME</Text>
           </Pressable>
           <Pressable
+            style={({ pressed }) => [
+              s.checkInBtn,
+              checkedIn && s.checkInBtnDone,
+              pressed && { opacity: 0.75 },
+            ]}
+            onPress={() => !checkedIn && setShowQRScan(true)}
+          >
+            <Ionicons
+              name={checkedIn ? 'checkmark-circle' : 'qr-code-outline'}
+              size={16}
+              color={checkedIn ? '#4CAF50' : '#888'}
+            />
+            <Text style={[s.checkInBtnText, checkedIn && s.checkInBtnTextDone]}>
+              {checkedIn ? 'CLIENT CHECKED IN' : 'SCAN CLIENT QR'}
+            </Text>
+          </Pressable>
+          <Pressable
             style={({ pressed }) => [s.cancelBtn, pressed && { opacity: 0.6 }]}
             onPress={handleCancelSession}
           >
@@ -380,6 +400,14 @@ export function ActiveSessionCard({
         clientName={activeSession.client_name}
         onExtend={() => { setShowTimesUp(false); setShowExtend(true); }}
         onEnd={() => { setShowTimesUp(false); handleEndSession(); }}
+      />
+
+      <QRScanModal
+        visible={showQRScan}
+        clientName={activeSession.client_name}
+        expectedClientId={activeSession.client_id}
+        onConfirm={() => { setShowQRScan(false); setCheckedIn(true); }}
+        onCancel={() => setShowQRScan(false)}
       />
     </>
   );
@@ -435,6 +463,14 @@ const s = StyleSheet.create({
     paddingVertical: 10,
   },
   endBtnText: { color: Colors.textPrimary, fontWeight: '700', fontSize: 13, letterSpacing: 0.5 },
+  checkInBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    borderWidth: 1.5, borderColor: Colors.border, borderRadius: 10,
+    paddingVertical: 10, backgroundColor: Colors.surface,
+  },
+  checkInBtnDone: { borderColor: '#4CAF5060', backgroundColor: '#4CAF5010' },
+  checkInBtnText: { color: Colors.textSecondary, fontWeight: '800', fontSize: 13, letterSpacing: 0.5 },
+  checkInBtnTextDone: { color: '#4CAF50' },
   cancelBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
     paddingVertical: 8,

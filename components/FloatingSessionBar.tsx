@@ -4,6 +4,7 @@ import { usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useActiveSessionContext } from '@/context/ActiveSessionContext';
+import { QRScanModal } from '@/components/QRScanModal';
 import { Colors, Typography } from '@/constants/theme';
 
 const TAB_BAR_HEIGHT = 58;
@@ -13,6 +14,8 @@ export function FloatingSessionBar() {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const [remainingSecs, setRemainingSecs] = useState(0);
+  const [showQRScan, setShowQRScan] = useState(false);
+  const [checkedIn, setCheckedIn] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -52,54 +55,77 @@ export function FloatingSessionBar() {
     ]);
 
   return (
-    <View
-      pointerEvents="box-none"
-      style={[s.wrapper, { bottom: TAB_BAR_HEIGHT + insets.bottom }]}
-    >
-      <View style={[s.bar, isRed && s.barRed]}>
-        <View
-          style={[
-            s.stripe,
-            {
-              backgroundColor: isPaused
-                ? Colors.textSecondary
-                : isRed
-                  ? Colors.accent
-                  : '#4CAF50',
-            },
-          ]}
-        />
-
-        <View style={s.info}>
-          <Text style={s.clientName} numberOfLines={1}>
-            {activeSession.client_name}
-          </Text>
-          <Text style={[s.timer, isPaused && s.timerPaused, isRed && s.timerRed]}>
-            {timeDisplay}
-          </Text>
-        </View>
-
-        <Pressable
-          style={({ pressed }) => [s.iconBtn, pressed && { opacity: 0.5 }]}
-          onPress={() => (isPaused ? resumeSession() : pauseSession())}
-          hitSlop={10}
-        >
-          <Ionicons
-            name={isPaused ? 'play' : 'pause'}
-            size={18}
-            color={Colors.textPrimary}
+    <>
+      <View
+        pointerEvents="box-none"
+        style={[s.wrapper, { bottom: TAB_BAR_HEIGHT + insets.bottom }]}
+      >
+        <View style={[s.bar, isRed && s.barRed]}>
+          <View
+            style={[
+              s.stripe,
+              {
+                backgroundColor: isPaused
+                  ? Colors.textSecondary
+                  : isRed
+                    ? Colors.accent
+                    : '#4CAF50',
+              },
+            ]}
           />
-        </Pressable>
 
-        <Pressable
-          style={({ pressed }) => [s.iconBtn, pressed && { opacity: 0.5 }]}
-          onPress={handleEnd}
-          hitSlop={10}
-        >
-          <Ionicons name="stop-circle-outline" size={20} color={Colors.danger} />
-        </Pressable>
+          <View style={s.info}>
+            <Text style={s.clientName} numberOfLines={1}>
+              {activeSession.client_name}
+            </Text>
+            <Text style={[s.timer, isPaused && s.timerPaused, isRed && s.timerRed]}>
+              {timeDisplay}
+            </Text>
+          </View>
+
+          {/* QR check-in */}
+          <Pressable
+            style={({ pressed }) => [s.iconBtn, pressed && { opacity: 0.5 }]}
+            onPress={() => !checkedIn && setShowQRScan(true)}
+            hitSlop={10}
+          >
+            <Ionicons
+              name={checkedIn ? 'checkmark-circle' : 'qr-code-outline'}
+              size={19}
+              color={checkedIn ? '#4CAF50' : Colors.textSecondary}
+            />
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [s.iconBtn, pressed && { opacity: 0.5 }]}
+            onPress={() => (isPaused ? resumeSession() : pauseSession())}
+            hitSlop={10}
+          >
+            <Ionicons
+              name={isPaused ? 'play' : 'pause'}
+              size={18}
+              color={Colors.textPrimary}
+            />
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [s.iconBtn, pressed && { opacity: 0.5 }]}
+            onPress={handleEnd}
+            hitSlop={10}
+          >
+            <Ionicons name="stop-circle-outline" size={20} color={Colors.danger} />
+          </Pressable>
+        </View>
       </View>
-    </View>
+
+      <QRScanModal
+        visible={showQRScan}
+        clientName={activeSession.client_name}
+        expectedClientId={activeSession.client_id}
+        onConfirm={() => { setShowQRScan(false); setCheckedIn(true); }}
+        onCancel={() => setShowQRScan(false)}
+      />
+    </>
   );
 }
 

@@ -230,7 +230,7 @@ export default function CoachDashboard() {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}
     >
-      {/* 2×2 Quick actions */}
+      {/* Quick actions */}
       <View style={styles.actionsGrid}>
         <Pressable
           style={({ pressed }) => [styles.actionBtn, styles.actionPrimary, pressed && { opacity: 0.85 }]}
@@ -240,25 +240,11 @@ export default function CoachDashboard() {
           <Text style={styles.actionPrimaryText}>LOG SESSION</Text>
         </Pressable>
         <Pressable
-          style={({ pressed }) => [styles.actionBtn, styles.actionOrange, pressed && { opacity: 0.85 }]}
-          onPress={() => router.push({ pathname: '/(coach)/log-session', params: { mode: 'quick' } } as any)}
-        >
-          <Ionicons name="flash" size={20} color="#fff" />
-          <Text style={styles.actionWhiteText}>QUICK</Text>
-        </Pressable>
-        <Pressable
           style={({ pressed }) => [styles.actionBtn, styles.actionBorder, pressed && { opacity: 0.85 }]}
           onPress={() => setNoShowVisible(true)}
         >
           <Ionicons name="person-remove-outline" size={20} color="#FFA500" />
           <Text style={styles.actionWarningText}>NO-SHOW</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.actionBtn, styles.actionBorder, pressed && { opacity: 0.85 }]}
-          onPress={() => router.push('/(coach)/revenue')}
-        >
-          <Ionicons name="bar-chart-outline" size={20} color={Colors.accent} />
-          <Text style={styles.actionAccentText}>REVENUE</Text>
         </Pressable>
       </View>
 
@@ -545,11 +531,8 @@ const styles = StyleSheet.create({
   },
   actionPrimary: { backgroundColor: Colors.accent },
   actionPrimaryText: { color: Colors.bg, fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
-  actionOrange: { backgroundColor: '#FF8C00' },
-  actionWhiteText: { color: '#fff', fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
   actionBorder: { backgroundColor: Colors.surface, borderWidth: 1.5, borderColor: Colors.border },
   actionWarningText: { color: '#FFA500', fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
-  actionAccentText: { color: Colors.accent, fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
   sectionTitle: { ...Typography.label, color: Colors.textSecondary },
   strikeSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   strikeBadge: {

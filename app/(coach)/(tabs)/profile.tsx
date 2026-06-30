@@ -213,13 +213,24 @@ export default function CoachProfileScreen() {
       </View>
       <View style={styles.infoSection}>
         <Pressable
-          style={({ pressed }) => [styles.infoRow, pressed && { opacity: 0.7 }]}
+          style={({ pressed }) => [styles.infoRow, styles.infoRowBorder, pressed && { opacity: 0.7 }]}
           onPress={() => router.push('/(coach)/availability')}
         >
           <Ionicons name="calendar-outline" size={18} color={Colors.textSecondary} style={styles.rowIcon} />
           <View style={styles.rowContent}>
             <Text style={styles.infoLabel}>AVAILABILITY</Text>
             <Text style={styles.infoValue}>Set your weekly schedule & blocked dates</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={14} color={Colors.textSecondary} />
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.infoRow, pressed && { opacity: 0.7 }]}
+          onPress={() => router.push('/(coach)/revenue')}
+        >
+          <Ionicons name="bar-chart-outline" size={18} color={Colors.textSecondary} style={styles.rowIcon} />
+          <View style={styles.rowContent}>
+            <Text style={styles.infoLabel}>REVENUE</Text>
+            <Text style={styles.infoValue}>Earnings, packages & session breakdown</Text>
           </View>
           <Ionicons name="chevron-forward" size={14} color={Colors.textSecondary} />
         </Pressable>

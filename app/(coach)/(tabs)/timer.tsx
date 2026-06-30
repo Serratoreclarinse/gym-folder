@@ -2,6 +2,7 @@ import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -165,7 +166,7 @@ export default function TimerScreen() {
   const ringColor = isDone ? '#4CAF50' : isWarning ? '#FFA500' : Colors.accent;
 
   return (
-    <View style={styles.container}>
+    <Pressable style={styles.container} onPress={Keyboard.dismiss} accessible={false}>
 
       {/* Preset buttons */}
       <View style={styles.presets}>
@@ -191,7 +192,9 @@ export default function TimerScreen() {
             value={customSeconds}
             onChangeText={handleCustomChange}
             onBlur={handleCustomBlur}
+            onSubmitEditing={handleCustomBlur}
             keyboardType="number-pad"
+            returnKeyType="done"
             maxLength={4}
             selectTextOnFocus
           />
@@ -232,7 +235,7 @@ export default function TimerScreen() {
           <Text style={styles.add30Text}>+30s</Text>
         </Pressable>
       </View>
-    </View>
+    </Pressable>
   );
 }
 

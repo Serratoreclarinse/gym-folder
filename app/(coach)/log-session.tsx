@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ExercisePickerModal } from '@/components/ExercisePickerModal';
+import { QRScanModal } from '@/components/QRScanModal';
 import * as Notifications from 'expo-notifications';
 import {
   Alert,
@@ -303,6 +304,7 @@ export default function LogSessionScreen() {
   const [sessionTime, setSessionTime] = useState(currentTimeStr());
   const [sessionNotes, setSessionNotes] = useState('');
   const [mode, setMode] = useState<'full' | 'quick'>(params.mode === 'quick' ? 'quick' : 'full');
+  const [showQRGate, setShowQRGate] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -768,7 +770,15 @@ export default function LogSessionScreen() {
         {/* Save button */}
         <Pressable
           style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]}
-          onPress={handleSave}
+          onPress={() => {
+            if (!canSave) return;
+            // QR gate only for today's sessions
+            if (sessionDate === todayISO()) {
+              setShowQRGate(true);
+            } else {
+              handleSave();
+            }
+          }}
           disabled={!canSave || loading}
         >
           <Text style={styles.saveBtnText}>
@@ -898,6 +908,15 @@ export default function LogSessionScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* QR gate — confirm client is present before saving */}
+      <QRScanModal
+        visible={showQRGate}
+        clientName={selectedClient?.name ?? ''}
+        expectedClientId={selectedClientId}
+        onConfirm={() => { setShowQRGate(false); handleSave(); }}
+        onCancel={() => setShowQRGate(false)}
+      />
     </KeyboardAvoidingView>
   );
 }
