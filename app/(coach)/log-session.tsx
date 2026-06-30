@@ -1,4 +1,3 @@
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ExercisePickerModal } from '@/components/ExercisePickerModal';
@@ -227,7 +226,6 @@ export default function LogSessionScreen() {
   const [sessionTime, setSessionTime] = useState(currentTimeStr());
   const [sessionNotes, setSessionNotes] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
@@ -513,25 +511,53 @@ export default function LogSessionScreen() {
         <View style={styles.row}>
           <View style={[styles.field, { flex: 1 }]}>
             <Text style={styles.label}>DATE</Text>
-            <Pressable style={[styles.input, styles.dateBtn]} onPress={() => setShowDatePicker(true)}>
-              <Text style={styles.dateBtnText}>
+            <View style={styles.dateRow}>
+              <Pressable
+                style={styles.dateArrow}
+                onPress={() => {
+                  const d = new Date(sessionDate + 'T00:00:00');
+                  d.setDate(d.getDate() - 1);
+                  setSessionDate(d.toISOString().split('T')[0]);
+                }}
+              >
+                <Ionicons name="chevron-back" size={18} color={Colors.textPrimary} />
+              </Pressable>
+              <Text style={styles.dateDisplay}>
                 {new Date(sessionDate + 'T00:00:00').toLocaleDateString('en-US', {
-                  month: 'short', day: 'numeric', year: 'numeric',
+                  weekday: 'short', month: 'short', day: 'numeric',
                 })}
               </Text>
-              <Ionicons name="calendar-outline" size={16} color={Colors.textSecondary} />
-            </Pressable>
-            {showDatePicker && (
-              <DateTimePicker
-                value={new Date(sessionDate + 'T00:00:00')}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={(_, date) => {
-                  setShowDatePicker(false);
-                  if (date) setSessionDate(date.toISOString().split('T')[0]);
+              <Pressable
+                style={styles.dateArrow}
+                onPress={() => {
+                  const d = new Date(sessionDate + 'T00:00:00');
+                  d.setDate(d.getDate() + 1);
+                  setSessionDate(d.toISOString().split('T')[0]);
                 }}
-              />
-            )}
+              >
+                <Ionicons name="chevron-forward" size={18} color={Colors.textPrimary} />
+              </Pressable>
+            </View>
+            <View style={styles.dateChips}>
+              {[
+                { label: 'Yesterday', offset: -1 },
+                { label: 'Today', offset: 0 },
+                { label: 'Tomorrow', offset: 1 },
+              ].map(({ label, offset }) => {
+                const d = new Date(); d.setDate(d.getDate() + offset);
+                const iso = d.toISOString().split('T')[0];
+                const active = sessionDate === iso;
+                return (
+                  <Pressable
+                    key={label}
+                    style={[styles.dateChip, active && styles.dateChipActive]}
+                    onPress={() => setSessionDate(iso)}
+                  >
+                    <Text style={[styles.dateChipText, active && styles.dateChipTextActive]}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
           <View style={[styles.field, { flex: 1 }]}>
             <Text style={styles.label}>DURATION (MIN)</Text>
@@ -827,8 +853,21 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     fontSize: 15,
   },
-  dateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  dateBtnText: { color: Colors.textPrimary, fontSize: 15 },
+  dateRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 12, paddingVertical: 10, paddingHorizontal: 4, marginBottom: 8,
+  },
+  dateArrow: { padding: 8 },
+  dateDisplay: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
+  dateChips: { flexDirection: 'row', gap: 8 },
+  dateChip: {
+    flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 10,
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+  },
+  dateChipActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+  dateChipText: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary },
+  dateChipTextActive: { color: Colors.bg },
   notesInput: { minHeight: 80, textAlignVertical: 'top', paddingTop: 12 },
   exHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   exHeaderBtns: { flexDirection: 'row', alignItems: 'center', gap: 8 },
