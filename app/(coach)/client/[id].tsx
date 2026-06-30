@@ -351,11 +351,19 @@ export default function ClientDetailScreen() {
         {
           text: 'Give Free Session',
           onPress: async () => {
-            await supabase.from('packages').update({
-              total_sessions: pkg.total_sessions + 1,
-              sessions_remaining: pkg.sessions_remaining + 1,
-            }).eq('id', pkg.id);
-            refetchClients();
+            const { error } = await supabase
+              .from('packages')
+              .update({
+                total_sessions: pkg.total_sessions + 1,
+                sessions_remaining: pkg.sessions_remaining + 1,
+              })
+              .eq('id', pkg.id)
+              .eq('coach_id', profile?.id ?? '');
+            if (error) {
+              Alert.alert('Error', error.message);
+              return;
+            }
+            await refetchClients();
           },
         },
       ],
