@@ -1,3 +1,4 @@
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ExercisePickerModal } from '@/components/ExercisePickerModal';
@@ -226,6 +227,7 @@ export default function LogSessionScreen() {
   const [sessionTime, setSessionTime] = useState(currentTimeStr());
   const [sessionNotes, setSessionNotes] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
@@ -511,14 +513,25 @@ export default function LogSessionScreen() {
         <View style={styles.row}>
           <View style={[styles.field, { flex: 1 }]}>
             <Text style={styles.label}>DATE</Text>
-            <TextInput
-              style={styles.input}
-              value={sessionDate}
-              onChangeText={setSessionDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={Colors.textSecondary}
-              keyboardType="numbers-and-punctuation"
-            />
+            <Pressable style={[styles.input, styles.dateBtn]} onPress={() => setShowDatePicker(true)}>
+              <Text style={styles.dateBtnText}>
+                {new Date(sessionDate + 'T00:00:00').toLocaleDateString('en-US', {
+                  month: 'short', day: 'numeric', year: 'numeric',
+                })}
+              </Text>
+              <Ionicons name="calendar-outline" size={16} color={Colors.textSecondary} />
+            </Pressable>
+            {showDatePicker && (
+              <DateTimePicker
+                value={new Date(sessionDate + 'T00:00:00')}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(_, date) => {
+                  setShowDatePicker(false);
+                  if (date) setSessionDate(date.toISOString().split('T')[0]);
+                }}
+              />
+            )}
           </View>
           <View style={[styles.field, { flex: 1 }]}>
             <Text style={styles.label}>DURATION (MIN)</Text>
@@ -814,6 +827,8 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     fontSize: 15,
   },
+  dateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  dateBtnText: { color: Colors.textPrimary, fontSize: 15 },
   notesInput: { minHeight: 80, textAlignVertical: 'top', paddingTop: 12 },
   exHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   exHeaderBtns: { flexDirection: 'row', alignItems: 'center', gap: 8 },
