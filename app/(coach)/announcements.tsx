@@ -24,6 +24,7 @@ import {
 } from '@/hooks/useAnnouncements';
 import { useClients } from '@/hooks/useClients';
 import { Colors, Typography } from '@/constants/theme';
+import { sendPushNotification } from '@/lib/pushNotifications';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -455,6 +456,20 @@ export default function AnnouncementsScreen() {
       if (error) { Alert.alert('Error', error); return; }
       setShowForm(false);
       if (announcement) {
+        const typeEmoji: Record<AnnouncementType, string> = {
+          emergency: '⚠️', holiday: '🌴', general: '📢', promo: '🎁',
+        };
+        const recipientIds = form.target === 'all'
+          ? clients.map((c) => c.id)
+          : form.selectedIds;
+        await Promise.all(
+          recipientIds.map((clientId) =>
+            sendPushNotification(clientId, {
+              title: `${typeEmoji[form.type]} ${form.title}`,
+              body: form.message,
+            })
+          )
+        );
         setWaAnn(announcement);
         setShowWA(true);
       }
