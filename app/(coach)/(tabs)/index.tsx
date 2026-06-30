@@ -1,11 +1,11 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { useAuth } from '@/context/AuthContext';
-import { useClients } from '@/hooks/useClients';
+import { useClients, type ClientWithPackage } from '@/hooks/useClients';
 import { useSessions } from '@/hooks/useSessions';
 import { useStrikeAlerts } from '@/hooks/useStrikeAlerts';
 import { useWaitlist } from '@/hooks/useWaitlist';
@@ -32,6 +32,63 @@ Notifications.setNotificationHandler({
 
 const MAX_STRIKES = 3;
 const BIRTHDAY_GOLD = '#FFD700';
+
+const AVATAR_COLORS = [
+  '#E8001D', '#4CAF50', '#9C27B0', '#FF9800',
+  '#00BCD4', '#F44336', '#2196F3', '#FF5722',
+  '#8BC34A', '#E91E63', '#FFC107', '#795548',
+];
+
+function ClientPickerModal({
+  visible, clients, onClose, onSelect,
+}: {
+  visible: boolean;
+  clients: ClientWithPackage[];
+  onClose: () => void;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={ps.container}>
+        <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
+        <View style={ps.sheet}>
+          <View style={ps.handle} />
+          <View style={ps.sheetHead}>
+            <Text style={ps.sheetTitle}>MY CLIENTS</Text>
+            <View style={ps.sheetBadge}>
+              <Text style={ps.sheetBadgeText}>{clients.length}</Text>
+            </View>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <View style={ps.grid}>
+              {clients.map((c, i) => {
+                const initials = c.name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
+                const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
+                const firstName = c.name.split(' ')[0];
+                const isActive = c.activePackage?.status === 'active';
+                return (
+                  <Pressable
+                    key={c.id}
+                    style={({ pressed }) => [ps.cell, pressed && { opacity: 0.65 }]}
+                    onPress={() => onSelect(c.id)}
+                  >
+                    <View style={ps.avatarWrap}>
+                      <View style={[ps.avatar, { backgroundColor: color + '20', borderColor: color + '55' }]}>
+                        <Text style={[ps.avatarText, { color }]}>{initials}</Text>
+                      </View>
+                      {isActive && <View style={ps.activeDot} />}
+                    </View>
+                    <Text style={ps.cellName} numberOfLines={1}>{firstName}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
 function fmt12(t: string): string {
   const [h, m] = t.split(':').map(Number);
@@ -63,6 +120,7 @@ export default function CoachDashboard() {
   const [impromptuVisible, setImpromptuVisible] = useState(false);
   const [noShowVisible, setNoShowVisible] = useState(false);
   const [pausedWorkout, setPausedWorkout] = useState<any | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
 
   const refreshing = cLoading || sLoading;
   const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); };
@@ -126,6 +184,7 @@ export default function CoachDashboard() {
   const recentSessions = sessions.slice(0, 5);
 
   return (
+    <>
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
@@ -140,6 +199,9 @@ export default function CoachDashboard() {
           </Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Pressable style={styles.addBtn} onPress={() => setShowPicker(true)}>
+            <Ionicons name="people-outline" size={20} color={Colors.accent} />
+          </Pressable>
           <Pressable style={styles.addBtn} onPress={() => router.push('/(coach)/announcements' as any)}>
             <Ionicons name="megaphone-outline" size={20} color={Colors.accent} />
           </Pressable>
@@ -538,6 +600,13 @@ export default function CoachDashboard() {
         })
       )}
     </ScrollView>
+    <ClientPickerModal
+      visible={showPicker}
+      clients={clients}
+      onClose={() => setShowPicker(false)}
+      onSelect={(id) => { setShowPicker(false); router.push(`/(coach)/client/${id}` as any); }}
+    />
+    </>
   );
 }
 
@@ -779,4 +848,54 @@ const styles = StyleSheet.create({
   },
   whatsappBtnToday: { backgroundColor: BIRTHDAY_GOLD + '15', borderColor: BIRTHDAY_GOLD + '50' },
   whatsappBtnText: { fontSize: 12, fontWeight: '700', color: Colors.textSecondary },
+});
+
+const ps = StyleSheet.create({
+  container: { flex: 1, justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: '#1A1A1A',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingBottom: 32, maxHeight: '70%',
+    borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1,
+    borderColor: '#2A2A2A',
+  },
+  handle: {
+    width: 36, height: 4, borderRadius: 2,
+    backgroundColor: '#444', alignSelf: 'center', marginVertical: 12,
+  },
+  sheetHead: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 20, paddingBottom: 14,
+    borderBottomWidth: 1, borderBottomColor: '#2A2A2A', marginBottom: 8,
+  },
+  sheetTitle: {
+    fontSize: 12, fontWeight: '800', letterSpacing: 1.5,
+    color: Colors.textSecondary, flex: 1,
+  },
+  sheetBadge: {
+    backgroundColor: Colors.accent + '20', borderRadius: 10,
+    paddingHorizontal: 8, paddingVertical: 2,
+    borderWidth: 1, borderColor: Colors.accent + '40',
+  },
+  sheetBadgeText: { color: Colors.accent, fontSize: 11, fontWeight: '800' },
+  grid: {
+    flexDirection: 'row', flexWrap: 'wrap',
+    paddingHorizontal: 8, paddingTop: 8,
+  },
+  cell: { width: '25%', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 4 },
+  avatarWrap: { position: 'relative', marginBottom: 7 },
+  avatar: {
+    width: 60, height: 60, borderRadius: 30,
+    justifyContent: 'center', alignItems: 'center', borderWidth: 2,
+  },
+  avatarText: { fontSize: 18, fontWeight: '800' },
+  activeDot: {
+    position: 'absolute', bottom: 2, right: 2,
+    width: 13, height: 13, borderRadius: 7,
+    backgroundColor: '#4CAF50', borderWidth: 2, borderColor: '#1A1A1A',
+  },
+  cellName: {
+    fontSize: 11, color: '#ccc', fontWeight: '600',
+    textAlign: 'center',
+  },
 });
