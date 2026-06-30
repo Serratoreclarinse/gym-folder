@@ -211,6 +211,81 @@ function ExerciseCard({
   );
 }
 
+function CalendarPicker({ value, onChange }: { value: string; onChange: (iso: string) => void }) {
+  const sel = new Date(value + 'T00:00:00');
+  const [vy, setVy] = useState(sel.getFullYear());
+  const [vm, setVm] = useState(sel.getMonth());
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+
+  const prevMonth = () => { if (vm === 0) { setVy(y => y - 1); setVm(11); } else setVm(m => m - 1); };
+  const nextMonth = () => { if (vm === 11) { setVy(y => y + 1); setVm(0); } else setVm(m => m + 1); };
+
+  const firstDay = new Date(vy, vm, 1);
+  const totalDays = new Date(vy, vm + 1, 0).getDate();
+  const startPad = firstDay.getDay();
+  const cells: (number | null)[] = [...Array(startPad).fill(null), ...Array.from({ length: totalDays }, (_, i) => i + 1)];
+
+  const monthLabel = firstDay.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  return (
+    <View style={calStyles.container}>
+      <View style={calStyles.header}>
+        <Pressable onPress={prevMonth} hitSlop={12} style={calStyles.navBtn}>
+          <Ionicons name="chevron-back" size={20} color={Colors.textPrimary} />
+        </Pressable>
+        <Text style={calStyles.monthLabel}>{monthLabel}</Text>
+        <Pressable onPress={nextMonth} hitSlop={12} style={calStyles.navBtn}>
+          <Ionicons name="chevron-forward" size={20} color={Colors.textPrimary} />
+        </Pressable>
+      </View>
+      <View style={calStyles.dayNames}>
+        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
+          <Text key={d} style={calStyles.dayName}>{d}</Text>
+        ))}
+      </View>
+      <View style={calStyles.grid}>
+        {cells.map((day, i) => {
+          if (day === null) return <View key={`p${i}`} style={calStyles.cell} />;
+          const iso = `${vy}-${String(vm + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          const isSelected = iso === value;
+          const isToday = new Date(vy, vm, day).getTime() === today.getTime();
+          return (
+            <Pressable
+              key={iso}
+              style={[calStyles.cell, isSelected && calStyles.cellSelected, isToday && !isSelected && calStyles.cellToday]}
+              onPress={() => onChange(iso)}
+            >
+              <Text style={[calStyles.cellText, isSelected && calStyles.cellTextSelected, isToday && !isSelected && calStyles.cellTextToday]}>
+                {day}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const calStyles = StyleSheet.create({
+  container: {
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 14, padding: 12, marginTop: 8,
+  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  navBtn: { padding: 4 },
+  monthLabel: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700' },
+  dayNames: { flexDirection: 'row', marginBottom: 4 },
+  dayName: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '600', color: Colors.textSecondary },
+  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  cell: { width: '14.285%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
+  cellSelected: { backgroundColor: Colors.accent, borderRadius: 100 },
+  cellToday: { borderWidth: 1, borderColor: Colors.accent, borderRadius: 100 },
+  cellText: { fontSize: 14, color: Colors.textPrimary },
+  cellTextSelected: { color: Colors.bg, fontWeight: '700' },
+  cellTextToday: { color: Colors.accent, fontWeight: '700' },
+});
+
 export default function LogSessionScreen() {
   const { profile } = useAuth();
   const params = useLocalSearchParams<{ clientId?: string; date?: string }>();
@@ -227,6 +302,7 @@ export default function LogSessionScreen() {
   const [sessionNotes, setSessionNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [showClientPicker, setShowClientPicker] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [pickerTargetId, setPickerTargetId] = useState<string | null>(null);
@@ -508,68 +584,32 @@ export default function LogSessionScreen() {
 
         {/* Date + Duration */}
         <Text style={[styles.sectionTitle, { marginTop: 24 }]}>SESSION DETAILS</Text>
-        <View style={styles.row}>
-          <View style={[styles.field, { flex: 1 }]}>
-            <Text style={styles.label}>DATE</Text>
-            <View style={styles.dateRow}>
-              <Pressable
-                style={styles.dateArrow}
-                onPress={() => {
-                  const d = new Date(sessionDate + 'T00:00:00');
-                  d.setDate(d.getDate() - 1);
-                  setSessionDate(d.toISOString().split('T')[0]);
-                }}
-              >
-                <Ionicons name="chevron-back" size={18} color={Colors.textPrimary} />
-              </Pressable>
-              <Text style={styles.dateDisplay}>
-                {new Date(sessionDate + 'T00:00:00').toLocaleDateString('en-US', {
-                  weekday: 'short', month: 'short', day: 'numeric',
-                })}
-              </Text>
-              <Pressable
-                style={styles.dateArrow}
-                onPress={() => {
-                  const d = new Date(sessionDate + 'T00:00:00');
-                  d.setDate(d.getDate() + 1);
-                  setSessionDate(d.toISOString().split('T')[0]);
-                }}
-              >
-                <Ionicons name="chevron-forward" size={18} color={Colors.textPrimary} />
-              </Pressable>
-            </View>
-            <View style={styles.dateChips}>
-              {[
-                { label: 'Yesterday', offset: -1 },
-                { label: 'Today', offset: 0 },
-                { label: 'Tomorrow', offset: 1 },
-              ].map(({ label, offset }) => {
-                const d = new Date(); d.setDate(d.getDate() + offset);
-                const iso = d.toISOString().split('T')[0];
-                const active = sessionDate === iso;
-                return (
-                  <Pressable
-                    key={label}
-                    style={[styles.dateChip, active && styles.dateChipActive]}
-                    onPress={() => setSessionDate(iso)}
-                  >
-                    <Text style={[styles.dateChipText, active && styles.dateChipTextActive]}>{label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-          <View style={[styles.field, { flex: 1 }]}>
-            <Text style={styles.label}>DURATION (MIN)</Text>
-            <TextInput
-              style={styles.input}
-              value={duration}
-              onChangeText={(v) => setDuration(v.replace(/[^0-9]/g, ''))}
-              keyboardType="number-pad"
-              placeholder="60"
-              placeholderTextColor={Colors.textSecondary}
+        <View style={styles.field}>
+          <Text style={styles.label}>DATE</Text>
+          <Pressable style={styles.dateTrigger} onPress={() => setShowCalendar(v => !v)}>
+            <Ionicons name="calendar-outline" size={16} color={Colors.accent} />
+            <Text style={styles.dateTriggerText}>
+              {new Date(sessionDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+            </Text>
+            <Ionicons name={showCalendar ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.textSecondary} />
+          </Pressable>
+          {showCalendar && (
+            <CalendarPicker
+              value={sessionDate}
+              onChange={(iso) => { setSessionDate(iso); setShowCalendar(false); }}
             />
-          </View>
+          )}
+        </View>
+        <View style={styles.field}>
+          <Text style={styles.label}>DURATION (MIN)</Text>
+          <TextInput
+            style={styles.input}
+            value={duration}
+            onChangeText={(v) => setDuration(v.replace(/[^0-9]/g, ''))}
+            keyboardType="number-pad"
+            placeholder="60"
+            placeholderTextColor={Colors.textSecondary}
+          />
         </View>
 
         {/* Session type — Gym vs Home */}
@@ -853,21 +893,12 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     fontSize: 15,
   },
-  dateRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  dateTrigger: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 12, paddingVertical: 10, paddingHorizontal: 4, marginBottom: 8,
+    borderRadius: 12, paddingVertical: 13, paddingHorizontal: 14,
   },
-  dateArrow: { padding: 8 },
-  dateDisplay: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
-  dateChips: { flexDirection: 'row', gap: 8 },
-  dateChip: {
-    flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 10,
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
-  },
-  dateChipActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  dateChipText: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary },
-  dateChipTextActive: { color: Colors.bg },
+  dateTriggerText: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', flex: 1 },
   notesInput: { minHeight: 80, textAlignVertical: 'top', paddingTop: 12 },
   exHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   exHeaderBtns: { flexDirection: 'row', alignItems: 'center', gap: 8 },
