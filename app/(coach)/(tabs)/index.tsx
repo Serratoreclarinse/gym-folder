@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
@@ -10,8 +10,7 @@ import { useSessions } from '@/hooks/useSessions';
 import { useStrikeAlerts } from '@/hooks/useStrikeAlerts';
 import { useWaitlist } from '@/hooks/useWaitlist';
 import { useCoachBookingRequests } from '@/hooks/useBookingRequests';
-import { useBirthdays, getDaysUntilBirthday, formatBirthday } from '@/hooks/useBirthdays';
-import { useAvailability } from '@/hooks/useAvailability';
+import { getDaysUntilBirthday } from '@/hooks/useBirthdays';
 import { useAnnouncements } from '@/hooks/useAnnouncements';
 import { useActiveSessionContext } from '@/context/ActiveSessionContext';
 import { ActiveSessionCard } from '@/components/ActiveSessionCard';
@@ -31,7 +30,6 @@ Notifications.setNotificationHandler({
 });
 
 const MAX_STRIKES = 3;
-const BIRTHDAY_GOLD = '#FFD700';
 
 const AVATAR_COLORS = [
   '#E8001D', '#4CAF50', '#9C27B0', '#FF9800',
@@ -100,19 +98,6 @@ function ClientPickerModal({
   );
 }
 
-function fmt12(t: string): string {
-  const [h, m] = t.split(':').map(Number);
-  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
-}
-
-function StatCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <View style={[styles.card, accent && styles.cardAccent]}>
-      <Text style={[styles.cardValue, accent && styles.cardValueAccent]}>{value}</Text>
-      <Text style={styles.cardLabel}>{label}</Text>
-    </View>
-  );
-}
 
 export default function CoachDashboard() {
   const { profile } = useAuth();
@@ -122,9 +107,6 @@ export default function CoachDashboard() {
   const { alerts: strikeAlerts, refetch: refetchStrikes } = useStrikeAlerts();
   const { totalCount: waitlistCount, refetch: refetchWaitlist } = useWaitlist(profile?.id);
   const { requests: bookingRequests, refetch: refetchBookingReqs, respond: respondToRequest } = useCoachBookingRequests();
-  const { all: allBirthdays } = useBirthdays(clients);
-  const { getTodayInfo } = useAvailability();
-  const todaySchedule = getTodayInfo();
   const { pinnedAnnouncement, togglePin } = useAnnouncements();
   const { activeSession, nextSession, extendSession, endSession, cancelSession, pauseSession, resumeSession, refetch: refetchTimer } = useActiveSessionContext();
   const [impromptuVisible, setImpromptuVisible] = useState(false);
@@ -182,7 +164,6 @@ export default function CoachDashboard() {
   const packageAlertClients = clients.filter(
     (c) => c.activePackage && c.activePackage.sessions_remaining <= 3,
   );
-  const expiringCount = packageAlertClients.length;
 
   const today = new Date().toISOString().split('T')[0];
   const todaySessions = sessions.filter((s) => s.session_date === today).length;
@@ -190,8 +171,6 @@ export default function CoachDashboard() {
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
   const weekSessions = sessions.filter((s) => new Date(s.session_date) >= weekAgo).length;
-
-  const recentSessions = sessions.slice(0, 5);
 
   return (
     <>
@@ -228,12 +207,22 @@ export default function CoachDashboard() {
         <ErrorBanner message={cError ?? sError!} onRetry={onRefresh} />
       )}
 
-      {/* Stats */}
-      <View style={styles.statsGrid}>
-        <StatCard label="Active Clients" value={String(activeClients)} accent />
-        <StatCard label="Sessions Today" value={String(todaySessions)} />
-        <StatCard label="This Week" value={String(weekSessions)} />
-        <StatCard label="Expiring Soon" value={expiringCount > 0 ? `⚠ ${expiringCount}` : '—'} />
+      {/* Compact stats strip */}
+      <View style={styles.statsStrip}>
+        <View style={styles.statItem}>
+          <Text style={styles.statValue}>{activeClients}</Text>
+          <Text style={styles.statLabel}>Clients</Text>
+        </View>
+        <View style={styles.statDiv} />
+        <View style={styles.statItem}>
+          <Text style={styles.statValue}>{todaySessions}</Text>
+          <Text style={styles.statLabel}>Today</Text>
+        </View>
+        <View style={styles.statDiv} />
+        <View style={styles.statItem}>
+          <Text style={styles.statValue}>{weekSessions}</Text>
+          <Text style={styles.statLabel}>This Week</Text>
+        </View>
       </View>
 
       {/* Resume paused workout */}
@@ -294,17 +283,6 @@ export default function CoachDashboard() {
         <NextSessionCard nextSession={nextSession} />
       )}
 
-      {/* Today's availability */}
-      {todaySchedule && (
-        <Pressable style={styles.availBanner} onPress={() => router.push('/(coach)/availability')}>
-          <View style={styles.availDot} />
-          <Text style={styles.availText}>
-            Available today: {fmt12(todaySchedule.startTime)} – {fmt12(todaySchedule.endTime)}
-          </Text>
-          <Ionicons name="chevron-forward" size={13} color="#4CAF50" />
-        </Pressable>
-      )}
-
       {/* Pinned announcement banner */}
       {pinnedAnnouncement && (
         <View style={[
@@ -328,35 +306,45 @@ export default function CoachDashboard() {
         </View>
       )}
 
-      {/* Quick actions */}
-      <View style={styles.quickRow}>
-        <Pressable style={[styles.quickBtn, styles.quickBtnPrimary]} onPress={() => router.push('/(coach)/log-session')}>
+      {/* 2×2 Quick actions */}
+      <View style={styles.actionsGrid}>
+        <Pressable
+          style={({ pressed }) => [styles.actionBtn, styles.actionPrimary, pressed && { opacity: 0.85 }]}
+          onPress={() => router.push('/(coach)/log-session')}
+        >
           <Ionicons name="add-circle-outline" size={20} color={Colors.bg} />
-          <Text style={styles.quickBtnPrimaryText}>LOG SESSION</Text>
+          <Text style={styles.actionPrimaryText}>LOG SESSION</Text>
         </Pressable>
-        <Pressable style={[styles.quickBtn, styles.quickBtnSecondary]} onPress={() => router.push('/(coach)/revenue')}>
+        <Pressable
+          style={({ pressed }) => [styles.actionBtn, styles.actionOrange, pressed && { opacity: 0.85 }]}
+          onPress={() => setImpromptuVisible(true)}
+        >
+          <Ionicons name="flash" size={20} color="#fff" />
+          <Text style={styles.actionWhiteText}>QUICK</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.actionBtn, styles.actionBorder, pressed && { opacity: 0.85 }]}
+          onPress={() => setNoShowVisible(true)}
+        >
+          <Ionicons name="person-remove-outline" size={20} color="#FFA500" />
+          <Text style={styles.actionWarningText}>NO-SHOW</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.actionBtn, styles.actionBorder, pressed && { opacity: 0.85 }]}
+          onPress={() => router.push('/(coach)/revenue')}
+        >
           <Ionicons name="bar-chart-outline" size={20} color={Colors.accent} />
-          <Text style={styles.quickBtnSecondaryText}>REVENUE</Text>
+          <Text style={styles.actionAccentText}>REVENUE</Text>
         </Pressable>
       </View>
 
-      {/* Quick session + No-show row */}
-      <View style={styles.sessionActionRow}>
-        <Pressable
-          style={({ pressed }) => [styles.quickSessionBtn, pressed && { opacity: 0.8 }]}
-          onPress={() => setImpromptuVisible(true)}
-        >
-          <Ionicons name="flash" size={16} color={Colors.bg} />
-          <Text style={styles.quickSessionBtnText}>QUICK SESSION</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.noShowBtn, pressed && { opacity: 0.8 }]}
-          onPress={() => setNoShowVisible(true)}
-        >
-          <Ionicons name="person-remove-outline" size={16} color="#FFA500" />
-          <Text style={styles.noShowBtnText}>NO-SHOW</Text>
-        </Pressable>
-      </View>
+      <Pressable
+        style={styles.emergencyBtn}
+        onPress={() => router.push({ pathname: '/(coach)/announcements', params: { preset: 'emergency' } } as any)}
+      >
+        <Ionicons name="warning-outline" size={18} color="#fff" />
+        <Text style={styles.emergencyBtnText}>EMERGENCY NOTICE</Text>
+      </Pressable>
 
       <ImpromptuSessionModal
         visible={impromptuVisible}
@@ -368,166 +356,7 @@ export default function CoachDashboard() {
         onLogged={() => { refetchSessions(); refetchClients(); }}
       />
 
-      {/* Emergency notice quick action */}
-      <Pressable
-        style={styles.emergencyBtn}
-        onPress={() => router.push({ pathname: '/(coach)/announcements', params: { preset: 'emergency' } } as any)}
-      >
-        <Ionicons name="warning-outline" size={18} color="#fff" />
-        <Text style={styles.emergencyBtnText}>EMERGENCY NOTICE</Text>
-      </Pressable>
-
-      {/* Package Alerts */}
-      {packageAlertClients.length > 0 && (
-        <>
-          <View style={styles.strikeSectionHeader}>
-            <Text style={styles.sectionTitle}>PACKAGE ALERTS</Text>
-            <View style={[styles.strikeBadge, { backgroundColor: '#FF980020', borderColor: '#FF980060' }]}>
-              <Text style={[styles.strikeBadgeText, { color: '#FF9800' }]}>{packageAlertClients.length}</Text>
-            </View>
-          </View>
-          {packageAlertClients.map((c) => {
-            const isExpired = c.activePackage!.sessions_remaining === 0;
-            const color = isExpired ? Colors.danger : '#FF9800';
-            const initials = c.name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
-            return (
-              <Pressable
-                key={c.id}
-                style={({ pressed }) => [
-                  styles.strikeAlertCard,
-                  { borderColor: color + '50' },
-                  pressed && { opacity: 0.75 },
-                ]}
-                onPress={() => router.push(`/(coach)/client/${c.id}`)}
-              >
-                <View style={[styles.strikeAvatar, { backgroundColor: color + '18', borderColor: color + '40' }]}>
-                  <Text style={[styles.strikeAvatarText, { color }]}>{initials}</Text>
-                </View>
-                <View style={styles.strikeAlertInfo}>
-                  <Text style={styles.strikeAlertName}>{c.name}</Text>
-                  <Text style={[styles.strikeAlertDate, { color }]}>
-                    {isExpired
-                      ? 'Package expired — tap to renew'
-                      : `${c.activePackage!.sessions_remaining} session${c.activePackage!.sessions_remaining !== 1 ? 's' : ''} remaining`}
-                  </Text>
-                </View>
-                <View style={[styles.pkgAlertBadge, { backgroundColor: color + '18', borderColor: color + '40' }]}>
-                  <Text style={[styles.pkgAlertBadgeText, { color }]}>
-                    {isExpired ? 'EXPIRED' : `${c.activePackage!.sessions_remaining} LEFT`}
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          })}
-          <View style={{ height: 8 }} />
-        </>
-      )}
-
-      {/* Strike Alerts */}
-      {strikeAlerts.length > 0 && (
-        <>
-          <View style={styles.strikeSectionHeader}>
-            <Text style={styles.sectionTitle}>STRIKE ALERTS</Text>
-            <View style={styles.strikeBadge}>
-              <Text style={styles.strikeBadgeText}>{strikeAlerts.length}</Text>
-            </View>
-          </View>
-          {strikeAlerts.map((alert) => {
-            const isMax = alert.strike_count >= MAX_STRIKES;
-            const color = isMax ? Colors.danger : '#FFA500';
-            const initials = alert.client_name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
-            const latestDate = new Date(alert.latest_strike_date).toLocaleDateString('en-US', {
-              month: 'short', day: 'numeric',
-            });
-            return (
-              <Pressable
-                key={alert.client_id}
-                style={({ pressed }) => [styles.strikeAlertCard, { borderColor: color + '50' }, pressed && { opacity: 0.75 }]}
-                onPress={() => router.push(`/(coach)/client/${alert.client_id}`)}
-              >
-                <View style={[styles.strikeAvatar, { backgroundColor: color + '18', borderColor: color + '40' }]}>
-                  <Text style={[styles.strikeAvatarText, { color }]}>{initials}</Text>
-                </View>
-                <View style={styles.strikeAlertInfo}>
-                  <Text style={styles.strikeAlertName}>{alert.client_name}</Text>
-                  <Text style={styles.strikeAlertDate}>Last strike: {latestDate}</Text>
-                </View>
-                <View style={[styles.strikeCountBadge, { backgroundColor: color + '18', borderColor: color + '40' }]}>
-                  {Array.from({ length: MAX_STRIKES }).map((_, i) => (
-                    <View
-                      key={i}
-                      style={[styles.strikePip, { backgroundColor: i < alert.strike_count ? color : Colors.border }]}
-                    />
-                  ))}
-                  <Text style={[styles.strikeCountText, { color }]}>
-                    {alert.strike_count}/{MAX_STRIKES}
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          })}
-          <View style={{ height: 8 }} />
-        </>
-      )}
-
-      {/* Upcoming Birthdays */}
-      {allBirthdays.length > 0 && (
-        <>
-          <View style={styles.strikeSectionHeader}>
-            <Text style={styles.sectionTitle}>UPCOMING BIRTHDAYS</Text>
-            <View style={[styles.strikeBadge, styles.birthdayBadge]}>
-              <Text style={[styles.strikeBadgeText, styles.birthdayBadgeText]}>{allBirthdays.length}</Text>
-            </View>
-          </View>
-          {allBirthdays.map((b) => {
-            const isToday = b.daysUntil === 0;
-            const initials = b.name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
-            return (
-              <View key={b.id} style={[styles.birthdayCard, isToday && styles.birthdayCardToday]}>
-                <View style={[styles.birthdayAvatar, isToday && styles.birthdayAvatarToday]}>
-                  <Text style={[styles.birthdayAvatarText, isToday && { color: BIRTHDAY_GOLD }]}>{initials}</Text>
-                </View>
-                <View style={styles.birthdayInfo}>
-                  <Text style={styles.birthdayName}>{b.name}</Text>
-                  <Text style={[styles.birthdayDate, isToday && { color: BIRTHDAY_GOLD }]}>
-                    {isToday
-                      ? '🎂 Today!'
-                      : `${formatBirthday(b.birthday!)} · in ${b.daysUntil} day${b.daysUntil !== 1 ? 's' : ''}`}
-                  </Text>
-                </View>
-                {b.phone ? (
-                  <Pressable
-                    style={[styles.whatsappBtn, isToday && styles.whatsappBtnToday]}
-                    onPress={() => {
-                      const msg = `Happy Birthday ${b.name}! 🎂🎉 Wishing you a wonderful day! 💪`;
-                      Linking.openURL(`whatsapp://send?phone=${encodeURIComponent(b.phone!)}&text=${encodeURIComponent(msg)}`);
-                    }}
-                  >
-                    <Text style={[styles.whatsappBtnText, isToday && { color: BIRTHDAY_GOLD }]}>Send 🎉</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            );
-          })}
-          <View style={{ height: 8 }} />
-        </>
-      )}
-
-      {/* Waitlist notice */}
-      {waitlistCount > 0 && (
-        <Pressable
-          style={styles.waitlistNotice}
-          onPress={() => router.push('/(coach)/(tabs)/calendar')}
-        >
-          <Ionicons name="people-outline" size={16} color={Colors.accent} />
-          <Text style={styles.waitlistNoticeText}>
-            {waitlistCount} client{waitlistCount !== 1 ? 's' : ''} on waitlist — check Calendar for open slots
-          </Text>
-          <Ionicons name="chevron-forward" size={14} color={Colors.accent} />
-        </Pressable>
-      )}
-
-      {/* Booking / renewal requests */}
+      {/* Client Requests */}
       {bookingRequests.length > 0 && (
         <>
           <View style={styles.strikeSectionHeader}>
@@ -558,16 +387,10 @@ export default function CoachDashboard() {
               )}
               {req.notes && <Text style={styles.reqNotes}>{req.notes}</Text>}
               <View style={styles.reqActions}>
-                <Pressable
-                  style={styles.reqDeclineBtn}
-                  onPress={() => respondToRequest(req.id, 'declined')}
-                >
+                <Pressable style={styles.reqDeclineBtn} onPress={() => respondToRequest(req.id, 'declined')}>
                   <Text style={styles.reqDeclineBtnText}>Decline</Text>
                 </Pressable>
-                <Pressable
-                  style={styles.reqAcceptBtn}
-                  onPress={() => respondToRequest(req.id, 'accepted')}
-                >
+                <Pressable style={styles.reqAcceptBtn} onPress={() => respondToRequest(req.id, 'accepted')}>
                   <Text style={styles.reqAcceptBtnText}>Accept</Text>
                 </Pressable>
               </View>
@@ -576,40 +399,95 @@ export default function CoachDashboard() {
         </>
       )}
 
-      {/* Recent sessions */}
-      <Text style={styles.sectionTitle}>RECENT SESSIONS</Text>
-      {recentSessions.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>No sessions logged yet</Text>
-        </View>
-      ) : (
-        recentSessions.map((s) => {
-          const isNoShow = s.status === 'absent';
-          return (
-            <Pressable
-              key={s.id}
-              style={styles.sessionRow}
-              onPress={() => router.push(`/(coach)/client/${s.client_id}`)}
-            >
-              <View style={[styles.sessionDot, isNoShow && { backgroundColor: '#FFA500' }]} />
-              <View style={styles.sessionInfo}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={styles.sessionClient}>{s.client_name}</Text>
-                  {isNoShow && (
-                    <View style={styles.noShowBadge}>
-                      <Text style={styles.noShowBadgeText}>NO-SHOW</Text>
-                    </View>
-                  )}
+      {/* Strike Alerts */}
+      {strikeAlerts.length > 0 && (
+        <>
+          <View style={styles.strikeSectionHeader}>
+            <Text style={styles.sectionTitle}>STRIKE ALERTS</Text>
+            <View style={styles.strikeBadge}>
+              <Text style={styles.strikeBadgeText}>{strikeAlerts.length}</Text>
+            </View>
+          </View>
+          {strikeAlerts.map((alert) => {
+            const isMax = alert.strike_count >= MAX_STRIKES;
+            const color = isMax ? Colors.danger : '#FFA500';
+            const initials = alert.client_name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
+            const latestDate = new Date(alert.latest_strike_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            return (
+              <Pressable
+                key={alert.client_id}
+                style={({ pressed }) => [styles.strikeAlertCard, { borderColor: color + '50' }, pressed && { opacity: 0.75 }]}
+                onPress={() => router.push(`/(coach)/client/${alert.client_id}`)}
+              >
+                <View style={[styles.strikeAvatar, { backgroundColor: color + '18', borderColor: color + '40' }]}>
+                  <Text style={[styles.strikeAvatarText, { color }]}>{initials}</Text>
                 </View>
-                <Text style={styles.sessionMeta}>
-                  {new Date(s.session_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  {isNoShow ? '' : `${'  ·  '}${s.duration_minutes} min${'  ·  '}${s.exercises.length} exercises`}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
-            </Pressable>
-          );
-        })
+                <View style={styles.strikeAlertInfo}>
+                  <Text style={styles.strikeAlertName}>{alert.client_name}</Text>
+                  <Text style={styles.strikeAlertDate}>Last strike: {latestDate}</Text>
+                </View>
+                <View style={[styles.strikeCountBadge, { backgroundColor: color + '18', borderColor: color + '40' }]}>
+                  {Array.from({ length: MAX_STRIKES }).map((_, i) => (
+                    <View key={i} style={[styles.strikePip, { backgroundColor: i < alert.strike_count ? color : Colors.border }]} />
+                  ))}
+                  <Text style={[styles.strikeCountText, { color }]}>{alert.strike_count}/{MAX_STRIKES}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+          <View style={{ height: 8 }} />
+        </>
+      )}
+
+      {/* Package Alerts */}
+      {packageAlertClients.length > 0 && (
+        <>
+          <View style={styles.strikeSectionHeader}>
+            <Text style={styles.sectionTitle}>PACKAGE ALERTS</Text>
+            <View style={[styles.strikeBadge, { backgroundColor: '#FF980020', borderColor: '#FF980060' }]}>
+              <Text style={[styles.strikeBadgeText, { color: '#FF9800' }]}>{packageAlertClients.length}</Text>
+            </View>
+          </View>
+          {packageAlertClients.map((c) => {
+            const isExpired = c.activePackage!.sessions_remaining === 0;
+            const color = isExpired ? Colors.danger : '#FF9800';
+            const initials = c.name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
+            return (
+              <Pressable
+                key={c.id}
+                style={({ pressed }) => [styles.strikeAlertCard, { borderColor: color + '50' }, pressed && { opacity: 0.75 }]}
+                onPress={() => router.push(`/(coach)/client/${c.id}`)}
+              >
+                <View style={[styles.strikeAvatar, { backgroundColor: color + '18', borderColor: color + '40' }]}>
+                  <Text style={[styles.strikeAvatarText, { color }]}>{initials}</Text>
+                </View>
+                <View style={styles.strikeAlertInfo}>
+                  <Text style={styles.strikeAlertName}>{c.name}</Text>
+                  <Text style={[styles.strikeAlertDate, { color }]}>
+                    {isExpired ? 'Package expired — tap to renew' : `${c.activePackage!.sessions_remaining} session${c.activePackage!.sessions_remaining !== 1 ? 's' : ''} remaining`}
+                  </Text>
+                </View>
+                <View style={[styles.pkgAlertBadge, { backgroundColor: color + '18', borderColor: color + '40' }]}>
+                  <Text style={[styles.pkgAlertBadgeText, { color }]}>
+                    {isExpired ? 'EXPIRED' : `${c.activePackage!.sessions_remaining} LEFT`}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+          <View style={{ height: 8 }} />
+        </>
+      )}
+
+      {/* Waitlist notice */}
+      {waitlistCount > 0 && (
+        <Pressable style={styles.waitlistNotice} onPress={() => router.push('/(coach)/(tabs)/calendar')}>
+          <Ionicons name="people-outline" size={16} color={Colors.accent} />
+          <Text style={styles.waitlistNoticeText}>
+            {waitlistCount} client{waitlistCount !== 1 ? 's' : ''} on waitlist — check Calendar for open slots
+          </Text>
+          <Ionicons name="chevron-forward" size={14} color={Colors.accent} />
+        </Pressable>
       )}
     </ScrollView>
     <ClientPickerModal
@@ -647,34 +525,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: rs(12), marginBottom: rs(20) },
-  card: {
-    flex: 1,
-    minWidth: '44%',
-    backgroundColor: Colors.surface,
-    borderRadius: rs(16),
-    padding: rs(16),
-    borderWidth: 1,
-    borderColor: Colors.border,
+  statsStrip: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.surface, borderRadius: 16,
+    borderWidth: 1, borderColor: Colors.border,
+    marginBottom: rs(16), paddingVertical: 16,
   },
-  cardAccent: { backgroundColor: Colors.accent + '12', borderColor: Colors.accent + '40' },
-  cardValue: { ...Typography.title, color: Colors.textPrimary, marginBottom: 4 },
-  cardValueAccent: { color: Colors.accent },
-  cardLabel: { ...Typography.caption, color: Colors.textSecondary },
-  quickRow: { flexDirection: 'row', gap: rs(10), marginBottom: rs(28) },
-  quickBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', gap: rs(7),
-    borderRadius: rs(14), paddingVertical: rs(13),
+  statItem: { flex: 1, alignItems: 'center' },
+  statValue: { ...Typography.title, color: Colors.textPrimary, fontSize: 22, fontWeight: '800' },
+  statLabel: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
+  statDiv: { width: 1, height: 32, backgroundColor: Colors.border },
+  actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
+  actionBtn: {
+    width: '47.5%', flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', gap: 8,
+    borderRadius: 14, paddingVertical: 15,
   },
-  quickBtnPrimary: { backgroundColor: Colors.accent },
-  quickBtnPrimaryText: { color: Colors.bg, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
-  quickBtnSecondary: {
-    backgroundColor: Colors.surface,
-    borderWidth: 1, borderColor: Colors.accent + '50',
-  },
-  quickBtnSecondaryText: { color: Colors.accent, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
-  sectionTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 12 },
+  actionPrimary: { backgroundColor: Colors.accent },
+  actionPrimaryText: { color: Colors.bg, fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
+  actionOrange: { backgroundColor: '#FF8C00' },
+  actionWhiteText: { color: '#fff', fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
+  actionBorder: { backgroundColor: Colors.surface, borderWidth: 1.5, borderColor: Colors.border },
+  actionWarningText: { color: '#FFA500', fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
+  actionAccentText: { color: Colors.accent, fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
+  sectionTitle: { ...Typography.label, color: Colors.textSecondary },
   strikeSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   strikeBadge: {
     backgroundColor: Colors.danger + '20',
@@ -762,60 +636,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
   },
   reqAcceptBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 13 },
-  emptyState: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  emptyText: { ...Typography.body, color: Colors.textSecondary },
-  sessionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    gap: 12,
-  },
-  sessionDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.accent },
-  sessionInfo: { flex: 1 },
-  sessionClient: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
-  sessionMeta: { ...Typography.caption, color: Colors.textSecondary },
-  noShowBadge: {
-    backgroundColor: '#FFA50020', borderRadius: 6,
-    paddingHorizontal: 6, paddingVertical: 2,
-    borderWidth: 1, borderColor: '#FFA50050',
-  },
-  noShowBadgeText: { color: '#FFA500', fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
-
-  // Availability banner
-  availBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#4CAF5012', borderRadius: 12, padding: 11, marginBottom: 16,
-    borderWidth: 1, borderColor: '#4CAF5035',
-  },
-  availDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4CAF50' },
-  availText: { ...Typography.caption, color: '#4CAF50', flex: 1 },
-
-  // Quick session + No-show row
-  sessionActionRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-  quickSessionBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-    backgroundColor: '#FF8C00', borderRadius: 14, paddingVertical: 14,
-  },
-  quickSessionBtnText: { color: Colors.bg, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
-  noShowBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-    backgroundColor: Colors.surface, borderRadius: 14, paddingVertical: 14,
-    borderWidth: 1.5, borderColor: '#FFA50050',
-  },
-  noShowBtnText: { color: '#FFA500', fontSize: 13, fontWeight: '800', letterSpacing: 1 },
-
   // Emergency button
   emergencyBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
@@ -835,31 +655,6 @@ const styles = StyleSheet.create({
   pinnedTitle: { ...Typography.caption, color: Colors.accent, fontWeight: '700', marginBottom: 1 },
   pinnedMsg: { ...Typography.caption, color: Colors.textSecondary },
 
-  // Birthday section
-  birthdayBadge: { backgroundColor: BIRTHDAY_GOLD + '20', borderColor: BIRTHDAY_GOLD + '50' },
-  birthdayBadgeText: { color: BIRTHDAY_GOLD },
-  birthdayCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: Colors.surface, borderRadius: 14, padding: 14,
-    marginBottom: 8, borderWidth: 1, borderColor: Colors.border,
-  },
-  birthdayCardToday: { backgroundColor: BIRTHDAY_GOLD + '10', borderColor: BIRTHDAY_GOLD + '40' },
-  birthdayAvatar: {
-    width: 42, height: 42, borderRadius: 21,
-    backgroundColor: Colors.border, justifyContent: 'center', alignItems: 'center',
-  },
-  birthdayAvatarToday: { backgroundColor: BIRTHDAY_GOLD + '18', borderWidth: 1.5, borderColor: BIRTHDAY_GOLD + '50' },
-  birthdayAvatarText: { fontSize: 14, fontWeight: '800', color: Colors.textSecondary },
-  birthdayInfo: { flex: 1 },
-  birthdayName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
-  birthdayDate: { ...Typography.caption, color: Colors.textSecondary },
-  whatsappBtn: {
-    backgroundColor: Colors.bg, borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 7,
-    borderWidth: 1, borderColor: Colors.border,
-  },
-  whatsappBtnToday: { backgroundColor: BIRTHDAY_GOLD + '15', borderColor: BIRTHDAY_GOLD + '50' },
-  whatsappBtnText: { fontSize: 12, fontWeight: '700', color: Colors.textSecondary },
 });
 
 const ps = StyleSheet.create({
