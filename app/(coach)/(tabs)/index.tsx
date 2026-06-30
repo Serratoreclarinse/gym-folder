@@ -59,30 +59,40 @@ function ClientPickerModal({
               <Text style={ps.sheetBadgeText}>{clients.length}</Text>
             </View>
           </View>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            <View style={ps.grid}>
-              {clients.map((c, i) => {
-                const initials = c.name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
-                const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
-                const firstName = c.name.split(' ')[0];
-                const isActive = c.activePackage?.status === 'active';
-                return (
-                  <Pressable
-                    key={c.id}
-                    style={({ pressed }) => [ps.cell, pressed && { opacity: 0.65 }]}
-                    onPress={() => onSelect(c.id)}
-                  >
-                    <View style={ps.avatarWrap}>
-                      <View style={[ps.avatar, { backgroundColor: color + '20', borderColor: color + '55' }]}>
-                        <Text style={[ps.avatarText, { color }]}>{initials}</Text>
-                      </View>
-                      {isActive && <View style={ps.activeDot} />}
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 12 }}>
+            {clients.map((c, i) => {
+              const initials = c.name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
+              const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
+              const pkg = c.activePackage;
+              const isActive = pkg?.status === 'active';
+              const isExpired = pkg?.status === 'expired';
+              const isLow = isActive && (pkg?.sessions_remaining ?? 0) <= 3;
+              const statusColor = isExpired ? Colors.danger : isLow ? '#FF9800' : '#4CAF50';
+              const statusLabel = isExpired
+                ? 'EXPIRED'
+                : isActive
+                ? `${pkg!.sessions_remaining} session${pkg!.sessions_remaining !== 1 ? 's' : ''} left`
+                : 'No package';
+              return (
+                <Pressable
+                  key={c.id}
+                  style={({ pressed }) => [ps.row, pressed && { opacity: 0.65 }]}
+                  onPress={() => onSelect(c.id)}
+                >
+                  <View style={[ps.avatar, { backgroundColor: color + '20', borderColor: color + '55' }]}>
+                    <Text style={[ps.avatarText, { color }]}>{initials}</Text>
+                  </View>
+                  <View style={ps.rowInfo}>
+                    <Text style={ps.rowName} numberOfLines={1}>{c.name}</Text>
+                    <View style={ps.rowStatusRow}>
+                      <View style={[ps.statusDot, { backgroundColor: statusColor }]} />
+                      <Text style={[ps.statusLabel, { color: statusColor }]}>{statusLabel}</Text>
                     </View>
-                    <Text style={ps.cellName} numberOfLines={1}>{firstName}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="#444" />
+                </Pressable>
+              );
+            })}
           </ScrollView>
         </View>
       </View>
@@ -866,7 +876,7 @@ const ps = StyleSheet.create({
   sheetHead: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingHorizontal: 20, paddingBottom: 14,
-    borderBottomWidth: 1, borderBottomColor: '#2A2A2A', marginBottom: 8,
+    borderBottomWidth: 1, borderBottomColor: '#2A2A2A', marginBottom: 4,
   },
   sheetTitle: {
     fontSize: 12, fontWeight: '800', letterSpacing: 1.5,
@@ -878,24 +888,19 @@ const ps = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.accent + '40',
   },
   sheetBadgeText: { color: Colors.accent, fontSize: 11, fontWeight: '800' },
-  grid: {
-    flexDirection: 'row', flexWrap: 'wrap',
-    paddingHorizontal: 8, paddingTop: 8,
+  row: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    paddingHorizontal: 20, paddingVertical: 13,
+    borderBottomWidth: 1, borderBottomColor: '#242424',
   },
-  cell: { width: '25%', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 4 },
-  avatarWrap: { position: 'relative', marginBottom: 7 },
   avatar: {
-    width: 60, height: 60, borderRadius: 30,
-    justifyContent: 'center', alignItems: 'center', borderWidth: 2,
+    width: 46, height: 46, borderRadius: 23,
+    justifyContent: 'center', alignItems: 'center', borderWidth: 2, flexShrink: 0,
   },
-  avatarText: { fontSize: 18, fontWeight: '800' },
-  activeDot: {
-    position: 'absolute', bottom: 2, right: 2,
-    width: 13, height: 13, borderRadius: 7,
-    backgroundColor: '#4CAF50', borderWidth: 2, borderColor: '#1A1A1A',
-  },
-  cellName: {
-    fontSize: 11, color: '#ccc', fontWeight: '600',
-    textAlign: 'center',
-  },
+  avatarText: { fontSize: 15, fontWeight: '800' },
+  rowInfo: { flex: 1 },
+  rowName: { color: '#fff', fontWeight: '700', fontSize: 14, marginBottom: 4 },
+  rowStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  statusLabel: { fontSize: 12, fontWeight: '600' },
 });
