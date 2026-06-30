@@ -200,7 +200,7 @@ export default function CoachDashboard() {
         </View>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Pressable style={styles.addBtn} onPress={() => setShowPicker(true)}>
-            <Ionicons name="people-outline" size={20} color={Colors.accent} />
+            <Ionicons name="menu-outline" size={22} color={Colors.accent} />
           </Pressable>
           <Pressable style={styles.addBtn} onPress={() => router.push('/(coach)/announcements' as any)}>
             <Ionicons name="megaphone-outline" size={20} color={Colors.accent} />
