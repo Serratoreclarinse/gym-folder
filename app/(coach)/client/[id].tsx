@@ -706,6 +706,19 @@ export default function ClientDetailScreen() {
                 </View>
               ))}
               {s.notes ? <Text style={styles.sessionNotes}>{s.notes}</Text> : null}
+              {s.rating != null && (
+                <View style={styles.ratingRow}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Ionicons
+                      key={star}
+                      name={star <= s.rating! ? 'star' : 'star-outline'}
+                      size={14}
+                      color={star <= s.rating! ? '#FFD700' : Colors.border}
+                    />
+                  ))}
+                  <Text style={styles.ratingLabel}>Client rating</Text>
+                </View>
+              )}
             </View>
           );
         })
@@ -912,6 +925,11 @@ const styles = StyleSheet.create({
     ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic',
     marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: Colors.border,
   },
+  ratingRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: Colors.border,
+  },
+  ratingLabel: { ...Typography.caption, color: Colors.textSecondary, marginLeft: 6 },
 
   // Strike inline input
   strikeInputCard: {

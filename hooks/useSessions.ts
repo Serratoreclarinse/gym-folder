@@ -25,6 +25,7 @@ export type WorkoutSession = {
   status: 'confirmed' | 'pending' | 'absent';
   session_type: 'gym' | 'home';
   created_at: string;
+  rating: number | null;
 };
 
 export function useSessions(clientId?: string) {
@@ -55,7 +56,8 @@ export function useSessions(clientId?: string) {
         status,
         session_type,
         created_at,
-        client:profiles!workout_sessions_client_id_fkey (name, phone)
+        client:profiles!workout_sessions_client_id_fkey (name, phone),
+        session_ratings (rating)
       `)
       .eq('coach_id', profile.id)
       .order('session_date', { ascending: false });
@@ -85,6 +87,7 @@ export function useSessions(clientId?: string) {
         status: (row.status as WorkoutSession['status']) ?? 'confirmed',
         session_type: (row.session_type as 'gym' | 'home') ?? 'gym',
         created_at: row.created_at,
+        rating: (row.session_ratings as { rating: number }[] | null)?.[0]?.rating ?? null,
       }))
     );
     setLoading(false);
