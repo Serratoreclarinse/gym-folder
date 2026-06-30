@@ -83,12 +83,26 @@ function cleanPhone(phone: string): string {
   return phone.replace(/\D/g, '');
 }
 
+type ScheduledSession = {
+  id: string;
+  client_id: string;
+  client_name: string;
+  client_phone: string | null;
+  scheduled_at: string;
+  duration_minutes: number;
+  session_type: 'gym' | 'home';
+  notes: string | null;
+  client_confirmed_at: string | null;
+  status: 'pending' | 'client_confirmed';
+};
+
 export default function CalendarScreen() {
   const todayISO = toISO(new Date());
   const { profile } = useAuth();
 
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()));
   const [selectedDate, setSelectedDate] = useState(todayISO);
+  const [scheduledSessions, setScheduledSessions] = useState<ScheduledSession[]>([]);
 
   // Waitlist modal state — single modal with view/add modes
   const [waitlistSessionId, setWaitlistSessionId] = useState<string | null>(null);
@@ -108,7 +122,50 @@ export default function CalendarScreen() {
   const { clients } = useClients();
   const { isDateBlocked } = useAvailability();
 
-  useFocusEffect(useCallback(() => { refetch(); refetchWaitlist(); }, []));
+  const fetchScheduled = useCallback(async () => {
+    if (!profile?.id) return;
+    const from = new Date().toISOString();
+    const to = new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString();
+    const { data } = await supabase
+      .from('scheduled_sessions')
+      .select(`
+        id, client_id, scheduled_at, duration_minutes, session_type, notes,
+        client_confirmed_at, status,
+        client:profiles!scheduled_sessions_client_id_fkey(name, phone)
+      `)
+      .eq('coach_id', profile.id)
+      .gte('scheduled_at', from)
+      .lte('scheduled_at', to)
+      .in('status', ['pending', 'client_confirmed'])
+      .order('scheduled_at', { ascending: true });
+
+    setScheduledSessions(
+      (data ?? []).map((row) => ({
+        id: row.id,
+        client_id: row.client_id,
+        client_name: (row.client as any)?.name ?? 'Unknown',
+        client_phone: (row.client as any)?.phone ?? null,
+        scheduled_at: row.scheduled_at,
+        duration_minutes: row.duration_minutes,
+        session_type: (row.session_type as 'gym' | 'home') ?? 'gym',
+        notes: row.notes ?? null,
+        client_confirmed_at: row.client_confirmed_at ?? null,
+        status: row.status as 'pending' | 'client_confirmed',
+      }))
+    );
+  }, [profile?.id]);
+
+  const processOverdue = useCallback(async () => {
+    if (!profile?.id) return;
+    await supabase.rpc('process_overdue_sessions', { p_coach_id: profile.id });
+  }, [profile?.id]);
+
+  useFocusEffect(useCallback(() => {
+    refetch();
+    refetchWaitlist();
+    fetchScheduled();
+    processOverdue();
+  }, []));
 
   const handleConfirm = async (sessionId: string) => {
     await supabase.from('workout_sessions').update({ status: 'confirmed' }).eq('id', sessionId);
@@ -231,6 +288,16 @@ export default function CalendarScreen() {
     byDate[s.session_date].push(s);
   }
 
+  // Group scheduled sessions by date
+  const scheduledByDate: Record<string, ScheduledSession[]> = {};
+  for (const ss of scheduledSessions) {
+    const date = new Date(ss.scheduled_at).toISOString().split('T')[0];
+    if (!scheduledByDate[date]) scheduledByDate[date] = [];
+    scheduledByDate[date].push(ss);
+  }
+
+  const selectedScheduled = scheduledByDate[selectedDate] ?? [];
+
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
   const weekLabel = (() => {
@@ -318,12 +385,89 @@ export default function CalendarScreen() {
 
         {/* ── Daily header ─────────────────────────────────────── */}
         <View style={styles.dayHeader}>
-          <Text style={styles.dayHeaderText}>{selectedDateDisplay}</Text>
-          <Text style={styles.sessionCount}>
-            {selectedSessions.length}{' '}
-            {selectedSessions.length === 1 ? 'session' : 'sessions'}
-          </Text>
+          <View>
+            <Text style={styles.dayHeaderText}>{selectedDateDisplay}</Text>
+            <Text style={styles.sessionCount}>
+              {selectedSessions.length} session{selectedSessions.length !== 1 ? 's' : ''}
+              {selectedScheduled.length > 0 ? `  ·  ${selectedScheduled.length} scheduled` : ''}
+            </Text>
+          </View>
+          <Pressable
+            style={styles.scheduleBtn}
+            onPress={() =>
+              router.push({ pathname: '/(coach)/schedule-session' as any, params: { date: selectedDate } })
+            }
+          >
+            <Ionicons name="calendar-outline" size={13} color={Colors.accent} />
+            <Text style={styles.scheduleBtnText}>Schedule</Text>
+          </Pressable>
         </View>
+
+        {/* ── Scheduled sessions ─────────────────────────────── */}
+        {selectedScheduled.map((ss) => {
+          const isConfirmed = !!ss.client_confirmed_at;
+          const time = new Date(ss.scheduled_at).toLocaleTimeString('en-US', {
+            hour: 'numeric', minute: '2-digit',
+          });
+          return (
+            <View key={ss.id} style={styles.scheduledCard}>
+              <View style={styles.scheduledCardMain}>
+                <View style={[styles.avatar, { backgroundColor: '#4CAF5018', borderColor: '#4CAF5040' }]}>
+                  <Text style={[styles.avatarText, { color: '#4CAF50' }]}>{initials(ss.client_name)}</Text>
+                </View>
+                <View style={styles.sessionInfo}>
+                  <Text style={styles.clientName}>{ss.client_name}</Text>
+                  <Text style={styles.sessionMeta}>
+                    {time}  ·  {ss.duration_minutes} min  ·  {ss.session_type}
+                  </Text>
+                  {ss.notes ? <Text style={styles.sessionMeta} numberOfLines={1}>{ss.notes}</Text> : null}
+                </View>
+                {isConfirmed ? (
+                  <View style={styles.clientConfirmedBadge}>
+                    <Ionicons name="checkmark-circle" size={13} color="#4CAF50" />
+                    <Text style={styles.clientConfirmedText}>Confirmed</Text>
+                  </View>
+                ) : (
+                  <View style={styles.awaitingBadge}>
+                    <Text style={styles.awaitingText}>Awaiting</Text>
+                  </View>
+                )}
+              </View>
+              <View style={styles.scheduledActions}>
+                <Pressable
+                  style={styles.scheduledActionLog}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/(coach)/log-session' as any,
+                      params: { date: selectedDate, clientId: ss.client_id },
+                    })
+                  }
+                >
+                  <Ionicons name="barbell-outline" size={12} color={Colors.bg} />
+                  <Text style={styles.scheduledActionLogText}>Log Session</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.scheduledActionCancel}
+                  onPress={() =>
+                    Alert.alert('Cancel Scheduled Session', `Cancel ${ss.client_name}'s session?`, [
+                      { text: 'Keep', style: 'cancel' },
+                      {
+                        text: 'Cancel Session', style: 'destructive',
+                        onPress: async () => {
+                          await supabase.from('scheduled_sessions').delete().eq('id', ss.id);
+                          fetchScheduled();
+                        },
+                      },
+                    ])
+                  }
+                >
+                  <Ionicons name="close" size={12} color="#FF4D4D" />
+                  <Text style={styles.scheduledActionCancelText}>Cancel</Text>
+                </Pressable>
+              </View>
+            </View>
+          );
+        })}
 
         {/* ── Open slots banner ──────────────────────────────── */}
         {selectedSessions.some((s) => s.status === 'absent') && (
@@ -640,10 +784,54 @@ const styles = StyleSheet.create({
   // Day header
   dayHeader: {
     flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'baseline', marginBottom: 14,
+    alignItems: 'center', marginBottom: 14,
   },
   dayHeaderText: { ...Typography.subtitle, color: Colors.textPrimary },
-  sessionCount: { ...Typography.caption, color: Colors.textSecondary },
+  sessionCount: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
+
+  // Schedule button
+  scheduleBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: Colors.accent + '18', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderWidth: 1, borderColor: Colors.accent + '40',
+  },
+  scheduleBtnText: { fontSize: 12, fontWeight: '700', color: Colors.accent },
+
+  // Scheduled session card
+  scheduledCard: {
+    backgroundColor: Colors.surface, borderRadius: 14,
+    marginBottom: 10, borderWidth: 1, borderColor: '#4CAF5030', overflow: 'hidden',
+  },
+  scheduledCardMain: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
+  },
+  clientConfirmedBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#4CAF5015', borderRadius: 8,
+    paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#4CAF5040',
+  },
+  clientConfirmedText: { fontSize: 10, fontWeight: '700', color: '#4CAF50' },
+  awaitingBadge: {
+    backgroundColor: '#FFA50015', borderRadius: 8,
+    paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#FFA50040',
+  },
+  awaitingText: { fontSize: 10, fontWeight: '700', color: '#FFA500' },
+  scheduledActions: {
+    flexDirection: 'row', gap: 8,
+    paddingHorizontal: 14, paddingBottom: 12,
+  },
+  scheduledActionLog: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    backgroundColor: Colors.accent, borderRadius: 8, paddingVertical: 7,
+  },
+  scheduledActionLogText: { color: Colors.bg, fontSize: 12, fontWeight: '700' },
+  scheduledActionCancel: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    backgroundColor: '#FF4D4D15', borderRadius: 8, paddingVertical: 7,
+    borderWidth: 1, borderColor: '#FF4D4D40',
+  },
+  scheduledActionCancelText: { color: '#FF4D4D', fontSize: 12, fontWeight: '700' },
 
   // Open slot banner
   openSlotBanner: {

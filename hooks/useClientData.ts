@@ -35,7 +35,9 @@ export type CoachInfo = {
 export type NextScheduledSession = {
   id: string;
   scheduled_at: string;
+  duration_minutes: number;
   notes: string | null;
+  client_confirmed_at: string | null;
 };
 
 export function useClientData() {
@@ -92,9 +94,10 @@ export function useClientData() {
 
       supabase
         .from('scheduled_sessions')
-        .select('id, scheduled_at, notes')
+        .select('id, scheduled_at, duration_minutes, notes, client_confirmed_at')
         .eq('client_id', user.id)
         .gte('scheduled_at', new Date().toISOString())
+        .in('status', ['pending', 'client_confirmed'])
         .order('scheduled_at', { ascending: true })
         .limit(1)
         .maybeSingle(),
@@ -143,7 +146,14 @@ export function useClientData() {
     }
 
     if (!scheduledResult.error && scheduledResult.data) {
-      setNextScheduled(scheduledResult.data as NextScheduledSession);
+      const r = scheduledResult.data as any;
+      setNextScheduled({
+        id: r.id,
+        scheduled_at: r.scheduled_at,
+        duration_minutes: r.duration_minutes ?? 60,
+        notes: r.notes ?? null,
+        client_confirmed_at: r.client_confirmed_at ?? null,
+      });
     } else {
       setNextScheduled(null);
     }

@@ -1,8 +1,10 @@
-import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useClientData, type ClientPackage } from '@/hooks/useClientData';
 import { useClientAnnouncements } from '@/hooks/useClientAnnouncements';
 import { ErrorBanner } from '@/components/ErrorBanner';
+import { supabase } from '@/lib/supabase';
 import { Colors, Typography } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -124,6 +126,17 @@ function RecentSessionRow({
   );
 }
 
+function formatCountdown(secs: number): string {
+  if (secs <= 0) return 'Starting now!';
+  const d = Math.floor(secs / 86400);
+  const h = Math.floor((secs % 86400) / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  return `${m}m ${s}s`;
+}
+
 // ─── Screen ──────────────────────────────────────────────────
 export default function ClientProgressScreen() {
   const { profile } = useAuth();
@@ -132,6 +145,36 @@ export default function ClientProgressScreen() {
   const { announcements } = useClientAnnouncements(pkg?.coach_id ?? null);
 
   const recentSessions = sessions.slice(0, 3);
+
+  // ── Countdown timer ─────────────────────────────────────────
+  const [secondsUntil, setSecondsUntil] = useState<number>(0);
+  const [confirming, setConfirming] = useState(false);
+  const [localConfirmed, setLocalConfirmed] = useState(false);
+
+  useEffect(() => {
+    setLocalConfirmed(false);
+    if (!nextScheduled) { setSecondsUntil(0); return; }
+    const update = () => {
+      const diff = Math.max(0, Math.floor((new Date(nextScheduled.scheduled_at).getTime() - Date.now()) / 1000));
+      setSecondsUntil(diff);
+    };
+    update();
+    const t = setInterval(update, 1000);
+    return () => clearInterval(t);
+  }, [nextScheduled?.scheduled_at]);
+
+  const handleConfirm = async () => {
+    if (!nextScheduled || confirming) return;
+    setConfirming(true);
+    const { error: err } = await supabase.rpc('client_confirm_session', { p_session_id: nextScheduled.id });
+    if (!err) {
+      setLocalConfirmed(true);
+      refetch();
+    } else {
+      Alert.alert('Error', 'Could not confirm. Please try again.');
+    }
+    setConfirming(false);
+  };
 
   const formatScheduled = (iso: string) => {
     const d = new Date(iso);
@@ -159,16 +202,41 @@ export default function ClientProgressScreen() {
       {/* Next scheduled session */}
       {nextScheduled && (
         <View style={styles.nextCard}>
-          <View style={styles.nextIcon}>
-            <Ionicons name="calendar" size={22} color={Colors.accent} />
+          <View style={styles.nextCardTop}>
+            <View style={styles.nextIcon}>
+              <Ionicons name="calendar" size={18} color={Colors.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.nextLabel}>NEXT SESSION</Text>
+              <Text style={styles.nextDate}>{formatScheduled(nextScheduled.scheduled_at)}</Text>
+              {nextScheduled.notes ? (
+                <Text style={styles.nextNotes}>{nextScheduled.notes}</Text>
+              ) : null}
+            </View>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.nextLabel}>NEXT SESSION</Text>
-            <Text style={styles.nextDate}>{formatScheduled(nextScheduled.scheduled_at)}</Text>
-            {nextScheduled.notes ? (
-              <Text style={styles.nextNotes}>{nextScheduled.notes}</Text>
-            ) : null}
+
+          {/* Live countdown */}
+          <View style={styles.countdownRow}>
+            <Ionicons name="time-outline" size={13} color={Colors.accent} />
+            <Text style={styles.countdownText}>{formatCountdown(secondsUntil)}</Text>
           </View>
+
+          {/* Confirm attendance */}
+          {(nextScheduled.client_confirmed_at || localConfirmed) ? (
+            <View style={styles.confirmedBadge}>
+              <Ionicons name="checkmark-circle" size={15} color="#4CAF50" />
+              <Text style={styles.confirmedText}>Attendance Confirmed</Text>
+            </View>
+          ) : (
+            <Pressable
+              style={[styles.confirmBtn, confirming && { opacity: 0.5 }]}
+              onPress={handleConfirm}
+              disabled={confirming}
+            >
+              <Ionicons name="checkmark" size={15} color={Colors.bg} />
+              <Text style={styles.confirmBtnText}>{confirming ? 'Confirming…' : 'Confirm Attendance'}</Text>
+            </Pressable>
+          )}
         </View>
       )}
 
@@ -279,24 +347,46 @@ const styles = StyleSheet.create({
 
   // Next session card
   nextCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
     backgroundColor: Colors.accent + '12',
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: Colors.accent + '40',
+    gap: 12,
   },
+  nextCardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   nextIcon: {
-    width: 44, height: 44, borderRadius: 22,
+    width: 36, height: 36, borderRadius: 18,
     backgroundColor: Colors.accent + '20',
     justifyContent: 'center', alignItems: 'center',
+    flexShrink: 0,
   },
   nextLabel: { ...Typography.label, color: Colors.accent, fontSize: 10, marginBottom: 3 },
   nextDate:  { ...Typography.body, color: Colors.textPrimary, fontWeight: '700' },
   nextNotes: { ...Typography.caption, color: Colors.textSecondary, marginTop: 3 },
+
+  // Countdown
+  countdownRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: Colors.accent + '18', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 6,
+    alignSelf: 'flex-start',
+  },
+  countdownText: { ...Typography.label, color: Colors.accent, fontWeight: '800', fontSize: 13 },
+
+  // Confirm
+  confirmBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: Colors.accent, borderRadius: 10, paddingVertical: 10,
+  },
+  confirmBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 14 },
+  confirmedBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#4CAF5015', borderRadius: 10, paddingVertical: 10,
+    justifyContent: 'center', borderWidth: 1, borderColor: '#4CAF5040',
+  },
+  confirmedText: { color: '#4CAF50', fontWeight: '700', fontSize: 14 },
 
   // Announcement banner
   annBanner: {

@@ -220,12 +220,23 @@ export default function QRScannerScreen() {
       notes: 'QR check-in',
     });
 
-    setProcessing(false);
-
     if (insertError) {
+      setProcessing(false);
       setModalState({ type: 'error', message: insertError.message });
       return;
     }
+
+    // Mark any pending/confirmed scheduled session for this client today as completed
+    await supabase
+      .from('scheduled_sessions')
+      .update({ status: 'completed' })
+      .eq('client_id', clientId)
+      .eq('coach_id', profile.id)
+      .gte('scheduled_at', `${today}T00:00:00`)
+      .lte('scheduled_at', `${today}T23:59:59`)
+      .in('status', ['pending', 'client_confirmed']);
+
+    setProcessing(false);
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
