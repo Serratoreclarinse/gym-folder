@@ -21,6 +21,7 @@ export type ClientSession = {
   exercises: Exercise[];
   notes: string | null;
   coach_name: string;
+  status: string | null;
 };
 
 export type CoachInfo = {
@@ -82,10 +83,10 @@ export function useClientData() {
           duration_minutes,
           exercises,
           notes,
+          status,
           coach:profiles!workout_sessions_coach_id_fkey ( name )
         `)
         .eq('client_id', user.id)
-        .neq('status', 'absent')
         .lte('session_date', new Date().toISOString().split('T')[0])
         .order('session_date', { ascending: false }),
 
@@ -136,6 +137,7 @@ export function useClientData() {
           exercises: row.exercises as Exercise[],
           notes: row.notes,
           coach_name: (row.coach as { name: string } | null)?.name ?? 'Your coach',
+          status: row.status ?? null,
         })),
       );
     }

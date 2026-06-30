@@ -98,8 +98,9 @@ function Stat({ label, value, color }: { label: string; value: string; color?: s
 function RecentSessionRow({
   session,
 }: {
-  session: { session_date: string; duration_minutes: number; exercises: { exercise_name: string }[]; coach_name: string };
+  session: { session_date: string; duration_minutes: number; exercises: { exercise_name: string }[]; coach_name: string; status: string | null };
 }) {
+  const isNoShow = session.status === 'absent';
   const date = new Date(session.session_date).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric',
   });
@@ -107,15 +108,18 @@ function RecentSessionRow({
   const extra = session.exercises.length > 2 ? ` +${session.exercises.length - 2}` : '';
 
   return (
-    <View style={styles.recentRow}>
-      <View style={styles.recentDot} />
+    <View style={[styles.recentRow, isNoShow && styles.recentRowNoShow]}>
+      <View style={[styles.recentDot, isNoShow && { backgroundColor: '#FFA500' }]} />
       <View style={styles.recentInfo}>
-        <Text style={styles.recentDate}>{date}  ·  {session.duration_minutes} min</Text>
-        <Text style={styles.recentExercises} numberOfLines={1}>
-          {topExercises || 'No exercises recorded'}{extra}
+        <Text style={styles.recentDate}>{date}{!isNoShow && `  ·  ${session.duration_minutes} min`}</Text>
+        <Text style={[styles.recentExercises, isNoShow && { color: '#FFA500' }]} numberOfLines={1}>
+          {isNoShow ? 'No-show — 1 session deducted' : (topExercises || 'No exercises recorded') + extra}
         </Text>
       </View>
-      <Text style={styles.recentCoach}>{session.coach_name}</Text>
+      {isNoShow
+        ? <View style={styles.noShowBadge}><Text style={styles.noShowBadgeText}>NO-SHOW</Text></View>
+        : <Text style={styles.recentCoach}>{session.coach_name}</Text>
+      }
     </View>
   );
 }
@@ -361,7 +365,17 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     gap: 12,
   },
+  recentRowNoShow: { backgroundColor: '#FFA50008' },
   recentDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.accent },
+  noShowBadge: {
+    backgroundColor: '#FFA50020',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: '#FFA50050',
+  },
+  noShowBadgeText: { color: '#FFA500', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
   recentInfo: { flex: 1 },
   recentDate: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 2 },
   recentExercises: { ...Typography.body, color: Colors.textPrimary, fontWeight: '500' },
