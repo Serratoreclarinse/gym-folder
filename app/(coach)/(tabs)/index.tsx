@@ -202,16 +202,18 @@ export default function CoachDashboard() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Hey, {firstName} 👊</Text>
-          <Text style={styles.date}>
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-          </Text>
-        </View>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
           <Pressable style={styles.addBtn} onPress={() => setShowPicker(true)}>
             <Ionicons name="menu-outline" size={22} color={Colors.accent} />
           </Pressable>
+          <View>
+            <Text style={styles.greeting}>Hey, {firstName} 👊</Text>
+            <Text style={styles.date}>
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
           <Pressable style={styles.addBtn} onPress={() => router.push('/(coach)/announcements' as any)}>
             <Ionicons name="megaphone-outline" size={20} color={Colors.accent} />
           </Pressable>
@@ -632,7 +634,7 @@ const styles = StyleSheet.create({
 
   scroll: { flex: 1, backgroundColor: Colors.bg },
   content: { padding: HP, paddingBottom: rs(40) },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: rs(28) },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: rs(28) },
   greeting: { ...Typography.title, color: Colors.textPrimary, marginBottom: 4 },
   date: { ...Typography.body, color: Colors.textSecondary },
   addBtn: {
