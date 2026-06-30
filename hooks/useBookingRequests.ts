@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { sendPushNotification } from '@/lib/pushNotifications';
 
 export type BookingRequest = {
   id: string;
@@ -81,7 +82,24 @@ export function useCoachBookingRequests() {
   useEffect(() => { refetch(); }, [refetch]);
 
   const respond = async (id: string, status: 'accepted' | 'declined'): Promise<void> => {
+    const target = requests.find((r) => r.id === id);
     await supabase.from('booking_requests').update({ status }).eq('id', id);
+    if (target) {
+      const isBooking = target.type === 'booking';
+      if (status === 'accepted') {
+        await sendPushNotification(target.client_id, {
+          title: isBooking ? '✅ Session Request Accepted' : '✅ Renewal Request Accepted',
+          body: isBooking
+            ? 'Your coach accepted your session request. Check your schedule for the details.'
+            : 'Your coach accepted your renewal request. Your package will be updated soon.',
+        });
+      } else {
+        await sendPushNotification(target.client_id, {
+          title: isBooking ? '❌ Session Request Declined' : '❌ Renewal Request Declined',
+          body: 'Your coach could not accommodate your request. Try requesting a different date or time.',
+        });
+      }
+    }
     await refetch();
   };
 

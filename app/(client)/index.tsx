@@ -28,14 +28,14 @@ const TYPE_ICON: Record<string, { name: string; color: string }> = {
 // ─── Status helpers ──────────────────────────────────────────
 function packageColor(pkg: ClientPackage): string {
   if (pkg.status === 'expired')        return Colors.textSecondary;
-  if (pkg.sessions_remaining <= 2)     return '#FFA500';
+  if (pkg.sessions_remaining <= 3)     return '#FFA500';
   return Colors.accent;
 }
 
 function packageStatusLabel(pkg: ClientPackage): string {
   if (pkg.status === 'expired')        return 'EXPIRED';
   if (pkg.sessions_remaining === 0)    return 'ALL DONE';
-  if (pkg.sessions_remaining <= 2)     return 'ALMOST OUT';
+  if (pkg.sessions_remaining <= 3)     return 'ALMOST OUT';
   return 'ACTIVE';
 }
 
@@ -326,7 +326,7 @@ export default function ClientProgressScreen() {
             <Ionicons name="calendar-outline" size={16} color={Colors.accent} />
             <Text style={styles.quickBtnText}>Request Session</Text>
           </Pressable>
-          {(pkg.sessions_remaining <= 2) && (
+          {(pkg.sessions_remaining <= 3) && (
             <Pressable style={[styles.quickBtn, styles.quickBtnRenew]} onPress={() => setRequestModal('renewal')}>
               <Ionicons name="refresh-outline" size={16} color="#4CAF50" />
               <Text style={[styles.quickBtnText, { color: '#4CAF50' }]}>Renew Package</Text>

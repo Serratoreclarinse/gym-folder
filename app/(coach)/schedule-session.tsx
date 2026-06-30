@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useClients } from '@/hooks/useClients';
+import { sendPushNotification } from '@/lib/pushNotifications';
 import { Colors, Typography } from '@/constants/theme';
 
 const todayISO = () => new Date().toISOString().split('T')[0];
@@ -101,6 +102,18 @@ export default function ScheduleSessionScreen() {
     setSaving(false);
 
     if (error) { Alert.alert('Error', error.message); return; }
+
+    const formattedDate = new Date(scheduledAt).toLocaleDateString('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric',
+    });
+    const formattedTime = new Date(scheduledAt).toLocaleTimeString('en-US', {
+      hour: 'numeric', minute: '2-digit',
+    });
+    await sendPushNotification(selectedClientId, {
+      title: '📅 Session Scheduled',
+      body: `Your coach scheduled a session on ${formattedDate} at ${formattedTime} (${duration} min${sessionType === 'home' ? ' · Home' : ''}).`,
+    });
+
     router.back();
   };
 
