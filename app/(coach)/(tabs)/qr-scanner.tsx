@@ -164,7 +164,7 @@ export default function QRScannerScreen() {
     }
 
     // Reject QRs older than 1 window (~60s tolerance for clock drift)
-    const currentWindow = Math.floor(Date.now() / 30000);
+    const currentWindow = Math.floor(Date.now() / 300000);
     if (Math.abs(currentWindow - qrWindow) > 1) {
       setProcessing(false);
       setModalState({ type: 'error', message: 'QR code has expired. Ask client to show their current QR.' });

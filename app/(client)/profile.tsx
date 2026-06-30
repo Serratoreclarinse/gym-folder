@@ -11,8 +11,8 @@ import { Colors, Typography } from '@/constants/theme';
 export default function ClientProfileScreen() {
   const { profile, signOut, refreshProfile } = useAuth();
   const { coachInfo } = useClientData();
-  const [timeWindow, setTimeWindow] = useState(() => Math.floor(Date.now() / 30000));
-  const [secondsLeft, setSecondsLeft] = useState(() => 30 - Math.floor((Date.now() % 30000) / 1000));
+  const [timeWindow, setTimeWindow] = useState(() => Math.floor(Date.now() / 300000));
+  const [secondsLeft, setSecondsLeft] = useState(() => 300 - Math.floor((Date.now() % 300000) / 1000));
   const [editing, setEditing] = useState(false);
   const [phone, setPhone] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
@@ -22,8 +22,8 @@ export default function ClientProfileScreen() {
   useEffect(() => {
     const tick = setInterval(() => {
       const now = Date.now();
-      setTimeWindow(Math.floor(now / 30000));
-      setSecondsLeft(30 - Math.floor((now % 30000) / 1000));
+      setTimeWindow(Math.floor(now / 300000));
+      setSecondsLeft(300 - Math.floor((now % 300000) / 1000));
     }, 1000);
     return () => clearInterval(tick);
   }, []);
@@ -129,7 +129,9 @@ export default function ClientProfileScreen() {
               backgroundColor={Colors.surface}
             />
           </View>
-          <Text style={styles.qrExpiry}>Refreshes in {secondsLeft}s</Text>
+          <Text style={styles.qrExpiry}>
+            Refreshes in {Math.floor(secondsLeft / 60)}m {secondsLeft % 60}s
+          </Text>
         </View>
       )}
 
