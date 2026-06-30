@@ -174,11 +174,7 @@ export default function CoachDashboard() {
 
   return (
     <>
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}
-    >
+    <View style={styles.fixedTop}>
       {/* Header */}
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
@@ -202,7 +198,6 @@ export default function CoachDashboard() {
         </View>
       </View>
 
-      {/* Errors */}
       {(cError || sError) && (
         <ErrorBanner message={cError ?? sError!} onRetry={onRefresh} />
       )}
@@ -225,6 +220,62 @@ export default function CoachDashboard() {
         </View>
       </View>
 
+      {/* 2×2 Quick actions */}
+      <View style={styles.actionsGrid}>
+        <Pressable
+          style={({ pressed }) => [styles.actionBtn, styles.actionPrimary, pressed && { opacity: 0.85 }]}
+          onPress={() => router.push('/(coach)/log-session')}
+        >
+          <Ionicons name="add-circle-outline" size={20} color={Colors.bg} />
+          <Text style={styles.actionPrimaryText}>LOG SESSION</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.actionBtn, styles.actionOrange, pressed && { opacity: 0.85 }]}
+          onPress={() => setImpromptuVisible(true)}
+        >
+          <Ionicons name="flash" size={20} color="#fff" />
+          <Text style={styles.actionWhiteText}>QUICK</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.actionBtn, styles.actionBorder, pressed && { opacity: 0.85 }]}
+          onPress={() => setNoShowVisible(true)}
+        >
+          <Ionicons name="person-remove-outline" size={20} color="#FFA500" />
+          <Text style={styles.actionWarningText}>NO-SHOW</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.actionBtn, styles.actionBorder, pressed && { opacity: 0.85 }]}
+          onPress={() => router.push('/(coach)/revenue')}
+        >
+          <Ionicons name="bar-chart-outline" size={20} color={Colors.accent} />
+          <Text style={styles.actionAccentText}>REVENUE</Text>
+        </Pressable>
+      </View>
+
+      <Pressable
+        style={styles.emergencyBtn}
+        onPress={() => router.push({ pathname: '/(coach)/announcements', params: { preset: 'emergency' } } as any)}
+      >
+        <Ionicons name="warning-outline" size={18} color="#fff" />
+        <Text style={styles.emergencyBtnText}>EMERGENCY NOTICE</Text>
+      </Pressable>
+    </View>
+
+    <ImpromptuSessionModal
+      visible={impromptuVisible}
+      onClose={() => setImpromptuVisible(false)}
+    />
+    <NoShowModal
+      visible={noShowVisible}
+      onClose={() => setNoShowVisible(false)}
+      onLogged={() => { refetchSessions(); refetchClients(); }}
+    />
+
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}
+    >
       {/* Resume paused workout */}
       {pausedWorkout && (
         <Pressable
@@ -305,56 +356,6 @@ export default function CoachDashboard() {
           </Pressable>
         </View>
       )}
-
-      {/* 2×2 Quick actions */}
-      <View style={styles.actionsGrid}>
-        <Pressable
-          style={({ pressed }) => [styles.actionBtn, styles.actionPrimary, pressed && { opacity: 0.85 }]}
-          onPress={() => router.push('/(coach)/log-session')}
-        >
-          <Ionicons name="add-circle-outline" size={20} color={Colors.bg} />
-          <Text style={styles.actionPrimaryText}>LOG SESSION</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.actionBtn, styles.actionOrange, pressed && { opacity: 0.85 }]}
-          onPress={() => setImpromptuVisible(true)}
-        >
-          <Ionicons name="flash" size={20} color="#fff" />
-          <Text style={styles.actionWhiteText}>QUICK</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.actionBtn, styles.actionBorder, pressed && { opacity: 0.85 }]}
-          onPress={() => setNoShowVisible(true)}
-        >
-          <Ionicons name="person-remove-outline" size={20} color="#FFA500" />
-          <Text style={styles.actionWarningText}>NO-SHOW</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.actionBtn, styles.actionBorder, pressed && { opacity: 0.85 }]}
-          onPress={() => router.push('/(coach)/revenue')}
-        >
-          <Ionicons name="bar-chart-outline" size={20} color={Colors.accent} />
-          <Text style={styles.actionAccentText}>REVENUE</Text>
-        </Pressable>
-      </View>
-
-      <Pressable
-        style={styles.emergencyBtn}
-        onPress={() => router.push({ pathname: '/(coach)/announcements', params: { preset: 'emergency' } } as any)}
-      >
-        <Ionicons name="warning-outline" size={18} color="#fff" />
-        <Text style={styles.emergencyBtnText}>EMERGENCY NOTICE</Text>
-      </Pressable>
-
-      <ImpromptuSessionModal
-        visible={impromptuVisible}
-        onClose={() => setImpromptuVisible(false)}
-      />
-      <NoShowModal
-        visible={noShowVisible}
-        onClose={() => setNoShowVisible(false)}
-        onLogged={() => { refetchSessions(); refetchClients(); }}
-      />
 
       {/* Client Requests */}
       {bookingRequests.length > 0 && (
@@ -510,9 +511,16 @@ const styles = StyleSheet.create({
   resumeTitle: { color: '#4CAF50', fontWeight: '800', fontSize: 13, letterSpacing: 0.5, marginBottom: 3 },
   resumeSub: { color: Colors.textSecondary, fontSize: 13 },
 
+  fixedTop: {
+    backgroundColor: Colors.bg,
+    paddingHorizontal: HP,
+    paddingTop: HP,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
   scroll: { flex: 1, backgroundColor: Colors.bg },
   content: { padding: HP, paddingBottom: rs(40) },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: rs(28) },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: rs(20) },
   greeting: { ...Typography.title, color: Colors.textPrimary, marginBottom: 4 },
   date: { ...Typography.body, color: Colors.textSecondary },
   addBtn: {
@@ -639,7 +647,7 @@ const styles = StyleSheet.create({
   // Emergency button
   emergencyBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-    backgroundColor: Colors.danger, borderRadius: 14, paddingVertical: 13, marginBottom: 32,
+    backgroundColor: Colors.danger, borderRadius: 14, paddingVertical: 13, marginBottom: 16,
   },
   emergencyBtnText: { color: '#fff', fontSize: 13, fontWeight: '800', letterSpacing: 1 },
 
