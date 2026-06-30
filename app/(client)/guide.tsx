@@ -3,13 +3,12 @@ import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography } from '@/constants/theme';
 
-type Step = { text: string };
 type Section = {
   icon: string;
   iconColor: string;
   title: string;
   subtitle: string;
-  steps: Step[];
+  steps: string[];
 };
 
 const SECTIONS: Section[] = [
@@ -17,97 +16,99 @@ const SECTIONS: Section[] = [
     icon: 'trending-up-outline',
     iconColor: Colors.accent,
     title: 'My Progress (Home)',
-    subtitle: 'Tingnan ang iyong package, susunod na session, at mga anunsyo ng coach.',
+    subtitle: 'Your home screen — package balance, next session, and coach announcements.',
     steps: [
-      { text: 'Sa itaas, makikita mo ang iyong package — kung ilang sessions ang natitira, ilang sessions ang nagamit mo na, at kung on track ka ba sa iyong schedule.' },
-      { text: 'Kung may naka-schedule na session ka, lalabas ito sa itaas ng pahina kasama ang countdown timer — alam mo na kung gaano katagal bago ang susunod mong training!' },
-      { text: 'I-tap ang "Confirm Attendance" para ipaalam sa coach na pupunta ka. Kailangan gawin ito bago ang session.' },
-      { text: 'Maaari kang mag-cancel ng session — pero kailangan gawin ito ng higit sa 3 oras bago ang oras ng session. Kapag wala ka pang 3 oras, hindi na maaaring ma-cancel.' },
-      { text: 'Kung may anunsyo ang coach (holiday, promo, emergency), lalabas ito sa bandang gitna ng pahina. Basahin ito para updated ka lagi.' },
-      { text: 'I-tap ang "Request Session" para humingi ng bagong session sa iyong coach. Maaari kang maglagay ng gusto mong petsa at oras.' },
-      { text: 'Kapag mababa na ang sessions mo (3 sessions na lang), lalabas ang "Renew Package" button para madali kang makahiling ng renewal.' },
-      { text: 'Sa ibaba, makikita mo ang pinakabagong 3 sessions mo at ang contact info ng coach.' },
+      'See your package details at a glance — how many sessions remain, how many you\'ve used, and whether you\'re on track with your schedule.',
+      'If you have an upcoming session, it appears at the top with a live countdown timer so you always know when your next training is.',
+      'Tap "Confirm Attendance" to let your coach know you\'re coming. Do this before your session starts.',
+      'Tap "Cancel Session" if you can\'t make it. Important: this must be done more than 3 hours before the session. Once inside the 3-hour window, cancellations are locked.',
+      'Tap "Request Session" to ask your coach for a new session. Fill in your preferred date, time, and any notes.',
+      'When only 3 sessions remain in your package, a "Renew Package" button appears. Tap it to send a renewal request to your coach.',
+      'Coach announcements (holidays, emergencies, promos) appear in the middle of this screen. Read them so you\'re always up to date.',
+      'If you have an active strike, an orange warning banner appears at the top. 3 strikes = 1 session deducted from your package.',
     ],
   },
   {
     icon: 'barbell-outline',
     iconColor: '#FF9800',
     title: 'Workouts',
-    subtitle: 'Kasaysayan ng lahat ng iyong sessions.',
+    subtitle: 'Your full workout history — every session, exercise, and set you\'ve done.',
     steps: [
-      { text: 'Makikita mo rito ang lahat ng iyong nakaraang sessions — petsa, tagal, at listahan ng mga exercises na ginawa.' },
-      { text: 'May summary sa itaas — total sessions, total minuto ng training, at bilang ng iba\'t ibang exercises na nasubukan mo.' },
-      { text: 'I-tap ang buwan sa tuktok para ma-filter at makita lang ang sessions ng isang partikular na buwan.' },
-      { text: 'Sa loob ng bawat session card, makikita mo ang bawat exercise — sets, reps, at timbang na ginamit.' },
-      { text: 'Kapag bago pa lang natapos ang iyong session (loob ng 48 oras), lalabas ang "Rate this session" button. I-tap ito para mag-bigay ng 1-5 bituin rating sa iyong coach.' },
-      { text: 'Kung no-show ka sa isang session (hindi ka dumating), lalabas ito sa iyong history na may "NO-SHOW" na label at babawasan ng isang session.' },
+      'Every past session is listed here — date, duration, and the full list of exercises performed.',
+      'A summary row at the top shows your totals: sessions completed, minutes trained, and unique exercises done.',
+      'Tap any month chip at the top to filter and see only the sessions from that specific month.',
+      'Inside each session card you can see every exercise: name, sets, reps, and weight used.',
+      'Within 48 hours after a session, a "Rate this session" button appears. Tap it to give your coach a 1–5 star rating.',
+      'If you missed a scheduled session, it shows up in your history with a "NO-SHOW" badge and a note that 1 session was deducted.',
     ],
   },
   {
     icon: 'trophy-outline',
     iconColor: '#FFD700',
     title: 'Records',
-    subtitle: 'Tingnan ang iyong personal records at progress photos.',
+    subtitle: 'Your personal bests and the progress photos uploaded by your coach.',
     steps: [
-      { text: 'Sa itaas ng page na ito, makikita mo ang iyong Personal Records (PR) — ang pinakamataas na timbang na nagawa mo sa bawat exercise.' },
-      { text: 'Ang #1 ay may gintong medalya, #2 ay pilak, at #3 ay tanso — para alam mo kung ano ang iyong pinaka-magagandang exercise!' },
-      { text: 'Para sa bawat PR, makikita mo kung kailan mo ito nakamit at ilang beses mo nang nagawa ang exercise na iyon.' },
-      { text: 'Awtomatiko itong nag-a-update pagkatapos ng bawat session — hindi na kailangan pang mano-manong i-input.' },
-      { text: 'Sa ibaba ng PRs, makikita mo ang iyong Progress Photos. Ito ang mga larawan na pina-upload ng iyong coach para ma-track ang iyong body transformation.' },
-      { text: 'I-tap ang kahit anong larawan para makita ito nang mas malaki. Makikita mo rin ang petsa at label ng bawat larawan.' },
+      'The top section shows your Personal Records (PRs) — the heaviest weight you\'ve lifted for each exercise, automatically tracked from your sessions.',
+      'Your #1 PR gets a 🥇 gold medal, #2 gets 🥈 silver, and #3 gets 🥉 bronze.',
+      'Each PR shows when you achieved it and how many times you\'ve performed that exercise.',
+      'PRs update automatically after every session — no manual input needed.',
+      'Scroll down to see your Progress Photos, uploaded by your coach to track your body transformation over time.',
+      'Tap any photo to view it fullscreen. The date and label are shown at the bottom.',
     ],
   },
   {
     icon: 'chatbubbles-outline',
     iconColor: '#25D366',
     title: 'Messages',
-    subtitle: 'Makipag-chat sa iyong coach.',
+    subtitle: 'Chat directly with your coach — no third-party apps needed.',
     steps: [
-      { text: 'Dito mo maaaring direktang ma-message ang iyong coach — hindi na kailangan ng ibang app tulad ng Messenger o Viber.' },
-      { text: 'Makikita mo kung nabasa na ng coach ang iyong mensahe — kapag may double checkmark na pula, nabasa na niya ito.' },
-      { text: 'Maaari kang magtanong tungkol sa iyong workout, schedule, o kahit anong bagay na nais mong malaman.' },
-      { text: 'Ang lahat ng inyong usapan ay naka-save dito para madali kang makabalik-balik sa mga nakaraang mensahe.' },
+      'Send and receive messages with your coach without leaving the app.',
+      'Type your message in the input box at the bottom and tap the send button.',
+      'A single checkmark (✓) means your message was delivered. Double red checkmarks (✓✓) mean your coach has read it.',
+      'All your conversation history is saved here — scroll up to revisit past messages anytime.',
     ],
   },
   {
     icon: 'person-outline',
     iconColor: Colors.textSecondary,
     title: 'Profile',
-    subtitle: 'I-manage ang iyong account at personal na impormasyon.',
+    subtitle: 'Your QR code, contact info, and account settings.',
     steps: [
-      { text: 'I-tap ang iyong larawan para mag-upload ng bagong profile photo.' },
-      { text: 'Ang iyong QR Code ay nandito — ito ang iyong personal na barcode na gagamitin ng coach para sa check-in sa simula ng session. Ipakita ito sa coach bago mag-start.' },
-      { text: 'Ang QR code ay nagbabago bawat 5 minuto para sa iyong seguridad — hindi ito maaaring gamitin ng ibang tao.' },
-      { text: 'Sa "Contact & Social", maaari kang mag-lagay ng iyong phone number, WhatsApp, at Instagram para makuha ka ng coach.' },
-      { text: 'Makikita mo rin dito ang contact info ng iyong coach — phone at WhatsApp.' },
-      { text: 'I-tap ang "Sign Out" para lumabas sa iyong account.' },
+      'Tap your profile photo to upload a new one from your camera roll.',
+      'Your personal QR code is displayed here — show it to your coach at the start of every session for quick check-in.',
+      'The QR code refreshes every 5 minutes for security. It cannot be copied or used by anyone else.',
+      'Under "Contact & Social," tap Edit to add your phone number, WhatsApp, and Instagram.',
+      'Your coach\'s contact details (phone and WhatsApp) are also shown here for easy access.',
+      'Tap "User Guide" to come back and read this guide anytime.',
     ],
   },
   {
     icon: 'notifications-outline',
     iconColor: '#FF9800',
     title: 'Push Notifications',
-    subtitle: 'Mga notification na matatanggap mo sa iyong telepono.',
+    subtitle: 'Alerts sent straight to your phone — make sure notifications are turned on.',
     steps: [
-      { text: '📅 Session Scheduled — May bagong session na naka-schedule ang iyong coach para sa iyo.' },
-      { text: '⚠️ Package Almost Empty — 3 sessions na lang ang natitira sa iyong package. Oras na para mag-renew!' },
-      { text: '⚡ Strike Recorded — Nakatanggap ka ng strike mula sa iyong coach. Basahin ang dahilan.' },
-      { text: '⚡ 3 Strikes — Session Deducted — 3 na ang iyong strikes. Isang session ay nabawasan sa iyong package.' },
-      { text: '✅ / ❌ Request Response — Ang iyong booking o renewal request ay tinanggap o tinanggihan ng coach.' },
-      { text: '📢 / ⚠️ Announcement — May bagong anunsyo ang iyong coach — holiday, emergency, o promo.' },
+      '📅 Session Scheduled — Your coach has booked a new session for you. Check My Progress for the details.',
+      '⚠️ Package Almost Empty — Only 3 sessions left. Time to renew — use the "Renew Package" button on your home screen.',
+      '⚡ Strike Recorded — You received a strike from your coach. The reason is included in the notification.',
+      '⚡ 3 Strikes — Session Deducted — You reached 3 strikes. One session was deducted and your strike count has reset.',
+      '✅ Request Accepted — Your coach accepted your booking or renewal request.',
+      '❌ Request Declined — Your coach could not accommodate your request. Try a different date or message your coach.',
+      '📢 Announcement — Your coach posted an update. Could be a holiday, promo, or emergency — read it right away.',
     ],
   },
   {
     icon: 'help-circle-outline',
     iconColor: '#9C27B0',
-    title: 'Mga Madalas na Tanong (FAQ)',
-    subtitle: 'Sagot sa mga karaniwang katanungan.',
+    title: 'FAQ',
+    subtitle: 'Answers to the most common questions.',
     steps: [
-      { text: 'Q: Bakit bumababa ang sessions ko kahit hindi pa ko nagtr-train?\nA: Posibleng may no-show na naitala ang coach para sa iyo — hindi ka dumating sa session. Makikita ito sa iyong Workouts tab.' },
-      { text: 'Q: Paano ako mag-cancel ng session?\nA: Pumunta sa Home tab, hanapin ang iyong susunod na session, at i-tap ang "Cancel Session". Tandaan: kailangan gawin ito ng higit sa 3 oras bago ang session.' },
-      { text: 'Q: Paano ako humingi ng bagong session?\nA: I-tap ang "Request Session" sa Home tab, at punan ang gusto mong petsa at oras. Makakatanggap ang coach ng notification tungkol sa iyong request.' },
-      { text: 'Q: Bakit nag-deduct ng session sa aking package?\nA: May tatlong posibilidad: (1) Nag-log ng session ang coach, (2) No-show ka sa session, o (3) Umabot ka ng 3 strikes.' },
-      { text: 'Q: Nasaan ang aking mga progress photos?\nA: Pumunta sa Records tab, mag-scroll pababa, at makikita mo ang "Progress Photos" section.' },
+      'Q: Why did my session count go down when I didn\'t train?\nA: Three possible reasons: (1) Your coach logged a session for you, (2) You had a no-show on a scheduled session, or (3) You accumulated 3 strikes. Check your Workouts tab to see what was recorded.',
+      'Q: How do I cancel a session?\nA: Go to My Progress → find the Next Session card → tap "Cancel Session." Must be done more than 3 hours before the session starts.',
+      'Q: How do I request a new session?\nA: Tap "Request Session" on the My Progress screen, fill in your preferred date and time, and send. Your coach will receive a notification and respond.',
+      'Q: What happens when I get 3 strikes?\nA: One session is automatically deducted from your package and your strikes reset to zero. You\'ll receive a push notification when this happens.',
+      'Q: Where are my progress photos?\nA: Go to the Records tab and scroll down to the "PROGRESS PHOTOS" section. Tap any photo to view it fullscreen.',
+      'Q: I\'m not receiving notifications. What should I do?\nA: Go to your phone\'s Settings → Apps → ELEVAT3 → Notifications → enable "Allow Notifications." Then reopen the app.',
     ],
   },
 ];
@@ -134,7 +135,7 @@ function GuideCard({ section }: { section: Section }) {
               <View style={[s.stepNum, { backgroundColor: section.iconColor + '20' }]}>
                 <Text style={[s.stepNumText, { color: section.iconColor }]}>{i + 1}</Text>
               </View>
-              <Text style={s.stepText}>{step.text}</Text>
+              <Text style={s.stepText}>{step}</Text>
             </View>
           ))}
         </View>
@@ -150,8 +151,7 @@ export default function ClientGuideScreen() {
         <Ionicons name="book-outline" size={40} color={Colors.accent} />
         <Text style={s.heroTitle}>USER GUIDE</Text>
         <Text style={s.heroSub}>
-          I-tap ang bawat seksyon para malaman kung paano gamitin ang app.
-          Simple lang — kaya mo 'to!
+          Tap each section to learn how it works.{'\n'}Simple, quick, and always here when you need it.
         </Text>
       </View>
 
@@ -161,7 +161,7 @@ export default function ClientGuideScreen() {
 
       <View style={s.footer}>
         <Ionicons name="heart-outline" size={18} color={Colors.textSecondary} />
-        <Text style={s.footerText}>Kaya mo yan! Keep grinding! 💪</Text>
+        <Text style={s.footerText}>Keep grinding! 💪</Text>
       </View>
     </ScrollView>
   );

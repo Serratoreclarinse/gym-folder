@@ -3,13 +3,12 @@ import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography } from '@/constants/theme';
 
-type Step = { text: string };
 type Section = {
   icon: string;
   iconColor: string;
   title: string;
   subtitle: string;
-  steps: Step[];
+  steps: string[];
 };
 
 const SECTIONS: Section[] = [
@@ -17,182 +16,183 @@ const SECTIONS: Section[] = [
     icon: 'home-outline',
     iconColor: Colors.accent,
     title: 'Dashboard',
-    subtitle: 'Lahat ng importante nakikita mo dito sa isang sulyap.',
+    subtitle: 'Your command center — everything important at a glance.',
     steps: [
-      { text: 'Makikita mo dito ang bilang ng iyong mga kliyente, sessions ngayong buwan, at total na oras ng training.' },
-      { text: 'Kung may aktibong session na nagsimula na, lalabas ang timer card dito. Mula dito mo ma-extend, i-pause, o tapusin ang session.' },
-      { text: 'Ang susunod na naka-schedule na session ay naka-display na may countdown — alam mo na kung kailan ang next client mo.' },
-      { text: 'Mga booking at renewal requests ng mga kliyente ay lumalabas dito. I-tap ang "Accept" o "Decline" para sumagot.' },
-      { text: 'Kung may kliyente na umabot na sa 3 strikes, lalabas ang alerto para malaman mo agad.' },
-      { text: 'Bday ng mga kliyente ay ipinapakita din dito para hindi mo makalimutan.' },
+      'View your active client count, sessions logged this month, and total training hours.',
+      'If a session is currently running, the active timer card appears here. Extend, pause, or end the session directly from this screen.',
+      'Your next scheduled session is displayed with a live countdown — always know who\'s coming in next.',
+      'Booking and renewal requests from clients appear here. Tap Accept or Decline to respond.',
+      'If any client reaches 3 strikes, a red alert card appears so you can take action immediately.',
+      'Client birthdays are shown here so you never miss a chance to greet them.',
     ],
   },
   {
     icon: 'people-outline',
     iconColor: '#4CAF50',
     title: 'Clients',
-    subtitle: 'Listahan ng lahat ng iyong mga kliyente.',
+    subtitle: 'View and manage all your clients and their full profiles.',
     steps: [
-      { text: 'Makikita mo rito ang lahat ng kliyente mo pati na ang kanilang larawan, pangalan, at kung ilang sessions ang natitira sa kanilang package.' },
-      { text: 'I-tap ang pangalan ng kliyente para makita ang kanyang buong profile — sessions, strikes, files, at iba pa.' },
-      { text: 'Sa loob ng client profile, may 3 tabs: "Sessions" (kasaysayan ng workouts), "Files" (mga larawan at dokumento), at "Details" (pakikipag-ugnayan).' },
-      { text: 'Maaari kang mag-upload ng progress photos, InBody results, at iba pang files para sa bawat kliyente sa Files tab.' },
-      { text: 'Maaari kang magbigay ng strike sa kliyente kung may paglabag sila sa rules. Sa ikatlong strike, awtomatikong mababawasan ang isang session sa kanilang package.' },
-      { text: 'Makikita mo rin dito ang ratings na ibinigay ng kliyente sa bawat session — 1 hanggang 5 bituin.' },
+      'See all your clients with their profile photo, name, and how many sessions remain in their package.',
+      'Tap a client\'s name to open their full profile — sessions, strikes, files, and contact details.',
+      'Inside each client profile there are 3 tabs: Sessions (workout history), Files (photos & documents), and Details (contact info).',
+      'Upload progress photos, InBody results, and other documents for each client under the Files tab.',
+      'Issue a strike if a client breaks the rules. On the 3rd strike, one session is automatically deducted from their package and strikes reset to zero.',
+      'View the star ratings (1–5) your clients give after each session to track their satisfaction.',
     ],
   },
   {
     icon: 'calendar-outline',
     iconColor: '#9C27B0',
     title: 'Calendar',
-    subtitle: 'Tingnan ang lahat ng naka-iskedyul na sessions sa isang buwan.',
+    subtitle: 'See all scheduled sessions in a monthly calendar view.',
     steps: [
-      { text: 'Ipinapakita ang lahat ng naka-schedule na sessions sa isang kalendaryo. Bawat araw na may session ay may bilog na marka.' },
-      { text: 'I-tap ang araw para makita kung sino ang kliyente at anong oras ang session.' },
-      { text: 'Maaari kang mag-navigate sa nakaraang buwan o susunod na buwan gamit ang mga arrow buttons.' },
-      { text: 'May shortcut din dito para mag-schedule ng bagong session nang direkta mula sa kalendaryo.' },
+      'Every scheduled session appears on the calendar. Days with sessions are marked with a dot.',
+      'Tap any day to see who is scheduled and at what time.',
+      'Navigate between months using the arrow buttons at the top.',
+      'There\'s a shortcut here to schedule a new session directly from the calendar.',
     ],
   },
   {
     icon: 'list-outline',
     iconColor: '#FF9800',
     title: 'Sessions',
-    subtitle: 'Kasaysayan ng lahat ng naitala mong sessions.',
+    subtitle: 'Full history of all logged sessions, newest first.',
     steps: [
-      { text: 'Lahat ng nakaraang sessions ay naka-listahan dito mula sa pinakabago hanggang pinaka-luma.' },
-      { text: 'Makikita mo ang bawat session: pangalan ng kliyente, petsa, tagal, at mga exercises na ginawa.' },
-      { text: 'Maaari kang mag-filter ayon sa petsa o kliyente para mas madaling hanapin ang isang partikular na session.' },
+      'All past sessions are listed here from most recent to oldest.',
+      'Each session shows the client name, date, duration, and exercises performed.',
+      'Filter by date or client to quickly find a specific session.',
     ],
   },
   {
     icon: 'timer-outline',
     iconColor: '#00BCD4',
-    title: 'Timer (Guided Workout)',
-    subtitle: 'I-guide ang kliyente sa workout gamit ang live na timer.',
+    title: 'Timer / Guided Workout',
+    subtitle: 'Run a live workout with your client — timer and logging in one place.',
     steps: [
-      { text: 'Pumili ng kliyente at magsimulang mag-log ng exercises kasabay ng timer na tumatakbo.' },
-      { text: 'Para sa bawat exercise, ilagay ang pangalan, bilang ng sets at reps, at timbang (kung mayroon).' },
-      { text: 'May rest timer na lalabas sa pagitan ng sets para malaman ng kliyente kung kailan ulit magsisimula.' },
-      { text: 'Kapag tapos na ang workout, maaaring i-rate ng kliyente ang session at makita mo ang kanilang feedback.' },
-      { text: 'Maaari mong i-pause ang session kung kailangan ng pahinga, at i-resume anumang oras.' },
-      { text: 'Kapag natapos, ang buong workout ay awtomatikong nai-save — hindi mo na kailangang manually mag-log.' },
+      'Select a client to start. The session timer begins running immediately.',
+      'Log each exercise as you go: name, sets, reps, and weight.',
+      'A rest timer pops up between sets so your client knows exactly when to start again.',
+      'Pause the session anytime (water break, phone call) and resume when ready.',
+      'When done, tap End Session. The full workout is saved automatically — no separate logging needed.',
+      'Load a saved template to instantly fill in your exercises — no need to type everything from scratch.',
     ],
   },
   {
     icon: 'qr-code-outline',
     iconColor: '#FFD700',
     title: 'QR Scanner',
-    subtitle: 'I-scan ang QR code ng kliyente para sa mabilis na check-in.',
+    subtitle: 'Fast client check-in by scanning their personal QR code.',
     steps: [
-      { text: 'Ipakita sa kliyente ang QR code sa kanilang Profile tab sa loob ng app.' },
-      { text: 'Buksan ang QR Scanner tab mo, at i-scan ang QR code ng kliyente gamit ang camera ng telepono.' },
-      { text: 'Kapag na-scan, awtomatikong mino-log ang check-in ng kliyente — hindi na kailangan pang manual na paghanap.' },
-      { text: 'Ang QR code ay nagbabago bawat 5 minuto para sa seguridad. Hindi ito maaaring kopyahin ng iba.' },
+      'Ask the client to open their Profile tab in the app to display their QR code.',
+      'Open the QR Scanner tab and point your camera at the client\'s QR code.',
+      'The app instantly identifies the client — no manual searching required.',
+      'Each QR code refreshes every 5 minutes for security and cannot be copied or shared.',
     ],
   },
   {
     icon: 'pencil-outline',
     iconColor: Colors.accent,
     title: 'Log Session',
-    subtitle: 'Mag-record ng workout session pagkatapos ng klase.',
+    subtitle: 'Manually record a session after it has been completed.',
     steps: [
-      { text: 'Piliin ang kliyente, petsa ng session, at tagal (30 min, 45 min, o 1 oras).' },
-      { text: 'Ilagay ang bawat exercise na ginawa: pangalan, sets, reps, at timbang. Maaari kang magdagdag ng maraming exercises.' },
-      { text: 'Piliin ang uri ng session — Gym o Home training.' },
-      { text: 'Maaari kang magdagdag ng notes para sa session (hal. "Focus sa legs ngayon").' },
-      { text: 'Kapag nagtatala ng session para sa isang kliyente, ang sessions na natitira sa kanilang package ay awtomatikong bumababa ng isa.' },
-      { text: 'Kung 3 sessions na lang ang natitira sa package ng kliyente, awtomatikong makakatanggap sila ng notification para mag-renew.' },
+      'Select the client, session date using the calendar picker, and duration (30, 45, or 60 min).',
+      'Choose the session type — Gym or Home training.',
+      'Add each exercise performed: name, sets, reps, and weight used.',
+      'Add optional session notes (e.g. "Focused on upper body today").',
+      'Once saved, the client\'s remaining sessions automatically decrease by 1.',
+      'If only 3 sessions remain after logging, the client automatically receives a push notification to renew.',
     ],
   },
   {
     icon: 'calendar-clear-outline',
     iconColor: '#4CAF50',
     title: 'Schedule Session',
-    subtitle: 'Mag-book ng session para sa hinaharap.',
+    subtitle: 'Book a future session for a client. They\'ll be notified instantly.',
     steps: [
-      { text: 'Pumili ng kliyente, petsa, at oras ng session.' },
-      { text: 'Piliin ang tagal (30, 45, o 60 minuto) at uri ng session (Gym o Home).' },
-      { text: 'Maaari kang magdagdag ng notes para malaman ng kliyente kung ano ang focus ng session.' },
-      { text: 'Kapag nai-save, awtomatikong makakatanggap ang kliyente ng push notification na may detalye ng schedule.' },
-      { text: 'Ang kliyente ay maaari ring mag-confirm ng kanilang attendance sa loob ng app.' },
+      'Select a client, date, and time for the upcoming session.',
+      'Choose the duration (30, 45, or 60 min) and location type (Gym or Home).',
+      'Optionally add notes so the client knows what to expect (e.g. "Leg day!").',
+      'Once saved, the client receives a push notification with the full schedule details.',
+      'Clients can confirm their attendance directly within the app.',
     ],
   },
   {
     icon: 'megaphone-outline',
     iconColor: '#FF9800',
     title: 'Announcements',
-    subtitle: 'Mag-send ng mensahe sa lahat o sa napiling mga kliyente.',
+    subtitle: 'Send messages to all or specific clients. 4 announcement types available.',
     steps: [
-      { text: 'May 4 na uri ng announcement: General (pangkalahatan), Emergency (urgent), Holiday (bakasyon/walang klase), at Promo (special offer).' },
-      { text: 'Maaari kang pumili kung sino ang tatanggap — lahat ng kliyente, o pumili lang ng ilang tao.' },
-      { text: 'Ilagay ang title at mensahe ng announcement.' },
-      { text: 'Kapag na-post, awtomatikong makakatanggap ng push notification ang lahat ng piniling kliyente.' },
-      { text: 'Maaari mong i-pin ang mahalagang announcement para lagi itong makita ng mga kliyente sa kanilang home screen.' },
+      'General — for everyday updates like schedule changes or reminders.',
+      'Emergency — for urgent messages (e.g. cancelled session). Appears with a red highlight in the client app.',
+      'Holiday — to notify clients of rest days or gym closures.',
+      'Promo — for special offers or package discounts.',
+      'Choose whether to send to all clients or select specific individuals.',
+      'Pin an announcement to keep it visible at the top of clients\' home screens.',
     ],
   },
   {
     icon: 'document-text-outline',
     iconColor: '#9C27B0',
     title: 'Templates',
-    subtitle: 'I-save ang iyong paboritong workout plans para hindi na paulit-ulit i-type.',
+    subtitle: 'Save your go-to workout plans so you never have to retype them.',
     steps: [
-      { text: 'Gumawa ng template para sa mga karaniwang workout routines (hal. "Upper Body Day", "Leg Day").' },
-      { text: 'Sa bawat template, maaari kang magdagdag ng listahan ng exercises kasama ang sets, reps, at timbang.' },
-      { text: 'Kapag nag-log ng session, maaari mong gamitin ang isang template para mabilis na mapunan ang exercises — hindi na kailangang i-type ulit ang lahat.' },
+      'Create a template with a name (e.g. "Push Day") and a full list of exercises with sets, reps, and weights.',
+      'When logging a session or using the timer, load a template to instantly populate all exercises.',
+      'Edit or delete templates anytime from the Templates screen.',
     ],
   },
   {
     icon: 'bar-chart-outline',
     iconColor: '#4CAF50',
     title: 'Revenue Report',
-    subtitle: 'Tingnan kung magkano ang iyong kinita.',
+    subtitle: 'Track your earnings and export reports for your records.',
     steps: [
-      { text: 'Ipinapakita ang iyong kita buwan-buwan batay sa mga package na nabayaran ng mga kliyente.' },
-      { text: 'Makikita mo ang breakdown per kliyente — sino ang nagbayad ng magkano.' },
-      { text: 'Maaari kang mag-filter ayon sa buwan para makita ang isang partikular na panahon.' },
-      { text: 'May option na mag-export ng PDF report — kapaki-pakinabang para sa pagmamanage ng iyong negosyo.' },
+      'View your monthly revenue with a bar chart showing income trends over time.',
+      'See a per-client breakdown — who paid, how much, and when.',
+      'Filter by month to review a specific period.',
+      'Tap Share Report to export the data — useful for bookkeeping and business management.',
     ],
   },
   {
     icon: 'time-outline',
     iconColor: '#00BCD4',
     title: 'Availability',
-    subtitle: 'Itakda ang iyong schedule — kung kailan ka bukas para sa sessions.',
+    subtitle: 'Set your working hours for each day of the week.',
     steps: [
-      { text: 'Para sa bawat araw ng linggo, maaari kang magtakda ng oras kung kailan ka available (hal. Lunes, 8 AM – 5 PM).' },
-      { text: 'Kapag nag-request ang kliyente ng session, malalaman nila ang iyong available na oras.' },
+      'For each day of the week, define the hours you are available for training (e.g. Monday–Saturday, 6 AM – 8 PM).',
+      'Clients will see your available hours when submitting a session request.',
     ],
   },
   {
     icon: 'ban-outline',
     iconColor: Colors.accent,
     title: 'Blocked Dates',
-    subtitle: 'Markahan ang mga araw na hindi ka available.',
+    subtitle: 'Mark days when you are unavailable — vacation, rest days, or holidays.',
     steps: [
-      { text: 'Kung may bakasyon ka, holiday, o ibang dahilan na hindi ka makakatrain, markahan ang petsa bilang blocked.' },
-      { text: 'Sa mga blocked na araw, hindi maaaring mag-schedule ng session.' },
+      'Mark specific dates as blocked if you have a vacation, holiday, or any other reason you cannot train.',
+      'No sessions can be scheduled on blocked dates.',
     ],
   },
   {
     icon: 'chatbubbles-outline',
     iconColor: '#25D366',
     title: 'Chat',
-    subtitle: 'Makipag-usap sa iyong mga kliyente sa loob ng app.',
+    subtitle: 'Message your clients directly inside the app.',
     steps: [
-      { text: 'Maaari kang direktang mag-message sa iyong kliyente — hindi na kailangan ng labas na app.' },
-      { text: 'Makikita mo kung nabasa na ng kliyente ang iyong mensahe (double checkmark = nabasa na).' },
-      { text: 'Para buksan ang chat ng isang kliyente, pumunta sa kanyang profile at i-tap ang chat icon sa taas.' },
+      'Send and receive messages with your clients without needing a separate messaging app.',
+      'A double red checkmark (✓✓) means the client has read your message.',
+      'To open a client\'s chat, go to their profile and tap the chat bubble icon at the top.',
     ],
   },
   {
     icon: 'person-outline',
     iconColor: Colors.textSecondary,
     title: 'Profile',
-    subtitle: 'I-manage ang iyong personal na impormasyon.',
+    subtitle: 'Manage your personal information and account settings.',
     steps: [
-      { text: 'Maaari kang mag-update ng iyong larawan, pangalan, email, at password.' },
-      { text: 'Ilagay ang iyong phone number, WhatsApp, at Instagram para makita ng mga kliyente kung paano kita makuha.' },
-      { text: 'Dito mo rin mahahanap ang User Guide na ito para balikan anumang oras.' },
+      'Update your profile photo, display name, email address, and password.',
+      'Add your phone number, WhatsApp, and Instagram so clients can easily reach you.',
+      'This User Guide is also available here anytime you need a refresher.',
     ],
   },
 ];
@@ -219,7 +219,7 @@ function GuideCard({ section }: { section: Section }) {
               <View style={[s.stepNum, { backgroundColor: section.iconColor + '20' }]}>
                 <Text style={[s.stepNumText, { color: section.iconColor }]}>{i + 1}</Text>
               </View>
-              <Text style={s.stepText}>{step.text}</Text>
+              <Text style={s.stepText}>{step}</Text>
             </View>
           ))}
         </View>
@@ -235,8 +235,7 @@ export default function CoachGuideScreen() {
         <Ionicons name="book-outline" size={40} color={Colors.accent} />
         <Text style={s.heroTitle}>COACH USER GUIDE</Text>
         <Text style={s.heroSub}>
-          I-tap ang bawat feature para malaman kung paano ito gamitin.
-          Lahat ng kailangan mo ay nandito!
+          Tap each section to learn how it works.{'\n'}Everything you need is right here.
         </Text>
       </View>
 
@@ -246,7 +245,7 @@ export default function CoachGuideScreen() {
 
       <View style={s.footer}>
         <Ionicons name="heart-outline" size={18} color={Colors.textSecondary} />
-        <Text style={s.footerText}>Kaya mo yan, Coach! 💪</Text>
+        <Text style={s.footerText}>You've got this, Coach!</Text>
       </View>
     </ScrollView>
   );
