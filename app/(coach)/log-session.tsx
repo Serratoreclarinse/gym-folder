@@ -90,23 +90,45 @@ function parseSessionDateTime(date: string, time: string): Date | null {
   } catch { return null; }
 }
 
-async function scheduleSessionReminder(clientName: string, sessionDate: string, sessionTime: string) {
+async function scheduleSessionReminder(
+  clientName: string,
+  sessionDate: string,
+  sessionTime: string,
+  clientId: string,
+) {
   const { status } = await Notifications.requestPermissionsAsync();
   if (status !== 'granted') return;
 
   const sessionDT = parseSessionDateTime(sessionDate, sessionTime);
   if (!sessionDT) return;
 
-  const reminderDT = new Date(sessionDT.getTime() - 15 * 60 * 1000);
-  if (reminderDT <= new Date()) return; // already passed
+  const now = Date.now();
 
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: '⏰ Session Starting Soon!',
-      body: `${clientName}'s session starts in 15 minutes`,
-      sound: true,
-    },
-    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: reminderDT },
+  // Schedule local coach reminders at T-30 and T-15
+  const slots: { offsetMs: number; label: string }[] = [
+    { offsetMs: 30 * 60 * 1000, label: '30 minutes' },
+    { offsetMs: 15 * 60 * 1000, label: '15 minutes' },
+  ];
+
+  for (const { offsetMs, label } of slots) {
+    const fireAt = new Date(sessionDT.getTime() - offsetMs);
+    if (fireAt.getTime() <= now) continue;
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '⏰ Session Starting Soon!',
+        body: `${clientName}'s session starts in ${label}`,
+        sound: true,
+        data: { clientId, clientName, label },
+      },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: fireAt },
+    });
+  }
+
+  // Immediate push to client confirming the session time
+  await sendPushNotification(clientId, {
+    title: '📅 Session Confirmed',
+    body: `Your session is set for ${sessionTime}. See you soon!`,
   });
 }
 
@@ -335,6 +357,7 @@ export default function LogSessionScreen() {
   const [qrConfirmFn, setQrConfirmFn] = useState<(() => void) | null>(null);
   const [loading, setLoading] = useState(false);
   const [showClientPicker, setShowClientPicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
@@ -455,7 +478,7 @@ export default function LogSessionScreen() {
       }
 
       if (sessionTime.trim()) {
-        await scheduleSessionReminder(selectedClient?.name ?? 'Client', sessionDate, sessionTime.trim());
+        await scheduleSessionReminder(selectedClient?.name ?? 'Client', sessionDate, sessionTime.trim(), selectedClientId);
       }
 
       const sessionsLeft = pkg.sessions_remaining - 1;
@@ -737,37 +760,48 @@ export default function LogSessionScreen() {
             </View>
             <View style={styles.field}>
               <Text style={styles.label}>START TIME</Text>
-              {/* Quick-pick hour slots */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.timeChipsScroll}
-                contentContainerStyle={styles.timeChipsContent}
+              <Pressable
+                style={styles.pickerBtn}
+                onPress={() => setShowTimePicker((v) => !v)}
               >
-                {TIME_SLOTS.map((slot) => {
-                  const active = sessionTime.trim().toUpperCase() === slot.toUpperCase();
-                  return (
-                    <Pressable
-                      key={slot}
-                      style={[styles.timeChip, active && styles.timeChipActive]}
-                      onPress={() => setSessionTime(slot)}
-                    >
-                      <Text style={[styles.timeChipText, active && styles.timeChipTextActive]}>
-                        {slot}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
+                <Text style={[styles.pickerBtnText, !sessionTime && { color: Colors.textSecondary }]}>
+                  {sessionTime || '9:00 AM'}
+                </Text>
+                <Ionicons
+                  name={showTimePicker ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={Colors.textSecondary}
+                />
+              </Pressable>
+              {showTimePicker && (
+                <View style={[styles.dropdown, { maxHeight: 220 }]}>
+                  <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                    {TIME_SLOTS.map((slot) => {
+                      const active = sessionTime.trim().toUpperCase() === slot.toUpperCase();
+                      return (
+                        <Pressable
+                          key={slot}
+                          style={[styles.dropdownItem, active && styles.dropdownItemActive]}
+                          onPress={() => { setSessionTime(slot); setShowTimePicker(false); }}
+                        >
+                          <Text style={[styles.dropdownItemText, active && { color: Colors.accent }]}>
+                            {slot}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
               <TextInput
-                style={styles.input}
+                style={[styles.input, { marginTop: 6 }]}
                 value={sessionTime}
-                onChangeText={setSessionTime}
-                placeholder="or type manually…"
+                onChangeText={(v) => { setSessionTime(v); setShowTimePicker(false); }}
+                placeholder="9:00 AM"
                 placeholderTextColor={Colors.textSecondary}
                 returnKeyType="done"
               />
-              <Text style={styles.timeFormatHint}>Format: 9:00 AM  or  14:30</Text>
+              <Text style={styles.timeFormatHint}>Type manually: 9:00 AM  or  14:30</Text>
             </View>
           </>
         )}
@@ -832,25 +866,9 @@ export default function LogSessionScreen() {
           </Text>
         </Pressable>
 
-        {/* Start Workout — full mode only; notify client first, then QR-gate */}
+        {/* Start Workout — full mode only */}
         {mode === 'full' && (
           <>
-            {/* Remind client to open their QR */}
-            <Pressable
-              style={[styles.remindBtn, !selectedClientId && { opacity: 0.4 }]}
-              disabled={!selectedClientId}
-              onPress={async () => {
-                await sendPushNotification(selectedClientId, {
-                  title: '🏋️ Session is about to start!',
-                  body: 'Your coach is ready. Please open your QR code.',
-                });
-                Alert.alert('Reminder Sent', `${selectedClient?.name ?? 'Client'} has been notified to open their QR code.`);
-              }}
-            >
-              <Ionicons name="notifications-outline" size={17} color={Colors.textSecondary} />
-              <Text style={styles.remindBtnText}>SESSION IS ABOUT TO START</Text>
-            </Pressable>
-
             <Pressable
               style={[styles.startWorkoutBtn, !canSave && styles.saveBtnDisabled]}
               onPress={() => {
@@ -1226,19 +1244,6 @@ const styles = StyleSheet.create({
   },
   saveBtnDisabled: { opacity: 0.35 },
   saveBtnText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
-  timeChipsScroll: { marginBottom: 8 },
-  timeChipsContent: { gap: 6, paddingVertical: 2 },
-  timeChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-  },
-  timeChipActive: { borderColor: Colors.accent, backgroundColor: Colors.accent },
-  timeChipText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '600' },
-  timeChipTextActive: { color: Colors.bg, fontWeight: '700' },
   timeFormatHint: {
     fontSize: 11,
     color: Colors.textSecondary,
@@ -1252,19 +1257,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
     letterSpacing: 0.2,
   },
-  remindBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 14,
-    paddingVertical: 12,
-    marginTop: 10,
-    backgroundColor: Colors.surface,
-  },
-  remindBtnText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700', letterSpacing: 0.8 },
   startWorkoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
