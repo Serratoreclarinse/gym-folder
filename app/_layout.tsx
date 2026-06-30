@@ -2,6 +2,7 @@ import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import * as Linking from 'expo-linking';
+import * as Updates from 'expo-updates';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 
@@ -48,8 +49,26 @@ function AuthNavigation() {
   return null;
 }
 
+function useAutoUpdate() {
+  useEffect(() => {
+    if (__DEV__) return;
+    (async () => {
+      try {
+        const check = await Updates.checkForUpdateAsync();
+        if (check.isAvailable) {
+          await Updates.fetchUpdateAsync();
+          await Updates.reloadAsync();
+        }
+      } catch {
+        // silently ignore — update applies on next launch if this fails
+      }
+    })();
+  }, []);
+}
+
 export default function RootLayout() {
   useAuthDeepLink();
+  useAutoUpdate();
 
   return (
     <AuthProvider>

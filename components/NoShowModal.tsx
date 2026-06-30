@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useClients, ClientWithPackage } from '@/hooks/useClients';
+import { sendPushNotification } from '@/lib/pushNotifications';
 import { Colors, Typography } from '@/constants/theme';
 
 const NO_SHOW_ORANGE = '#FFA500';
@@ -153,6 +154,14 @@ export function NoShowModal({
                 Alert.alert('Error', error.message);
                 return;
               }
+
+              const sessionsLeft = pkg.sessions_remaining - 1;
+              await sendPushNotification(selectedClientId, {
+                title: '⚠️ No-Show Recorded',
+                body: sessionsLeft > 0
+                  ? `A session was deducted from your package. ${sessionsLeft} session${sessionsLeft !== 1 ? 's' : ''} remaining.`
+                  : 'A session was deducted — your package is now empty. Please renew soon.',
+              });
 
               onLogged?.();
               handleClose();
