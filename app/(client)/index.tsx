@@ -8,6 +8,7 @@ import { ErrorBanner } from '@/components/ErrorBanner';
 import { supabase } from '@/lib/supabase';
 import { registerPushToken, sendPushNotification } from '@/lib/pushNotifications';
 import { Colors, Typography } from '@/constants/theme';
+import { HP, rs } from '@/constants/responsive';
 import { Ionicons } from '@expo/vector-icons';
 
 // ─── Package type labels ─────────────────────────────────────
@@ -618,7 +619,7 @@ export default function ClientProgressScreen() {
 
 const styles = StyleSheet.create({
   scroll:   { flex: 1, backgroundColor: Colors.bg },
-  content:  { padding: 20, paddingBottom: 48 },
+  content:  { padding: HP, paddingBottom: rs(48) },
 
   header:   { marginBottom: 20 },
   greeting: { ...Typography.title, color: Colors.textPrimary, marginBottom: 4 },

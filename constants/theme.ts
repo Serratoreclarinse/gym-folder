@@ -1,3 +1,5 @@
+import { rf } from './responsive';
+
 export const Colors = {
   accent: '#E8001D',
   accentDim: '#E8001D22',
@@ -11,10 +13,10 @@ export const Colors = {
 } as const;
 
 export const Typography = {
-  hero: { fontSize: 36, fontWeight: '800' as const, letterSpacing: -0.5 },
-  title: { fontSize: 24, fontWeight: '700' as const },
-  subtitle: { fontSize: 18, fontWeight: '600' as const },
-  body: { fontSize: 15, fontWeight: '400' as const },
-  caption: { fontSize: 13, fontWeight: '400' as const },
-  label: { fontSize: 12, fontWeight: '600' as const, letterSpacing: 0.8 },
+  hero:     { fontSize: rf(36), fontWeight: '800' as const, letterSpacing: -0.5 },
+  title:    { fontSize: rf(24), fontWeight: '700' as const },
+  subtitle: { fontSize: rf(18), fontWeight: '600' as const },
+  body:     { fontSize: rf(15), fontWeight: '400' as const },
+  caption:  { fontSize: rf(13), fontWeight: '400' as const },
+  label:    { fontSize: rf(12), fontWeight: '600' as const, letterSpacing: 0.8 },
 } as const;

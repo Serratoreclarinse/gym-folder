@@ -20,6 +20,7 @@ import { NoShowModal } from '@/components/NoShowModal';
 import { NextSessionCard } from '@/components/NextSessionCard';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { Colors, Typography } from '@/constants/theme';
+import { HP, rs } from '@/constants/responsive';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -551,8 +552,8 @@ const styles = StyleSheet.create({
   resumeSub: { color: Colors.textSecondary, fontSize: 13 },
 
   scroll: { flex: 1, backgroundColor: Colors.bg },
-  content: { padding: 20, paddingBottom: 40 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 },
+  content: { padding: HP, paddingBottom: rs(40) },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: rs(28) },
   greeting: { ...Typography.title, color: Colors.textPrimary, marginBottom: 4 },
   date: { ...Typography.body, color: Colors.textSecondary },
   addBtn: {
@@ -565,13 +566,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 20 },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: rs(12), marginBottom: rs(20) },
   card: {
     flex: 1,
     minWidth: '44%',
     backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 18,
+    borderRadius: rs(16),
+    padding: rs(16),
     borderWidth: 1,
     borderColor: Colors.border,
   },
@@ -579,11 +580,11 @@ const styles = StyleSheet.create({
   cardValue: { ...Typography.title, color: Colors.textPrimary, marginBottom: 4 },
   cardValueAccent: { color: Colors.accent },
   cardLabel: { ...Typography.caption, color: Colors.textSecondary },
-  quickRow: { flexDirection: 'row', gap: 10, marginBottom: 32 },
+  quickRow: { flexDirection: 'row', gap: rs(10), marginBottom: rs(28) },
   quickBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', gap: 7,
-    borderRadius: 14, paddingVertical: 14,
+    justifyContent: 'center', gap: rs(7),
+    borderRadius: rs(14), paddingVertical: rs(13),
   },
   quickBtnPrimary: { backgroundColor: Colors.accent },
   quickBtnPrimaryText: { color: Colors.bg, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
