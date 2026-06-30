@@ -194,5 +194,16 @@ export function useActiveSession() {
     return { error: null };
   };
 
-  return { activeSession, nextSession, extensions, loading, refetch: load, extendSession, endSession, cancelSession, pauseSession, resumeSession };
+  const moveSession = async (newStartTime: string): Promise<{ error: string | null }> => {
+    if (!activeSession) return { error: 'No active session' };
+    const { error } = await supabase
+      .from('active_sessions')
+      .update({ start_time: newStartTime })
+      .eq('id', activeSession.id);
+    if (error) return { error: error.message };
+    setActiveSession((prev) => prev ? { ...prev, start_time: newStartTime } : null);
+    return { error: null };
+  };
+
+  return { activeSession, nextSession, extensions, loading, refetch: load, extendSession, endSession, cancelSession, pauseSession, resumeSession, moveSession };
 }

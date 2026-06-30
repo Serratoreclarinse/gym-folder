@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
+import { router } from 'expo-router';
 import {
   Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -12,9 +14,134 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '@/lib/supabase';
 import { ActiveSession, NextSession } from '@/hooks/useActiveSession';
 import { QRScanModal } from '@/components/QRScanModal';
 import { Colors, Typography } from '@/constants/theme';
+
+// ── Time slots for Move Time modal ───────────────────────────────────────────
+
+const MOVE_TIME_SLOTS = [
+  '5:00 AM', '5:30 AM', '6:00 AM', '6:30 AM',
+  '7:00 AM', '7:30 AM', '8:00 AM', '8:30 AM',
+  '9:00 AM', '9:30 AM', '10:00 AM', '10:30 AM',
+  '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM',
+  '1:00 PM', '1:30 PM', '2:00 PM', '2:30 PM',
+  '3:00 PM', '3:30 PM', '4:00 PM', '4:30 PM',
+  '5:00 PM', '5:30 PM', '6:00 PM', '6:30 PM',
+  '7:00 PM', '7:30 PM', '8:00 PM', '8:30 PM',
+  '9:00 PM',
+];
+
+function parseSlotToDate(slot: string, base: Date): Date | null {
+  try {
+    const upper = slot.toUpperCase().trim();
+    const [timePart, period] = upper.split(' ');
+    const [hhStr, mmStr] = timePart.split(':');
+    let h = parseInt(hhStr, 10);
+    const m = parseInt(mmStr, 10) || 0;
+    if (period === 'PM' && h !== 12) h += 12;
+    if (period === 'AM' && h === 12) h = 0;
+    const d = new Date(base);
+    d.setHours(h, m, 0, 0);
+    return d;
+  } catch { return null; }
+}
+
+// ── Move Time modal ───────────────────────────────────────────────────────────
+
+function MoveTimeModal({
+  visible,
+  currentStartTime,
+  onClose,
+  onMove,
+}: {
+  visible: boolean;
+  currentStartTime: string;
+  onClose: () => void;
+  onMove: (newStartISO: string) => Promise<void>;
+}) {
+  const [selected, setSelected] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const currentDisplay = new Date(currentStartTime).toLocaleTimeString([], {
+    hour: '2-digit', minute: '2-digit',
+  });
+
+  const handleMove = async () => {
+    const parsed = parseSlotToDate(selected, new Date(currentStartTime));
+    if (!parsed) return;
+    setSaving(true);
+    await onMove(parsed.toISOString());
+    setSaving(false);
+    setSelected('');
+    onClose();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={mt.overlay} onPress={onClose}>
+        <Pressable style={mt.sheet} onPress={() => {}}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+            <View style={mt.handle} />
+            <View style={mt.header}>
+              <Text style={mt.title}>MOVE SESSION TIME</Text>
+              <Pressable onPress={onClose} hitSlop={12}>
+                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+              </Pressable>
+            </View>
+
+            <Text style={mt.currentInfo}>Current start: {currentDisplay}</Text>
+
+            <Pressable
+              style={mt.pickerBtn}
+              onPress={() => setShowDropdown(!showDropdown)}
+            >
+              <Ionicons name="time-outline" size={16} color={Colors.textSecondary} />
+              <Text style={[mt.pickerText, !selected && mt.pickerPlaceholder]}>
+                {selected || 'Select new start time'}
+              </Text>
+              <Ionicons
+                name={showDropdown ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={Colors.textSecondary}
+              />
+            </Pressable>
+
+            {showDropdown && (
+              <View style={mt.dropdown}>
+                <ScrollView style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
+                  {MOVE_TIME_SLOTS.map((slot) => (
+                    <Pressable
+                      key={slot}
+                      style={[mt.dropdownItem, selected === slot && mt.dropdownItemActive]}
+                      onPress={() => { setSelected(slot); setShowDropdown(false); }}
+                    >
+                      <Text style={[mt.dropdownText, selected === slot && mt.dropdownTextActive]}>
+                        {slot}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            <Pressable
+              style={[mt.moveBtn, (!selected || saving) && mt.moveBtnDisabled]}
+              onPress={handleMove}
+              disabled={!selected || saving}
+            >
+              <Text style={mt.moveBtnText}>{saving ? 'MOVING…' : 'MOVE TO THIS TIME'}</Text>
+            </Pressable>
+
+            <View style={{ height: 24 }} />
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
 
 // ── Extend modal — at module scope (has TextInputs) ─────────────────────────
 
@@ -84,7 +211,7 @@ function ExtendModal({
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <View style={em.handle} />
             <View style={em.header}>
-              <Text style={em.title}>EXTEND SESSION</Text>
+              <Text style={em.title}>ADD TIME</Text>
               <Pressable onPress={onClose} hitSlop={12}>
                 <Ionicons name="close" size={22} color={Colors.textSecondary} />
               </Pressable>
@@ -134,7 +261,7 @@ function ExtendModal({
               onPress={handleCustom}
               disabled={!customMins.trim() || saving}
             >
-              <Text style={em.customBtnText}>{saving ? 'EXTENDING…' : 'EXTEND'}</Text>
+              <Text style={em.customBtnText}>{saving ? 'ADDING…' : 'ADD TIME'}</Text>
             </Pressable>
 
             <View style={{ height: 24 }} />
@@ -168,7 +295,7 @@ function TimesUpModal({
           <Text style={tu.sub2}>What would you like to do?</Text>
           <Pressable style={tu.extendBtn} onPress={onExtend}>
             <Ionicons name="add-circle-outline" size={18} color={Colors.accent} />
-            <Text style={tu.extendText}>EXTEND TIME</Text>
+            <Text style={tu.extendText}>ADD TIME</Text>
           </Pressable>
           <Pressable style={tu.endBtn} onPress={onEnd}>
             <Text style={tu.endText}>END SESSION</Text>
@@ -187,16 +314,14 @@ export function ActiveSessionCard({
   onExtend,
   onEnd,
   onCancel,
-  onPause,
-  onResume,
+  onMove,
 }: {
   activeSession: ActiveSession;
   nextSession: NextSession | null;
   onExtend: (minutes: number, reason: string) => Promise<{ error: string | null }>;
   onEnd: () => Promise<{ error: string | null }>;
   onCancel: () => Promise<{ error: string | null }>;
-  onPause: () => Promise<{ error: string | null }>;
-  onResume: () => Promise<{ error: string | null }>;
+  onMove: (newStartTime: string) => Promise<{ error: string | null }>;
 }) {
   const endTime = new Date(
     new Date(activeSession.start_time).getTime() + activeSession.current_duration * 60 * 1000,
@@ -206,9 +331,11 @@ export function ActiveSessionCard({
     Math.max(0, Math.floor((endTime.getTime() - Date.now()) / 1000)),
   );
   const [showExtend, setShowExtend] = useState(false);
+  const [showMoveTime, setShowMoveTime] = useState(false);
   const [showTimesUp, setShowTimesUp] = useState(false);
   const [showQRScan, setShowQRScan] = useState(false);
   const [checkedIn, setCheckedIn] = useState(false);
+  const [loadingWorkout, setLoadingWorkout] = useState(false);
   const alerted5Ref = useRef(false);
   const timesUpFiredRef = useRef(false);
 
@@ -264,6 +391,15 @@ export function ActiveSessionCard({
     }
   };
 
+  const handleMoveTime = async (newStartISO: string) => {
+    const { error } = await onMove(newStartISO);
+    if (error) Alert.alert('Error', error);
+    else {
+      alerted5Ref.current = false;
+      timesUpFiredRef.current = false;
+    }
+  };
+
   const handleEndSession = () => {
     Alert.alert(
       'End Session',
@@ -300,6 +436,46 @@ export function ActiveSessionCard({
     );
   };
 
+  const handleOpenWorkout = async () => {
+    if (!activeSession.session_id) {
+      Alert.alert('No Workout Data', 'No exercises were logged for this session.');
+      return;
+    }
+    setLoadingWorkout(true);
+    const { data, error } = await supabase
+      .from('workout_sessions')
+      .select('exercises, package_id, session_date, duration_minutes, notes')
+      .eq('id', activeSession.session_id)
+      .single();
+    setLoadingWorkout(false);
+
+    if (error || !data) {
+      Alert.alert('Error', 'Could not load workout data.');
+      return;
+    }
+
+    const exercises = (data.exercises as unknown[]) ?? [];
+    if (!exercises.length) {
+      Alert.alert('No Exercises', 'No exercises were planned for this session.');
+      return;
+    }
+
+    router.push({
+      pathname: '/(coach)/guided-workout',
+      params: {
+        exercises: JSON.stringify(exercises),
+        clientId: activeSession.client_id,
+        pkgId: data.package_id ?? '',
+        coachId: activeSession.coach_id,
+        sessionDate: data.session_date ?? new Date().toISOString().split('T')[0],
+        durationMinutes: String(data.duration_minutes ?? activeSession.current_duration),
+        sessionNotes: data.notes ?? '',
+        clientName: activeSession.client_name,
+        alreadySaved: 'true',
+      },
+    } as any);
+  };
+
   return (
     <>
       <View style={[s.card, isRed && s.cardRed, isYellow && s.cardYellow]}>
@@ -310,8 +486,12 @@ export function ActiveSessionCard({
           <Text style={[s.timer, { color: timerColor }]}>{display}</Text>
         </View>
 
-        {/* Client row */}
-        <View style={s.clientRow}>
+        {/* Client row — tap to open workout portal */}
+        <Pressable
+          style={({ pressed }) => [s.clientRow, pressed && { opacity: 0.7 }]}
+          onPress={handleOpenWorkout}
+          disabled={loadingWorkout}
+        >
           <View style={s.avatar}>
             <Text style={s.avatarText}>{initials}</Text>
           </View>
@@ -323,43 +503,46 @@ export function ActiveSessionCard({
                 ` → ${activeSession.current_duration} min`}
             </Text>
           </View>
-        </View>
+          <Ionicons name="barbell-outline" size={18} color={Colors.textSecondary} />
+        </Pressable>
 
-        {/* Buttons — top row: PAUSE/RESUME + END, middle: EXTEND, bottom: CANCEL */}
+        {/* Buttons */}
         <View style={s.btnCol}>
+          {/* OPEN WORKOUT */}
+          <Pressable
+            style={({ pressed }) => [
+              s.openWorkoutBtn,
+              pressed && { opacity: 0.8 },
+              loadingWorkout && { opacity: 0.55 },
+            ]}
+            onPress={handleOpenWorkout}
+            disabled={loadingWorkout}
+          >
+            <Ionicons name="barbell-outline" size={16} color={Colors.bg} />
+            <Text style={s.openWorkoutBtnText}>
+              {loadingWorkout ? 'LOADING…' : 'OPEN WORKOUT'}
+            </Text>
+          </Pressable>
+
+          {/* ADD TIME | MOVE TIME */}
           <View style={s.btnRow}>
-            {isPaused ? (
-              <Pressable
-                style={({ pressed }) => [s.pauseBtn, { borderColor: '#4CAF5060', backgroundColor: '#4CAF5010' }, pressed && { opacity: 0.75 }]}
-                onPress={async () => { const { error } = await onResume(); if (error) Alert.alert('Error', error); }}
-              >
-                <Ionicons name="play-circle-outline" size={16} color="#4CAF50" />
-                <Text style={[s.pauseBtnText, { color: '#4CAF50' }]}>RESUME</Text>
-              </Pressable>
-            ) : (
-              <Pressable
-                style={({ pressed }) => [s.pauseBtn, pressed && { opacity: 0.75 }]}
-                onPress={async () => { const { error } = await onPause(); if (error) Alert.alert('Error', error); }}
-              >
-                <Ionicons name="pause-circle-outline" size={16} color={Colors.accent} />
-                <Text style={s.pauseBtnText}>PAUSE</Text>
-              </Pressable>
-            )}
             <Pressable
-              style={({ pressed }) => [s.endBtn, pressed && { opacity: 0.75 }]}
-              onPress={handleEndSession}
+              style={({ pressed }) => [s.halfBtn, pressed && { opacity: 0.75 }]}
+              onPress={() => setShowExtend(true)}
             >
-              <Ionicons name="stop-circle-outline" size={16} color={Colors.textPrimary} />
-              <Text style={s.endBtnText}>END</Text>
+              <Ionicons name="add-circle-outline" size={16} color={Colors.accent} />
+              <Text style={s.halfBtnText}>ADD TIME</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [s.halfBtn, s.halfBtnAlt, pressed && { opacity: 0.75 }]}
+              onPress={() => setShowMoveTime(true)}
+            >
+              <Ionicons name="calendar-outline" size={16} color={Colors.textSecondary} />
+              <Text style={[s.halfBtnText, s.halfBtnTextAlt]}>MOVE TIME</Text>
             </Pressable>
           </View>
-          <Pressable
-            style={({ pressed }) => [s.extendBtn, pressed && { opacity: 0.75 }]}
-            onPress={() => setShowExtend(true)}
-          >
-            <Ionicons name="add-circle-outline" size={16} color={Colors.accent} />
-            <Text style={s.extendBtnText}>EXTEND TIME</Text>
-          </Pressable>
+
+          {/* SCAN CLIENT QR */}
           <Pressable
             style={({ pressed }) => [
               s.checkInBtn,
@@ -377,6 +560,17 @@ export function ActiveSessionCard({
               {checkedIn ? 'CLIENT CHECKED IN' : 'SCAN CLIENT QR'}
             </Text>
           </Pressable>
+
+          {/* END SESSION */}
+          <Pressable
+            style={({ pressed }) => [s.endBtn, pressed && { opacity: 0.75 }]}
+            onPress={handleEndSession}
+          >
+            <Ionicons name="stop-circle-outline" size={16} color={Colors.textPrimary} />
+            <Text style={s.endBtnText}>END SESSION</Text>
+          </Pressable>
+
+          {/* CANCEL */}
           <Pressable
             style={({ pressed }) => [s.cancelBtn, pressed && { opacity: 0.6 }]}
             onPress={handleCancelSession}
@@ -393,6 +587,13 @@ export function ActiveSessionCard({
         onExtend={handleExtendFromCard}
         nextSession={nextSession}
         endTime={endTime}
+      />
+
+      <MoveTimeModal
+        visible={showMoveTime}
+        currentStartTime={activeSession.start_time}
+        onClose={() => setShowMoveTime(false)}
+        onMove={handleMoveTime}
       />
 
       <TimesUpModal
@@ -432,7 +633,9 @@ const s = StyleSheet.create({
   liveLabel: { ...Typography.label, color: Colors.textSecondary, flex: 1 },
   timer: { fontSize: 28, fontWeight: '800', fontVariant: ['tabular-nums'] },
 
-  clientRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  clientRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14,
+  },
   avatar: {
     width: 42, height: 42, borderRadius: 21,
     backgroundColor: Colors.accent + '20',
@@ -445,24 +648,26 @@ const s = StyleSheet.create({
 
   btnCol: { gap: 8 },
   btnRow: { flexDirection: 'row', gap: 8 },
-  pauseBtn: {
+
+  openWorkoutBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: Colors.accent, borderRadius: 12,
+    paddingVertical: 13,
+  },
+  openWorkoutBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 14, letterSpacing: 0.8 },
+
+  halfBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     borderWidth: 1.5, borderColor: Colors.accent + '60', borderRadius: 10,
     paddingVertical: 10, backgroundColor: Colors.accent + '10',
   },
-  pauseBtnText: { color: Colors.accent, fontWeight: '800', fontSize: 13, letterSpacing: 0.5 },
-  extendBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    borderWidth: 1.5, borderColor: Colors.accent + '40', borderRadius: 10,
-    paddingVertical: 10, backgroundColor: Colors.accent + '08',
+  halfBtnAlt: {
+    borderColor: Colors.border,
+    backgroundColor: 'transparent',
   },
-  extendBtnText: { color: Colors.accent, fontWeight: '800', fontSize: 13, letterSpacing: 0.5 },
-  endBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    borderWidth: 1.5, borderColor: Colors.border, borderRadius: 10,
-    paddingVertical: 10,
-  },
-  endBtnText: { color: Colors.textPrimary, fontWeight: '700', fontSize: 13, letterSpacing: 0.5 },
+  halfBtnText: { color: Colors.accent, fontWeight: '800', fontSize: 12, letterSpacing: 0.5 },
+  halfBtnTextAlt: { color: Colors.textSecondary },
+
   checkInBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     borderWidth: 1.5, borderColor: Colors.border, borderRadius: 10,
@@ -471,6 +676,14 @@ const s = StyleSheet.create({
   checkInBtnDone: { borderColor: '#4CAF5060', backgroundColor: '#4CAF5010' },
   checkInBtnText: { color: Colors.textSecondary, fontWeight: '800', fontSize: 13, letterSpacing: 0.5 },
   checkInBtnTextDone: { color: '#4CAF50' },
+
+  endBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    borderWidth: 1.5, borderColor: Colors.border, borderRadius: 10,
+    paddingVertical: 10,
+  },
+  endBtnText: { color: Colors.textPrimary, fontWeight: '700', fontSize: 13, letterSpacing: 0.5 },
+
   cancelBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
     paddingVertical: 8,
@@ -525,6 +738,50 @@ const em = StyleSheet.create({
   },
   customBtnDisabled: { opacity: 0.35 },
   customBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 14, letterSpacing: 1 },
+});
+
+const mt = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 20, paddingBottom: 8,
+  },
+  handle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: Colors.border, alignSelf: 'center', marginTop: 12, marginBottom: 8,
+  },
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 12,
+  },
+  title: { ...Typography.label, color: Colors.textPrimary, fontSize: 14 },
+  currentInfo: {
+    ...Typography.caption, color: Colors.textSecondary,
+    marginBottom: 16,
+  },
+  pickerBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13,
+    marginBottom: 4,
+  },
+  pickerText: { flex: 1, color: Colors.textPrimary, fontSize: 15, fontWeight: '600' },
+  pickerPlaceholder: { color: Colors.textSecondary, fontWeight: '400' },
+  dropdown: {
+    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 12, marginBottom: 16, overflow: 'hidden',
+  },
+  dropdownItem: { paddingVertical: 12, paddingHorizontal: 16 },
+  dropdownItemActive: { backgroundColor: Colors.accent + '18' },
+  dropdownText: { color: Colors.textSecondary, fontSize: 15 },
+  dropdownTextActive: { color: Colors.accent, fontWeight: '700' },
+  moveBtn: {
+    backgroundColor: Colors.accent, borderRadius: 13,
+    paddingVertical: 14, alignItems: 'center', marginTop: 12,
+  },
+  moveBtnDisabled: { opacity: 0.35 },
+  moveBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 14, letterSpacing: 1 },
 });
 
 const tu = StyleSheet.create({

@@ -107,7 +107,7 @@ export default function CoachDashboard() {
   const { totalCount: waitlistCount, refetch: refetchWaitlist } = useWaitlist(profile?.id);
   const { requests: bookingRequests, refetch: refetchBookingReqs, respond: respondToRequest } = useCoachBookingRequests();
   const { pinnedAnnouncement, togglePin } = useAnnouncements();
-  const { activeSession, nextSession, extendSession, endSession, cancelSession, pauseSession, resumeSession, refetch: refetchTimer } = useActiveSessionContext();
+  const { activeSession, nextSession, extendSession, endSession, cancelSession, moveSession, refetch: refetchTimer } = useActiveSessionContext();
   const [noShowVisible, setNoShowVisible] = useState(false);
   const [pausedWorkout, setPausedWorkout] = useState<any | null>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -294,8 +294,7 @@ export default function CoachDashboard() {
           activeSession={activeSession}
           nextSession={nextSession}
           onExtend={extendSession}
-          onPause={pauseSession}
-          onResume={resumeSession}
+          onMove={moveSession}
           onEnd={async () => {
             const result = await endSession();
             if (!result.error) refetchTimer();
