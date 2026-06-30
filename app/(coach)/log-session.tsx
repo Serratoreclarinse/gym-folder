@@ -21,6 +21,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useClients } from '@/hooks/useClients';
 import { useExerciseHistory, RecentExercise } from '@/hooks/useExerciseHistory';
+import { useClientLastWeights } from '@/hooks/useClientLastWeights';
 import { useTemplates } from '@/hooks/useTemplates';
 import { Colors, Typography } from '@/constants/theme';
 import { sendPushNotification } from '@/lib/pushNotifications';
@@ -93,12 +94,14 @@ function ExerciseCard({
   exercise,
   index,
   isLast,
+  lastWeight,
   onChange,
   onRemove,
   onToggleSuperset,
   onOpenPicker,
 }: {
   exercise: Exercise;
+  lastWeight?: string;
   index: number;
   isLast: boolean;
   onChange: (id: string, field: keyof Exercise, value: string) => void;
@@ -173,6 +176,9 @@ function ExerciseCard({
             value={exercise.weight}
             onChangeText={(v) => onChange(exercise.id, 'weight', v)}
           />
+          {lastWeight ? (
+            <Text style={styles.lastWeightHint}>last: {lastWeight}</Text>
+          ) : null}
         </View>
         <View style={styles.bwBtnWrap}>
           <Text style={styles.exLabel}> </Text>
@@ -294,6 +300,7 @@ export default function LogSessionScreen() {
   const params = useLocalSearchParams<{ clientId?: string; date?: string; mode?: string }>();
   const { clients } = useClients();
   const { history: exerciseHistory } = useExerciseHistory();
+  const { getLastUsed } = useClientLastWeights(selectedClientId || null);
   const { templates, markUsed } = useTemplates();
 
   const [selectedClientId, setSelectedClientId] = useState(params.clientId ?? '');
@@ -305,6 +312,7 @@ export default function LogSessionScreen() {
   const [sessionNotes, setSessionNotes] = useState('');
   const [mode, setMode] = useState<'full' | 'quick'>(params.mode === 'quick' ? 'quick' : 'full');
   const [showQRGate, setShowQRGate] = useState(false);
+  const [qrConfirmFn, setQrConfirmFn] = useState<(() => void) | null>(null);
   const [loading, setLoading] = useState(false);
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -748,6 +756,7 @@ export default function LogSessionScreen() {
             exercise={ex}
             index={i}
             isLast={i === exercises.length - 1}
+            lastWeight={ex.exercise_name ? (getLastUsed(ex.exercise_name)?.weight ?? undefined) : undefined}
             onChange={updateExercise}
             onRemove={removeExercise}
             onToggleSuperset={toggleSuperset}
@@ -767,18 +776,10 @@ export default function LogSessionScreen() {
           onChangeText={setSessionNotes}
         />
 
-        {/* Save button */}
+        {/* Save button — no QR needed, coach can plan freely */}
         <Pressable
           style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]}
-          onPress={() => {
-            if (!canSave) return;
-            // QR gate only for today's sessions
-            if (sessionDate === todayISO()) {
-              setShowQRGate(true);
-            } else {
-              handleSave();
-            }
-          }}
+          onPress={() => { if (!canSave) return; handleSave(); }}
           disabled={!canSave || loading}
         >
           <Text style={styles.saveBtnText}>
@@ -786,16 +787,38 @@ export default function LogSessionScreen() {
           </Text>
         </Pressable>
 
-        {/* Start Workout button — full mode only */}
+        {/* Start Workout — full mode only; notify client first, then QR-gate */}
         {mode === 'full' && (
-          <Pressable
-            style={[styles.startWorkoutBtn, !canSave && styles.saveBtnDisabled]}
-            onPress={handleStartWorkout}
-            disabled={!canSave || loading}
-          >
-            <Ionicons name="play-circle-outline" size={20} color={Colors.accent} />
-            <Text style={styles.startWorkoutBtnText}>START WORKOUT</Text>
-          </Pressable>
+          <>
+            {/* Remind client to open their QR */}
+            <Pressable
+              style={[styles.remindBtn, !selectedClientId && { opacity: 0.4 }]}
+              disabled={!selectedClientId}
+              onPress={async () => {
+                await sendPushNotification(selectedClientId, {
+                  title: '🏋️ Session is about to start!',
+                  body: 'Your coach is ready. Please open your QR code.',
+                });
+                Alert.alert('Reminder Sent', `${selectedClient?.name ?? 'Client'} has been notified to open their QR code.`);
+              }}
+            >
+              <Ionicons name="notifications-outline" size={17} color={Colors.textSecondary} />
+              <Text style={styles.remindBtnText}>SESSION IS ABOUT TO START</Text>
+            </Pressable>
+
+            <Pressable
+              style={[styles.startWorkoutBtn, !canSave && styles.saveBtnDisabled]}
+              onPress={() => {
+                if (!canSave) return;
+                setQrConfirmFn(() => handleStartWorkout);
+                setShowQRGate(true);
+              }}
+              disabled={!canSave || loading}
+            >
+              <Ionicons name="play-circle-outline" size={20} color={Colors.accent} />
+              <Text style={styles.startWorkoutBtnText}>START WORKOUT</Text>
+            </Pressable>
+          </>
         )}
       </ScrollView>
 
@@ -854,7 +877,20 @@ export default function LogSessionScreen() {
         onClose={() => { pickerTargetRef.current = null; setPickerTargetId(null); }}
         onSelect={(name) => {
           const targetId = pickerTargetRef.current;
-          if (targetId) updateExercise(targetId, 'exercise_name', name);
+          if (targetId) {
+            updateExercise(targetId, 'exercise_name', name);
+            // Auto-fill weight if field is currently empty
+            const last = getLastUsed(name);
+            if (last) {
+              setExercises((prev) => prev.map((e) => {
+                if (e.id !== targetId) return e;
+                return {
+                  ...e,
+                  weight: e.weight.trim() ? e.weight : last.weight,
+                };
+              }));
+            }
+          }
           pickerTargetRef.current = null;
           setPickerTargetId(null);
         }}
@@ -909,13 +945,13 @@ export default function LogSessionScreen() {
         </Pressable>
       </Modal>
 
-      {/* QR gate — confirm client is present before saving */}
+      {/* QR gate — confirm client is present before saving or starting workout */}
       <QRScanModal
         visible={showQRGate}
         clientName={selectedClient?.name ?? ''}
         expectedClientId={selectedClientId}
-        onConfirm={() => { setShowQRGate(false); handleSave(); }}
-        onCancel={() => setShowQRGate(false)}
+        onConfirm={() => { setShowQRGate(false); qrConfirmFn?.(); }}
+        onCancel={() => { setShowQRGate(false); setQrConfirmFn(null); }}
       />
     </KeyboardAvoidingView>
   );
@@ -1145,6 +1181,26 @@ const styles = StyleSheet.create({
   },
   saveBtnDisabled: { opacity: 0.35 },
   saveBtnText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
+  lastWeightHint: {
+    fontSize: 11,
+    color: Colors.accent,
+    fontWeight: '600',
+    marginTop: 4,
+    letterSpacing: 0.2,
+  },
+  remindBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 14,
+    paddingVertical: 12,
+    marginTop: 10,
+    backgroundColor: Colors.surface,
+  },
+  remindBtnText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700', letterSpacing: 0.8 },
   startWorkoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
