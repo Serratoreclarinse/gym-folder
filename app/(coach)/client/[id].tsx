@@ -380,24 +380,33 @@ export default function ClientDetailScreen() {
         <Text style={styles.clientEmail}>{client?.email ?? ''}</Text>
         {client?.phone ? <Text style={styles.clientPhone}>{client.phone}</Text> : null}
       </View>
-      {client?.phone && (
-        <View style={styles.contactBtns}>
-          <Pressable
-            style={styles.contactBtn}
-            onPress={() => Linking.openURL(`whatsapp://send?phone=${encodeURIComponent(client.phone!)}`)}
-            hitSlop={6}
-          >
-            <Ionicons name="logo-whatsapp" size={22} color="#25D366" />
-          </Pressable>
-          <Pressable
-            style={styles.contactBtn}
-            onPress={() => Linking.openURL(`tel:${client.phone}`)}
-            hitSlop={6}
-          >
-            <Ionicons name="call-outline" size={22} color={Colors.accent} />
-          </Pressable>
-        </View>
-      )}
+      <View style={styles.contactBtns}>
+        <Pressable
+          style={styles.contactBtn}
+          onPress={() => router.push({ pathname: '/(coach)/chat', params: { clientId: id, clientName: client?.name ?? '' } } as any)}
+          hitSlop={6}
+        >
+          <Ionicons name="chatbubbles-outline" size={22} color={Colors.accent} />
+        </Pressable>
+        {client?.phone && (
+          <>
+            <Pressable
+              style={styles.contactBtn}
+              onPress={() => Linking.openURL(`whatsapp://send?phone=${encodeURIComponent(client.phone!)}`)}
+              hitSlop={6}
+            >
+              <Ionicons name="logo-whatsapp" size={22} color="#25D366" />
+            </Pressable>
+            <Pressable
+              style={styles.contactBtn}
+              onPress={() => Linking.openURL(`tel:${client.phone}`)}
+              hitSlop={6}
+            >
+              <Ionicons name="call-outline" size={22} color={Colors.accent} />
+            </Pressable>
+          </>
+        )}
+      </View>
     </View>
   );
 
