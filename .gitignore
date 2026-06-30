@@ -9,6 +9,9 @@ web-build/
 .DS_Store
 Thumbs.db
 
+# Supabase CLI temp files
+supabase/.temp/
+
 # Expo
 *.jks
 *.p8
