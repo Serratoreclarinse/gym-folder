@@ -150,29 +150,29 @@ const styles = StyleSheet.create({
     maxWidth: 420,
     backgroundColor: Colors.surface + 'CC',
     borderRadius: 20,
-    padding: 40,
+    padding: 32,
     borderWidth: 1,
     borderColor: Colors.border,
   },
   logoWrap: {
     alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: 20,
   },
   logo: {
-    width: 200,
-    height: 80,
+    width: 120,
+    height: 48,
   },
   heading: {
     ...Typography.hero,
     color: Colors.textPrimary,
-    marginBottom: 8,
-    lineHeight: 44,
+    marginBottom: 4,
+    lineHeight: 36,
     textAlign: 'center',
   },
   sub: {
     ...Typography.body,
     color: Colors.textSecondary,
-    marginBottom: 40,
+    marginBottom: 24,
     textAlign: 'center',
   },
   error: {
@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   fieldGroup: {
-    marginBottom: 20,
+    marginBottom: 14,
   },
   fieldLabel: {
     ...Typography.label,
