@@ -19,6 +19,7 @@ export default function LoginScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
   const isWeb = Platform.OS === 'web';
+  const cardWidth = isWeb ? Math.min(width - 40, 420) : undefined;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -59,7 +60,7 @@ export default function LoginScreen() {
         resizeMode="contain"
       />
       <View style={[styles.inner, isWeb && styles.innerDesktop]}>
-        <View style={isWeb ? styles.card : undefined}>
+        <View style={[isWeb ? styles.card : undefined, cardWidth !== undefined && { width: cardWidth }]}>
         <View style={styles.logoWrap}>
           <Image
             source={require('@/assets/images/logo.jpg')}
@@ -148,8 +149,6 @@ const styles = StyleSheet.create({
   },
   card: {
     alignSelf: 'center',
-    width: '100%',
-    maxWidth: 420,
     backgroundColor: Colors.surface + 'CC',
     borderRadius: 20,
     padding: 32,
