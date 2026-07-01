@@ -28,6 +28,8 @@ const BAR_COUNT = 6;
 const BAR_W = Math.floor((CHART_W * 0.52) / BAR_COUNT);
 const BAR_GAP = Math.floor((CHART_W - BAR_COUNT * BAR_W) / (BAR_COUNT + 1));
 
+const VAT_RATE = 0.05;
+
 const fmt = (n: number) =>
   'OMR ' + n.toFixed(3).replace(/\.?0+$/, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
@@ -203,8 +205,10 @@ function buildCSV(payments: Payment[], periodLabel: string): string {
   const paidTotal = paid.reduce((s, p) => s + p.amount, 0);
   const pendingTotal = pending.reduce((s, p) => s + p.amount, 0);
 
+  const vatTotal = paidTotal * VAT_RATE;
+
   const header = `ELEVAT3 Revenue Report – ${periodLabel}\nGenerated: ${now}\n\n`;
-  const cols = 'DATE,CLIENT,PACKAGE,AMOUNT (OMR),METHOD,STATUS,NOTES\n';
+  const cols = 'DATE,CLIENT,PACKAGE,AMOUNT (OMR),VAT 5% (OMR),METHOD,STATUS,NOTES\n';
   const rows = payments
     .slice()
     .sort((a, b) => b.payment_date.localeCompare(a.payment_date))
@@ -214,6 +218,7 @@ function buildCSV(payments: Payment[], periodLabel: string): string {
         `"${p.client_name}"`,
         `"${p.package_type}"`,
         p.amount.toFixed(3),
+        (p.amount * VAT_RATE).toFixed(3),
         METHOD_LABEL[p.payment_method],
         p.status === 'paid' ? 'Paid' : 'Pending',
         p.notes ? `"${p.notes.replace(/"/g, '""')}"` : '',
@@ -221,7 +226,7 @@ function buildCSV(payments: Payment[], periodLabel: string): string {
     )
     .join('\n');
 
-  const summary = `\n\nSUMMARY\nPaid Total,OMR ${paidTotal.toFixed(3)}\nPending Total,OMR ${pendingTotal.toFixed(3)}\nTotal Records,${payments.length}\nPaid Records,${paid.length}\nPending Records,${pending.length}`;
+  const summary = `\n\nSUMMARY\nPaid Total,OMR ${paidTotal.toFixed(3)}\nVAT (5%),OMR ${vatTotal.toFixed(3)}\nPending Total,OMR ${pendingTotal.toFixed(3)}\nTotal Records,${payments.length}\nPaid Records,${paid.length}\nPending Records,${pending.length}`;
 
   return header + cols + rows + summary;
 }
@@ -299,6 +304,12 @@ function ReportModal({
               <Text style={rp.previewLabel}>Paid Total</Text>
               <Text style={[rp.previewValue, { color: Colors.accent }]}>{fmt(paidTotal)}</Text>
             </View>
+            {paidTotal > 0 && (
+              <View style={rp.previewRow}>
+                <Text style={rp.previewLabel}>VAT (5%)</Text>
+                <Text style={[rp.previewValue, { color: Colors.textSecondary }]}>{fmt(paidTotal * VAT_RATE)}</Text>
+              </View>
+            )}
             {pendingCount > 0 && (
               <View style={rp.previewRow}>
                 <Text style={rp.previewLabel}>Pending</Text>
@@ -627,10 +638,16 @@ export default function RevenueScreen() {
         <View style={styles.grid}>
           <View style={[styles.card, styles.cardAccent]}>
             <Text style={styles.cardValue}>{fmt(thisMonthTotal)}</Text>
+            {thisMonthTotal > 0 && (
+              <Text style={styles.cardVat}>+{fmt(thisMonthTotal * VAT_RATE)} VAT</Text>
+            )}
             <Text style={styles.cardLabel}>This Month</Text>
           </View>
           <View style={styles.card}>
             <Text style={styles.cardValue}>{fmt(allTimeTotal)}</Text>
+            {allTimeTotal > 0 && (
+              <Text style={styles.cardVat}>+{fmt(allTimeTotal * VAT_RATE)} VAT</Text>
+            )}
             <Text style={styles.cardLabel}>All Time</Text>
           </View>
           <View style={styles.card}>
@@ -695,7 +712,7 @@ export default function RevenueScreen() {
               <CollapseSection
                 key={key}
                 title={fmtMonth(key)}
-                subtitle={`${fmt(mTotal)}${mPending > 0 ? `  ·  ${mPending} pending` : ''}  ·  ${mp.length} record${mp.length !== 1 ? 's' : ''}`}
+                subtitle={`${fmt(mTotal)}  +${fmt(mTotal * VAT_RATE)} VAT${mPending > 0 ? `  ·  ${mPending} pending` : ''}  ·  ${mp.length} record${mp.length !== 1 ? 's' : ''}`}
                 expanded={expandedKeys.has(key)}
                 onToggle={() => toggleExpand(key)}
               >
@@ -720,7 +737,7 @@ export default function RevenueScreen() {
               <CollapseSection
                 key={id}
                 title={name}
-                subtitle={`${fmt(cTotal)} paid${cPending > 0 ? `  ·  ${cPending} pending` : ''}  ·  ${cp.length} record${cp.length !== 1 ? 's' : ''}`}
+                subtitle={`${fmt(cTotal)} paid  +${fmt(cTotal * VAT_RATE)} VAT${cPending > 0 ? `  ·  ${cPending} pending` : ''}  ·  ${cp.length} record${cp.length !== 1 ? 's' : ''}`}
                 expanded={expandedKeys.has(id)}
                 onToggle={() => toggleExpand(id)}
               >
@@ -780,7 +797,8 @@ const styles = StyleSheet.create({
     padding: 16, borderWidth: 1, borderColor: Colors.border,
   },
   cardAccent: { backgroundColor: Colors.accent + '12', borderColor: Colors.accent + '40' },
-  cardValue: { ...Typography.subtitle, color: Colors.accent, fontWeight: '800', marginBottom: 4 },
+  cardValue: { ...Typography.subtitle, color: Colors.accent, fontWeight: '800', marginBottom: 2 },
+  cardVat: { fontSize: 11, color: Colors.textSecondary, marginBottom: 4 },
   cardLabel: { ...Typography.caption, color: Colors.textSecondary },
 
   // Chart
