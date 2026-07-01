@@ -1,6 +1,23 @@
 import { Session, User } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
+
+const WEB_SESSION_KEY = 'gym_auth_session';
+
+function saveWebSession(session: Session | null) {
+  if (Platform.OS !== 'web') return;
+  try {
+    if (session) {
+      localStorage.setItem(WEB_SESSION_KEY, JSON.stringify({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+      }));
+    } else {
+      localStorage.removeItem(WEB_SESSION_KEY);
+    }
+  } catch {}
+}
 
 export type UserRole = 'coach' | 'client' | 'admin';
 
@@ -78,10 +95,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
+    // On web, restore session from localStorage before subscribing so that
+    // INITIAL_SESSION fires with the saved tokens instead of null.
+    if (Platform.OS === 'web') {
+      try {
+        const saved = localStorage.getItem(WEB_SESSION_KEY);
+        if (saved) {
+          const tokens = JSON.parse(saved);
+          supabase.auth.setSession(tokens).catch(() => {});
+        }
+      } catch {}
+    }
+
     const timeout = setTimeout(() => setLoading(false), 5000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        // Persist session tokens to localStorage on web for every auth change
+        saveWebSession(session);
+
         setSession(session);
 
         if (session?.user) {
