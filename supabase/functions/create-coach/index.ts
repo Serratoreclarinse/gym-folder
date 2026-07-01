@@ -47,7 +47,10 @@ serve(async (req) => {
     // inviteUserByEmail creates the account AND sends the invitation email
     const { data: inviteData, error: inviteErr } = await adminClient.auth.admin.inviteUserByEmail(
       normalizedEmail,
-      { data: { name, role: 'coach' } },
+      {
+        data: { name, role: 'coach' },
+        redirectTo: 'https://zingy-khapse-426a9f.netlify.app',
+      },
     );
     if (inviteErr) throw new Error(inviteErr.message);
     const userId = inviteData.user.id;
