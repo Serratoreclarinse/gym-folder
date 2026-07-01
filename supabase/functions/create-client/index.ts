@@ -60,20 +60,20 @@ serve(async (req) => {
       // Existing client — reuse their account, just add a new package
       userId = existingProfile.id;
     } else {
-      // New user — create auth account
-      const { data: newUser, error: createErr } = await adminClient.auth.admin.createUser({
-        email: normalizedEmail,
-        email_confirm: true,
-        user_metadata: { name, role: 'client' },
-      });
-      if (createErr) throw new Error(createErr.message);
-      userId = newUser.user.id;
+      // New user — invite creates account AND sends invitation email
+      const { data: inviteData, error: inviteErr } = await adminClient.auth.admin.inviteUserByEmail(
+        normalizedEmail,
+        { data: { name, role: 'client' } },
+      );
+      if (inviteErr) throw new Error(inviteErr.message);
+      userId = inviteData.user.id;
       isNewUser = true;
 
-      // Update profile: set phone (trigger already set name + email)
-      if (phone) {
-        await adminClient.from('profiles').update({ phone }).eq('id', userId);
-      }
+      // Update profile with phone + ensure name/role are set
+      await adminClient
+        .from('profiles')
+        .update({ phone: phone || null, name, role: 'client' })
+        .eq('id', userId);
     }
 
     // Admin passes coach_id explicitly; coach uses their own ID
@@ -95,10 +95,7 @@ serve(async (req) => {
       .single();
     if (pkgErr) throw new Error(pkgErr.message);
 
-    // Send password-reset link only for new users
-    if (isNewUser) {
-      await adminClient.auth.admin.generateLink({ type: 'recovery', email: normalizedEmail });
-    }
+    // Invitation email already sent via inviteUserByEmail for new users
 
     return new Response(
       JSON.stringify({ user_id: userId, package_id: pkg.id }),

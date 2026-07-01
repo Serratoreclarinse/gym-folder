@@ -44,19 +44,19 @@ serve(async (req) => {
 
     if (existingProfile) throw new Error('An account with this email already exists.');
 
-    const { data: newUser, error: createErr } = await adminClient.auth.admin.createUser({
-      email: normalizedEmail,
-      email_confirm: true,
-      user_metadata: { name, role: 'coach' },
-    });
-    if (createErr) throw new Error(createErr.message);
-    const userId = newUser.user.id;
+    // inviteUserByEmail creates the account AND sends the invitation email
+    const { data: inviteData, error: inviteErr } = await adminClient.auth.admin.inviteUserByEmail(
+      normalizedEmail,
+      { data: { name, role: 'coach' } },
+    );
+    if (inviteErr) throw new Error(inviteErr.message);
+    const userId = inviteData.user.id;
 
-    if (phone) {
-      await adminClient.from('profiles').update({ phone }).eq('id', userId);
-    }
-
-    await adminClient.auth.admin.generateLink({ type: 'recovery', email: normalizedEmail });
+    // Update profile with phone + ensure name/role are set (trigger may need a moment)
+    await adminClient
+      .from('profiles')
+      .update({ phone: phone || null, name, role: 'coach' })
+      .eq('id', userId);
 
     return new Response(
       JSON.stringify({ user_id: userId }),
