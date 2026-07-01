@@ -10,12 +10,14 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { Colors, Typography } from '@/constants/theme';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -82,14 +84,23 @@ export default function LoginScreen() {
 
         <View style={styles.fieldGroup}>
           <Text style={styles.fieldLabel}>PASSWORD</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="••••••••"
-            placeholderTextColor={Colors.textSecondary}
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
+          <View style={styles.passwordWrap}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="••••••••"
+              placeholderTextColor={Colors.textSecondary}
+              secureTextEntry={!showPassword}
+              value={password}
+              onChangeText={setPassword}
+            />
+            <Pressable style={styles.eyeBtn} onPress={() => setShowPassword((v) => !v)}>
+              <Ionicons
+                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color={Colors.textSecondary}
+              />
+            </Pressable>
+          </View>
         </View>
 
         <Pressable
@@ -169,6 +180,25 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     color: Colors.textPrimary,
     fontSize: 15,
+  },
+  passwordWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 12,
+  },
+  passwordInput: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    color: Colors.textPrimary,
+    fontSize: 15,
+  },
+  eyeBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 14,
   },
   btn: {
     backgroundColor: Colors.accent,

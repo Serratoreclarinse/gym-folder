@@ -410,22 +410,34 @@ function EditField({
   icon: string; label: string; value: string; onChangeText: (v: string) => void;
   placeholder?: string; keyboardType?: any; iconColor?: string; secureTextEntry?: boolean; last?: boolean;
 }) {
+  const [hidden, setHidden] = useState(secureTextEntry ?? false);
   return (
     <View style={[styles.editField, !last && styles.editFieldBorder]}>
       <Ionicons name={icon as any} size={18} color={iconColor ?? Colors.textSecondary} style={styles.rowIcon} />
       <View style={styles.rowContent}>
         <Text style={styles.infoLabel}>{label}</Text>
-        <TextInput
-          style={styles.editInput}
-          value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor={Colors.textSecondary + '80'}
-          keyboardType={keyboardType}
-          autoCapitalize="none"
-          autoCorrect={false}
-          secureTextEntry={secureTextEntry}
-        />
+        <View style={styles.pwRow}>
+          <TextInput
+            style={[styles.editInput, { flex: 1 }]}
+            value={value}
+            onChangeText={onChangeText}
+            placeholder={placeholder}
+            placeholderTextColor={Colors.textSecondary + '80'}
+            keyboardType={keyboardType}
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry={hidden}
+          />
+          {secureTextEntry && (
+            <Pressable onPress={() => setHidden((h) => !h)} style={styles.eyeBtn}>
+              <Ionicons
+                name={hidden ? 'eye-outline' : 'eye-off-outline'}
+                size={18}
+                color={Colors.textSecondary}
+              />
+            </Pressable>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -480,6 +492,8 @@ const styles = StyleSheet.create({
   editField: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
   editFieldBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
   editInput: { ...Typography.body, color: Colors.textPrimary, paddingVertical: 2 },
+  pwRow: { flexDirection: 'row', alignItems: 'center' },
+  eyeBtn: { paddingLeft: 8, paddingVertical: 4 },
   editActions: { flexDirection: 'row', gap: 10, padding: 14 },
   cancelBtn: {
     flex: 1, borderRadius: 10, borderWidth: 1, borderColor: Colors.border,
