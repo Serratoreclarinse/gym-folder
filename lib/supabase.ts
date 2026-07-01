@@ -5,9 +5,13 @@ import { Platform } from 'react-native';
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 
-// On web, let Supabase use the browser's native localStorage (its default).
-// AsyncStorage on web doesn't persist across page reloads reliably.
-const storage = Platform.OS === 'web' ? undefined : AsyncStorage;
+// Explicitly use window.localStorage on web so the session survives page refreshes.
+// Passing undefined lets Supabase detect the environment, but Expo's bundler can
+// confuse that detection — so we hand the storage directly.
+const storage =
+  Platform.OS === 'web' && typeof window !== 'undefined'
+    ? window.localStorage
+    : AsyncStorage;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
