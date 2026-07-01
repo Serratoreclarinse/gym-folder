@@ -89,7 +89,7 @@ export default function AdminDashboardScreen() {
               ]}
             >
               <View style={[s.statIcon, { backgroundColor: c.color + '15' }]}>
-                <Ionicons name={c.icon as any} size={isDesktop ? 28 : 22} color={c.color} />
+                <Ionicons name={c.icon as any} size={isDesktop ? 20 : 16} color={c.color} />
               </View>
               <Text style={[s.statValue, { color: c.color }, isDesktop && s.statValueDesktop]}>
                 {c.value}
@@ -116,8 +116,8 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     justifyContent: 'space-between', marginBottom: 32,
   },
-  brand: { fontSize: 22, fontWeight: '800', color: Colors.textPrimary, letterSpacing: 2 },
-  brandDesktop: { fontSize: 28 },
+  brand: { fontSize: 18, fontWeight: '800', color: Colors.textPrimary, letterSpacing: 2 },
+  brandDesktop: { fontSize: 22 },
   adminPill: {
     backgroundColor: Colors.accent + '18', borderRadius: 8,
     paddingHorizontal: 10, paddingVertical: 4,
@@ -133,16 +133,16 @@ const s = StyleSheet.create({
   statsGridDesktop: { flexWrap: 'nowrap' },
 
   statCard: {
-    width: '47%', backgroundColor: Colors.surface, borderRadius: 16,
-    borderWidth: 1, padding: 16, gap: 8,
+    width: '47%', backgroundColor: Colors.surface, borderRadius: 14,
+    borderWidth: 1, padding: 14, gap: 6,
   },
-  statCardDesktop: { flex: 1, width: 'auto', padding: 24, gap: 12 },
+  statCardDesktop: { flex: 1, width: 'auto', padding: 18, gap: 8 },
 
   statIcon: {
-    width: 42, height: 42, borderRadius: 12,
+    width: 34, height: 34, borderRadius: 10,
     justifyContent: 'center', alignItems: 'center',
   },
-  statValue: { fontSize: 32, fontWeight: '800', lineHeight: 36 },
-  statValueDesktop: { fontSize: 44, lineHeight: 50 },
-  statLabel: { ...Typography.caption, color: Colors.textSecondary, lineHeight: 16 },
+  statValue: { fontSize: 24, fontWeight: '800', lineHeight: 28 },
+  statValueDesktop: { fontSize: 30, lineHeight: 34 },
+  statLabel: { ...Typography.caption, color: Colors.textSecondary, lineHeight: 15, fontSize: 11 },
 });

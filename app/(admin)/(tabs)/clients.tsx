@@ -295,6 +295,6 @@ const s = StyleSheet.create({
     alignItems: 'center', borderRadius: 10,
     borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6,
   },
-  pkgSessions: { fontSize: 18, fontWeight: '800', lineHeight: 22 },
+  pkgSessions: { fontSize: 15, fontWeight: '800', lineHeight: 18 },
   pkgLabel: { fontSize: 9, fontWeight: '700', letterSpacing: 0.5 },
 });
