@@ -95,25 +95,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    // On web, restore session from localStorage before subscribing so that
-    // INITIAL_SESSION fires with the saved tokens instead of null.
+    // Check upfront if we have tokens to restore — needed to handle the race
+    // where INITIAL_SESSION fires (with null) before setSession resolves.
+    let hasStoredSession = false;
     if (Platform.OS === 'web') {
-      try {
-        const saved = localStorage.getItem(WEB_SESSION_KEY);
-        if (saved) {
-          const tokens = JSON.parse(saved);
-          supabase.auth.setSession(tokens).catch(() => {});
-        }
-      } catch {}
+      try { hasStoredSession = !!localStorage.getItem(WEB_SESSION_KEY); } catch {}
     }
 
     const timeout = setTimeout(() => setLoading(false), 5000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        // Persist session tokens to localStorage on web for every auth change
         saveWebSession(session);
-
         setSession(session);
 
         if (session?.user) {
@@ -126,12 +119,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProfileError(null);
         }
 
-        if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+        if (event === 'INITIAL_SESSION') {
+          if (session || !hasStoredSession) {
+            // Got a session OR nothing to restore — done loading
+            clearTimeout(timeout);
+            setLoading(false);
+          }
+          // If no session but we have stored tokens: keep loading=true and
+          // wait for the SIGNED_IN event that setSession will fire below.
+        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           clearTimeout(timeout);
           setLoading(false);
         }
       }
     );
+
+    // Restore session AFTER listener is set up so SIGNED_IN is caught
+    if (Platform.OS === 'web' && hasStoredSession) {
+      try {
+        const saved = localStorage.getItem(WEB_SESSION_KEY);
+        const tokens = JSON.parse(saved!);
+        supabase.auth.setSession(tokens).catch(() => {
+          clearTimeout(timeout);
+          setLoading(false);
+        });
+      } catch {
+        clearTimeout(timeout);
+        setLoading(false);
+      }
+    }
 
     return () => {
       clearTimeout(timeout);
