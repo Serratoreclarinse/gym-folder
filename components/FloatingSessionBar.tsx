@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { usePathname } from 'expo-router';
+import { router, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { supabase } from '@/lib/supabase';
 import { useActiveSessionContext } from '@/context/ActiveSessionContext';
 import { QRScanModal } from '@/components/QRScanModal';
 import { Colors, Typography } from '@/constants/theme';
@@ -10,17 +11,18 @@ import { Colors, Typography } from '@/constants/theme';
 const TAB_BAR_HEIGHT = 58;
 
 export function FloatingSessionBar() {
-  const { activeSession, pauseSession, resumeSession, endSession } = useActiveSessionContext();
+  const { activeSession, endSession } = useActiveSessionContext();
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const [remainingSecs, setRemainingSecs] = useState(0);
   const [showQRScan, setShowQRScan] = useState(false);
   const [checkedIn, setCheckedIn] = useState(false);
+  const [loadingWorkout, setLoadingWorkout] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    if (!activeSession || activeSession.is_paused) return;
+    if (!activeSession) return;
 
     const endMs =
       new Date(activeSession.start_time).getTime() +
@@ -34,25 +36,60 @@ export function FloatingSessionBar() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [activeSession?.start_time, activeSession?.current_duration, activeSession?.is_paused]);
+  }, [activeSession?.start_time, activeSession?.current_duration]);
 
   // Hide on Dashboard — the full ActiveSessionCard is shown there
   const isOnDashboard = pathname === '/(coach)' || pathname === '/(coach)/(tabs)';
   if (!activeSession || isOnDashboard) return null;
 
-  const isPaused = activeSession.is_paused;
-  const isRed = !isPaused && remainingSecs <= 300;
+  const isRed = remainingSecs <= 300;
   const mins = Math.floor(remainingSecs / 60);
   const secs = remainingSecs % 60;
-  const timeDisplay = isPaused
-    ? 'PAUSED'
-    : `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  const timeDisplay = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 
   const handleEnd = () =>
     Alert.alert('End Session', `End session for ${activeSession.client_name}?`, [
       { text: 'Keep Going', style: 'cancel' },
       { text: 'End', style: 'destructive', onPress: () => endSession() },
     ]);
+
+  const openWorkoutPortal = async () => {
+    if (!activeSession.session_id) return;
+    setLoadingWorkout(true);
+    const { data } = await supabase
+      .from('workout_sessions')
+      .select('exercises, package_id, session_date, duration_minutes, notes')
+      .eq('id', activeSession.session_id)
+      .single();
+    setLoadingWorkout(false);
+
+    const exercises = (data?.exercises as unknown[]) ?? [];
+    if (!exercises.length) {
+      Alert.alert('No Exercises', 'No exercises were planned for this session.');
+      return;
+    }
+
+    router.push({
+      pathname: '/(coach)/guided-workout',
+      params: {
+        exercises: JSON.stringify(exercises),
+        clientId: activeSession.client_id,
+        pkgId: data?.package_id ?? '',
+        coachId: activeSession.coach_id,
+        sessionDate: data?.session_date ?? new Date().toISOString().split('T')[0],
+        durationMinutes: String(data?.duration_minutes ?? activeSession.current_duration),
+        sessionNotes: data?.notes ?? '',
+        clientName: activeSession.client_name,
+        alreadySaved: 'true',
+      },
+    } as any);
+  };
+
+  const handleQRConfirm = async () => {
+    setShowQRScan(false);
+    setCheckedIn(true);
+    await openWorkoutPortal();
+  };
 
   return (
     <>
@@ -61,53 +98,32 @@ export function FloatingSessionBar() {
         style={[s.wrapper, { bottom: TAB_BAR_HEIGHT + insets.bottom }]}
       >
         <View style={[s.bar, isRed && s.barRed]}>
-          <View
-            style={[
-              s.stripe,
-              {
-                backgroundColor: isPaused
-                  ? Colors.textSecondary
-                  : isRed
-                    ? Colors.accent
-                    : '#4CAF50',
-              },
-            ]}
-          />
+          <View style={[s.stripe, { backgroundColor: isRed ? Colors.accent : '#4CAF50' }]} />
 
           <View style={s.info}>
             <Text style={s.clientName} numberOfLines={1}>
               {activeSession.client_name}
             </Text>
-            <Text style={[s.timer, isPaused && s.timerPaused, isRed && s.timerRed]}>
+            <Text style={[s.timer, isRed && s.timerRed]}>
               {timeDisplay}
             </Text>
           </View>
 
-          {/* QR check-in */}
+          {/* QR check-in / open workout */}
           <Pressable
             style={({ pressed }) => [s.iconBtn, pressed && { opacity: 0.5 }]}
-            onPress={() => !checkedIn && setShowQRScan(true)}
+            onPress={() => checkedIn ? openWorkoutPortal() : setShowQRScan(true)}
+            disabled={loadingWorkout}
             hitSlop={10}
           >
             <Ionicons
-              name={checkedIn ? 'checkmark-circle' : 'qr-code-outline'}
+              name={checkedIn ? 'barbell-outline' : 'qr-code-outline'}
               size={19}
               color={checkedIn ? '#4CAF50' : Colors.textSecondary}
             />
           </Pressable>
 
-          <Pressable
-            style={({ pressed }) => [s.iconBtn, pressed && { opacity: 0.5 }]}
-            onPress={() => (isPaused ? resumeSession() : pauseSession())}
-            hitSlop={10}
-          >
-            <Ionicons
-              name={isPaused ? 'play' : 'pause'}
-              size={18}
-              color={Colors.textPrimary}
-            />
-          </Pressable>
-
+          {/* End */}
           <Pressable
             style={({ pressed }) => [s.iconBtn, pressed && { opacity: 0.5 }]}
             onPress={handleEnd}
@@ -122,7 +138,7 @@ export function FloatingSessionBar() {
         visible={showQRScan}
         clientName={activeSession.client_name}
         expectedClientId={activeSession.client_id}
-        onConfirm={() => { setShowQRScan(false); setCheckedIn(true); }}
+        onConfirm={handleQRConfirm}
         onCancel={() => setShowQRScan(false)}
       />
     </>
@@ -146,7 +162,6 @@ const s = StyleSheet.create({
     borderColor: Colors.border,
     overflow: 'hidden',
     height: 52,
-    // subtle shadow
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.15,
@@ -179,10 +194,6 @@ const s = StyleSheet.create({
     fontWeight: '800',
     fontSize: 15,
     letterSpacing: 0.5,
-  },
-  timerPaused: {
-    color: Colors.textSecondary,
-    fontSize: 12,
   },
   timerRed: {
     color: Colors.accent,

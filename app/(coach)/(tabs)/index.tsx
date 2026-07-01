@@ -514,8 +514,6 @@ const styles = StyleSheet.create({
   },
   actionPrimary: { backgroundColor: Colors.accent },
   actionPrimaryText: { color: Colors.bg, fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
-  actionBorder: { backgroundColor: Colors.surface, borderWidth: 1.5, borderColor: Colors.border },
-  actionWarningText: { color: '#FFA500', fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
   sectionTitle: { ...Typography.label, color: Colors.textSecondary },
   strikeSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   strikeBadge: {
