@@ -10,6 +10,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +18,8 @@ import { supabase } from '@/lib/supabase';
 import { Colors, Typography } from '@/constants/theme';
 
 export default function SignUpScreen() {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -79,7 +82,8 @@ export default function SignUpScreen() {
         style={styles.bgLogo}
         resizeMode="contain"
       />
-      <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.inner, isDesktop && styles.innerDesktop]} keyboardShouldPersistTaps="handled">
+        <View style={isDesktop ? styles.card : undefined}>
         <View style={styles.logoWrap}>
           <Image
             source={require('@/assets/images/logo.jpg')}
@@ -172,6 +176,7 @@ export default function SignUpScreen() {
         <Pressable style={styles.loginLink} onPress={() => router.back()}>
           <Text style={styles.loginLinkText}>Already have an account? <Text style={styles.loginLinkAccent}>Sign in</Text></Text>
         </Pressable>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -193,6 +198,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 28,
     paddingVertical: 48,
+  },
+  innerDesktop: {
+    alignItems: 'center',
+    paddingHorizontal: 0,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: Colors.surface + 'CC',
+    borderRadius: 20,
+    padding: 40,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   logoWrap: {
     alignItems: 'center',

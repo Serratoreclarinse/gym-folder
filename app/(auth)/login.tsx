@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +16,8 @@ import { supabase } from '@/lib/supabase';
 import { Colors, Typography } from '@/constants/theme';
 
 export default function LoginScreen() {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -54,7 +57,8 @@ export default function LoginScreen() {
         style={styles.bgLogo}
         resizeMode="contain"
       />
-      <View style={styles.inner}>
+      <View style={[styles.inner, isDesktop && styles.innerDesktop]}>
+        <View style={isDesktop ? styles.card : undefined}>
         <View style={styles.logoWrap}>
           <Image
             source={require('@/assets/images/logo.jpg')}
@@ -114,6 +118,7 @@ export default function LoginScreen() {
         <Pressable style={styles.signupLink} onPress={() => router.push('/(auth)/signup')}>
           <Text style={styles.signupLinkText}>No account? <Text style={styles.signupLinkAccent}>Create one</Text></Text>
         </Pressable>
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -135,6 +140,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 28,
     paddingBottom: 40,
+  },
+  innerDesktop: {
+    alignItems: 'center',
+    paddingHorizontal: 0,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: Colors.surface + 'CC',
+    borderRadius: 20,
+    padding: 40,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   logoWrap: {
     alignItems: 'center',
