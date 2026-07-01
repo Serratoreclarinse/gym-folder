@@ -18,6 +18,7 @@ import { Colors, Typography } from '@/constants/theme';
 export default function LoginScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
+  const isWeb = Platform.OS === 'web';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -57,8 +58,8 @@ export default function LoginScreen() {
         style={styles.bgLogo}
         resizeMode="contain"
       />
-      <View style={[styles.inner, isDesktop && styles.innerDesktop]}>
-        <View style={isDesktop ? styles.card : undefined}>
+      <View style={[styles.inner, isWeb && styles.innerDesktop]}>
+        <View style={isWeb ? styles.card : undefined}>
         <View style={styles.logoWrap}>
           <Image
             source={require('@/assets/images/logo.jpg')}
@@ -146,6 +147,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
   },
   card: {
+    alignSelf: 'center',
     width: '100%',
     maxWidth: 420,
     backgroundColor: Colors.surface + 'CC',

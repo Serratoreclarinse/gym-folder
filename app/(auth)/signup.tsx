@@ -20,6 +20,7 @@ import { Colors, Typography } from '@/constants/theme';
 export default function SignUpScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
+  const isWeb = Platform.OS === 'web';
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -82,8 +83,8 @@ export default function SignUpScreen() {
         style={styles.bgLogo}
         resizeMode="contain"
       />
-      <ScrollView contentContainerStyle={[styles.inner, isDesktop && styles.innerDesktop]} keyboardShouldPersistTaps="handled">
-        <View style={isDesktop ? styles.card : undefined}>
+      <ScrollView contentContainerStyle={[styles.inner, isWeb && styles.innerDesktop]} keyboardShouldPersistTaps="handled">
+        <View style={isWeb ? styles.card : undefined}>
         <View style={styles.logoWrap}>
           <Image
             source={require('@/assets/images/logo.jpg')}
@@ -204,35 +205,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
   },
   card: {
+    alignSelf: 'center',
     width: '100%',
     maxWidth: 420,
     backgroundColor: Colors.surface + 'CC',
     borderRadius: 20,
-    padding: 40,
+    padding: 32,
     borderWidth: 1,
     borderColor: Colors.border,
   },
   logoWrap: {
     alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: 20,
   },
   logo: {
-    width: 200,
-    height: 80,
+    width: 120,
+    height: 48,
   },
   heading: {
     ...Typography.hero,
     color: Colors.textPrimary,
-    marginBottom: 8,
-    lineHeight: 44,
+    marginBottom: 4,
+    lineHeight: 36,
+    textAlign: 'center',
   },
   sub: {
     ...Typography.body,
     color: Colors.textSecondary,
-    marginBottom: 40,
+    marginBottom: 24,
+    textAlign: 'center',
   },
   fieldGroup: {
-    marginBottom: 20,
+    marginBottom: 14,
   },
   fieldLabel: {
     ...Typography.label,
