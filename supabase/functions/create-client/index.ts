@@ -32,9 +32,9 @@ serve(async (req) => {
       .select('role')
       .eq('id', caller.id)
       .single();
-    if (callerProfile?.role !== 'coach') throw new Error('Only coaches can create clients');
+    if (!['coach', 'admin'].includes(callerProfile?.role)) throw new Error('Unauthorized');
 
-    const { name, email, phone, package_type, total_sessions, duration_weeks } = await req.json();
+    const { name, email, phone, package_type, total_sessions, duration_weeks, coach_id } = await req.json();
 
     if (!name || !email || !package_type || !total_sessions) {
       throw new Error('Missing required fields: name, email, package_type, total_sessions');
@@ -76,12 +76,16 @@ serve(async (req) => {
       }
     }
 
+    // Admin passes coach_id explicitly; coach uses their own ID
+    const resolvedCoachId = callerProfile.role === 'admin' ? coach_id : caller.id;
+    if (!resolvedCoachId) throw new Error('coach_id is required');
+
     // Create the package
     const { data: pkg, error: pkgErr } = await adminClient
       .from('packages')
       .insert({
         client_id: userId,
-        coach_id: caller.id,
+        coach_id: resolvedCoachId,
         package_type,
         total_sessions: Number(total_sessions),
         start_date: new Date().toISOString().split('T')[0],

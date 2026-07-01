@@ -34,6 +34,7 @@ function AuthNavigation() {
     const inAuthGroup = segments[0] === '(auth)';
     const inCoachGroup = segments[0] === '(coach)';
     const inClientGroup = segments[0] === '(client)';
+    const inAdminGroup = segments[0] === '(admin)';
 
     if (!session) {
       if (!inAuthGroup) router.replace('/(auth)/login');
@@ -42,6 +43,8 @@ function AuthNavigation() {
         router.replace('/(coach)');
       } else if (profile.role === 'client' && !inClientGroup) {
         router.replace('/(client)');
+      } else if (profile.role === 'admin' && !inAdminGroup) {
+        router.replace('/(admin)');
       }
     }
   }, [session, profile, loading, segments]);

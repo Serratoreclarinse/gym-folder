@@ -28,9 +28,9 @@ function fmtDay(iso: string) {
 }
 
 export default function ClientMessagesScreen() {
-  const { pkg } = useClientData();
+  const { pkg, coachInfo } = useClientData();
   const coachId = pkg?.coach_id ?? '';
-  const coachName = pkg?.coach_name ?? 'Coach';
+  const coachName = coachInfo?.name ?? 'Coach';
 
   const { messages, loading, sendMessage, myId } = useChat(coachId);
   const [text, setText] = useState('');

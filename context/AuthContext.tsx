@@ -2,7 +2,7 @@ import { Session, User } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
-export type UserRole = 'coach' | 'client';
+export type UserRole = 'coach' | 'client' | 'admin';
 
 export type Profile = {
   id: string;
@@ -41,7 +41,7 @@ function buildProfileFromSession(session: Session): Profile {
     id: session.user.id,
     name: meta.name || session.user.email || '',
     email: session.user.email || '',
-    role: meta.role === 'coach' ? 'coach' : 'client',
+    role: meta.role === 'coach' ? 'coach' : meta.role === 'admin' ? 'admin' : 'client',
     phone: null,
     whatsapp: null,
     instagram: null,
@@ -72,7 +72,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshProfile = async () => {
     if (!session?.user) return;
-    const jwtRole = (session.user.user_metadata?.role === 'coach' ? 'coach' : 'client') as UserRole;
+    const meta = session.user.user_metadata ?? {};
+    const jwtRole = (meta.role === 'coach' ? 'coach' : meta.role === 'admin' ? 'admin' : 'client') as UserRole;
     await syncProfileFromDB(session.user.id, jwtRole);
   };
 
