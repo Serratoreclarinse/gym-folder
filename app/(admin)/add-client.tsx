@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert, KeyboardAvoidingView, Platform, Pressable,
-  ScrollView, StyleSheet, Text, TextInput, View,
+  ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +24,8 @@ function initials(name: string) {
 }
 
 export default function AdminAddClientScreen() {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
   // Coach selection
   const [coaches, setCoaches] = useState<CoachOption[]>([]);
   const [loadingCoaches, setLoadingCoaches] = useState(true);
@@ -102,7 +104,12 @@ export default function AdminAddClientScreen() {
 
   return (
     <KeyboardAvoidingView style={s.kav} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView style={s.scroll} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        style={s.scroll}
+        contentContainerStyle={[s.content, isDesktop && s.contentDesktop]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={[s.form, isDesktop && s.formDesktop]}>
 
         {/* Coach selection */}
         <Text style={s.sectionTitle}>ASSIGN TO COACH <Text style={{ color: Colors.accent }}>*</Text></Text>
@@ -197,6 +204,7 @@ export default function AdminAddClientScreen() {
         >
           <Text style={s.submitText}>{loading ? 'CREATING…' : 'ADD CLIENT'}</Text>
         </Pressable>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -233,6 +241,9 @@ const s = StyleSheet.create({
   kav: { flex: 1, backgroundColor: Colors.bg },
   scroll: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
+  contentDesktop: { padding: 40, paddingTop: 32, alignItems: 'center' },
+  form: {},
+  formDesktop: { width: '100%', maxWidth: 560 },
   sectionTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 12 },
 
   loadingRow: { paddingVertical: 16, alignItems: 'center' },

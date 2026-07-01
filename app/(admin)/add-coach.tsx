@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Alert, KeyboardAvoidingView, Platform, Pressable,
-  ScrollView, StyleSheet, Text, TextInput, View,
+  ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -10,6 +10,8 @@ import { Colors, Typography } from '@/constants/theme';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 export default function AddCoachScreen() {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [emailTouched, setEmailTouched] = useState(false);
@@ -55,46 +57,40 @@ export default function AddCoachScreen() {
 
   return (
     <KeyboardAvoidingView style={s.kav} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView style={s.scroll} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
-        <Text style={s.sectionTitle}>COACH INFO</Text>
+      <ScrollView
+        style={s.scroll}
+        contentContainerStyle={[s.content, isDesktop && s.contentDesktop]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={[s.form, isDesktop && s.formDesktop]}>
+          <Text style={s.sectionTitle}>COACH INFO</Text>
 
-        <Field
-          label="Full Name"
-          value={name}
-          onChange={setName}
-          placeholder="John Smith"
-          required
-        />
-        <Field
-          label="Email"
-          value={email}
-          onChange={(v) => { setEmail(v); if (!emailTouched && v.includes('@')) setEmailTouched(true); }}
-          placeholder="coach@example.com"
-          keyboard="email-address"
-          required
-          error={emailError}
-        />
-        <Field
-          label="Phone"
-          value={phone}
-          onChange={setPhone}
-          placeholder="+968 1234 5678"
-          keyboard="phone-pad"
-        />
+          <Field label="Full Name" value={name} onChange={setName} placeholder="John Smith" required />
+          <Field
+            label="Email"
+            value={email}
+            onChange={(v) => { setEmail(v); if (!emailTouched && v.includes('@')) setEmailTouched(true); }}
+            placeholder="coach@example.com"
+            keyboard="email-address"
+            required
+            error={emailError}
+          />
+          <Field label="Phone" value={phone} onChange={setPhone} placeholder="+968 1234 5678" keyboard="phone-pad" />
 
-        <View style={s.note}>
-          <Text style={s.noteText}>
-            The coach will receive a password-setup email at the address above. They can log in once they set their password.
-          </Text>
+          <View style={s.note}>
+            <Text style={s.noteText}>
+              The coach will receive a password-setup email at the address above. They can log in once they set their password.
+            </Text>
+          </View>
+
+          <Pressable
+            style={[s.submitBtn, (!isValid || loading) && s.submitDisabled]}
+            onPress={handleSubmit}
+            disabled={!isValid || loading}
+          >
+            <Text style={s.submitText}>{loading ? 'CREATING…' : 'ADD COACH'}</Text>
+          </Pressable>
         </View>
-
-        <Pressable
-          style={[s.submitBtn, (!isValid || loading) && s.submitDisabled]}
-          onPress={handleSubmit}
-          disabled={!isValid || loading}
-        >
-          <Text style={s.submitText}>{loading ? 'CREATING…' : 'ADD COACH'}</Text>
-        </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -131,6 +127,9 @@ const s = StyleSheet.create({
   kav: { flex: 1, backgroundColor: Colors.bg },
   scroll: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
+  contentDesktop: { padding: 40, paddingTop: 32, alignItems: 'center' },
+  form: {},
+  formDesktop: { width: '100%', maxWidth: 560 },
   sectionTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 16 },
   field: { marginBottom: 16 },
   label: { ...Typography.label, color: Colors.textSecondary, marginBottom: 8 },
