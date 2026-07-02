@@ -494,20 +494,58 @@ export default function CalendarScreen() {
                   </View>
                   <Pressable
                     style={styles.needsLogBtn}
-                    onPress={() => router.push({
-                      pathname: '/(coach)/log-session' as any,
-                      params: { date: toISO(dt), clientId: ns.client_id },
-                    })}
+                    onPress={() =>
+                      Alert.alert(
+                        'Confirm Session',
+                        `Session with ${ns.client_name} happened? This will deduct 1 session and save to history.`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Yes, It Happened',
+                            onPress: async () => {
+                              const { data: pkg } = await supabase
+                                .from('packages')
+                                .select('id')
+                                .eq('client_id', ns.client_id)
+                                .eq('coach_id', profile!.id)
+                                .eq('status', 'active')
+                                .gt('sessions_remaining', 0)
+                                .order('created_at', { ascending: false })
+                                .limit(1)
+                                .maybeSingle();
+                              if (!pkg) {
+                                Alert.alert('No active package', 'Client has no sessions remaining.');
+                                return;
+                              }
+                              await supabase.from('workout_sessions').insert({
+                                coach_id: profile!.id,
+                                client_id: ns.client_id,
+                                package_id: pkg.id,
+                                session_date: toISO(dt),
+                                duration_minutes: ns.duration_minutes,
+                                exercises: [],
+                                notes: 'Session confirmed — client attended (logged after the fact)',
+                                status: 'confirmed',
+                                session_type: ns.session_type,
+                              });
+                              await supabase.from('scheduled_sessions').delete().eq('id', ns.id);
+                              fetchScheduled();
+                              refetch();
+                            },
+                          },
+                        ]
+                      )
+                    }
                   >
-                    <Ionicons name="barbell-outline" size={13} color={Colors.bg} />
-                    <Text style={styles.needsLogBtnText}>Log</Text>
+                    <Ionicons name="checkmark" size={13} color={Colors.bg} />
+                    <Text style={styles.needsLogBtnText}>Confirm</Text>
                   </Pressable>
                   <Pressable
                     style={styles.needsLogNoShowBtn}
                     onPress={() =>
                       Alert.alert(
                         'Mark as No-Show',
-                        `Mark ${ns.client_name}'s session as no-show?`,
+                        `Mark ${ns.client_name}'s session as no-show? This will also deduct 1 session.`,
                         [
                           { text: 'Cancel', style: 'cancel' },
                           {
