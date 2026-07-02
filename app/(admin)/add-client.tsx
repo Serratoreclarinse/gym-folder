@@ -42,6 +42,8 @@ export default function AdminAddClientScreen() {
   const [totalSessions, setTotalSessions] = useState('');
   const [durationWeeks, setDurationWeeks] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
   const loadCoaches = useCallback(async () => {
     setLoadingCoaches(true);
@@ -68,9 +70,11 @@ export default function AdminAddClientScreen() {
 
   const handleSubmit = async () => {
     setEmailTouched(true);
-    if (!selectedCoachId) { Alert.alert('Select a coach', 'Please choose which coach this client belongs to.'); return; }
+    setErrorMsg('');
+    setSuccessMsg('');
+    if (!selectedCoachId) { setErrorMsg('Please choose which coach this client belongs to.'); return; }
     if (!name.trim() || !email.trim() || !isEmailValid || !totalSessions || Number(totalSessions) <= 0) {
-      Alert.alert('Missing fields', 'Please fill in all required fields.');
+      setErrorMsg('Please fill in all required fields.');
       return;
     }
     setLoading(true);
@@ -87,16 +91,19 @@ export default function AdminAddClientScreen() {
         },
       });
       if (error || data?.error) {
-        Alert.alert('Error', data?.error ?? error?.message ?? 'Something went wrong');
+        setErrorMsg(data?.error ?? error?.message ?? 'Something went wrong');
         return;
       }
-      Alert.alert(
-        'Client added!',
-        `${name.trim()} has been added. They'll receive an email to set their password.`,
-        [{ text: 'OK', onPress: () => router.back() }],
-      );
+      setSuccessMsg(`${name.trim()} has been added. They'll receive an email to set their password.`);
+      setName('');
+      setEmail('');
+      setPhone('');
+      setTotalSessions('');
+      setDurationWeeks('');
+      setSelectedCoachId('');
+      setEmailTouched(false);
     } catch (err: unknown) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to create client');
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to create client');
     } finally {
       setLoading(false);
     }
@@ -110,6 +117,9 @@ export default function AdminAddClientScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={[s.form, isDesktop && s.formDesktop]}>
+
+        {!!errorMsg && <Text style={s.errorBanner}>{errorMsg}</Text>}
+        {!!successMsg && <Text style={s.successBanner}>{successMsg}</Text>}
 
         {/* Coach selection */}
         <Text style={s.sectionTitle}>ASSIGN TO COACH <Text style={{ color: Colors.accent }}>*</Text></Text>
@@ -300,4 +310,6 @@ const s = StyleSheet.create({
   },
   submitDisabled: { opacity: 0.4 },
   submitText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
+  errorBanner: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, color: Colors.accent, marginBottom: 16, fontSize: 14 },
+  successBanner: { backgroundColor: '#1a3a1a', borderRadius: 10, padding: 12, color: '#4caf50', marginBottom: 16, fontSize: 14 },
 });

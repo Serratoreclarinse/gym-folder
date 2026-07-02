@@ -17,6 +17,8 @@ export default function AddCoachScreen() {
   const [emailTouched, setEmailTouched] = useState(false);
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
   const isEmailValid = EMAIL_RE.test(email.trim());
   const emailError = emailTouched && email.trim() && !isEmailValid
@@ -26,8 +28,10 @@ export default function AddCoachScreen() {
 
   const handleSubmit = async () => {
     setEmailTouched(true);
+    setErrorMsg('');
+    setSuccessMsg('');
     if (!name.trim() || !email.trim() || !isEmailValid) {
-      Alert.alert('Missing fields', 'Please fill in name and a valid email.');
+      setErrorMsg('Please fill in name and a valid email.');
       return;
     }
     setLoading(true);
@@ -40,16 +44,16 @@ export default function AddCoachScreen() {
         },
       });
       if (error || data?.error) {
-        Alert.alert('Error', data?.error ?? error?.message ?? 'Something went wrong');
+        setErrorMsg(data?.error ?? error?.message ?? 'Something went wrong');
         return;
       }
-      Alert.alert(
-        'Coach added!',
-        `${name.trim()} has been added as a coach. They'll receive an email to set their password.`,
-        [{ text: 'OK', onPress: () => router.back() }],
-      );
+      setSuccessMsg(`${name.trim()} has been added as a coach. They'll receive an email to set their password.`);
+      setName('');
+      setEmail('');
+      setPhone('');
+      setEmailTouched(false);
     } catch (err: unknown) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to create coach');
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to create coach');
     } finally {
       setLoading(false);
     }
@@ -64,6 +68,9 @@ export default function AddCoachScreen() {
       >
         <View style={[s.form, isDesktop && s.formDesktop]}>
           <Text style={s.sectionTitle}>COACH INFO</Text>
+
+          {!!errorMsg && <Text style={s.errorBanner}>{errorMsg}</Text>}
+          {!!successMsg && <Text style={s.successBanner}>{successMsg}</Text>}
 
           <Field label="Full Name" value={name} onChange={setName} placeholder="John Smith" required />
           <Field
@@ -150,4 +157,6 @@ const s = StyleSheet.create({
   },
   submitDisabled: { opacity: 0.4 },
   submitText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
+  errorBanner: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, color: Colors.accent, marginBottom: 16, fontSize: 14 },
+  successBanner: { backgroundColor: '#1a3a1a', borderRadius: 10, padding: 12, color: '#4caf50', marginBottom: 16, fontSize: 14 },
 });
