@@ -6,6 +6,15 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function generatePassword(): string {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let pwd = '';
+  for (let i = 0; i < 10; i++) {
+    pwd += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return pwd;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -44,25 +53,24 @@ serve(async (req) => {
 
     if (existingProfile) throw new Error('An account with this email already exists.');
 
-    // inviteUserByEmail creates the account AND sends the invitation email
-    const { data: inviteData, error: inviteErr } = await adminClient.auth.admin.inviteUserByEmail(
-      normalizedEmail,
-      {
-        data: { name, role: 'coach' },
-        redirectTo: 'https://zingy-khapse-426a9f.netlify.app',
-      },
-    );
-    if (inviteErr) throw new Error(inviteErr.message);
-    const userId = inviteData.user.id;
+    const tempPassword = generatePassword();
 
-    // Update profile with phone + ensure name/role are set (trigger may need a moment)
+    const { data: createData, error: createErr } = await adminClient.auth.admin.createUser({
+      email: normalizedEmail,
+      password: tempPassword,
+      email_confirm: true,
+      user_metadata: { name, role: 'coach' },
+    });
+    if (createErr) throw new Error(createErr.message);
+    const userId = createData.user.id;
+
     await adminClient
       .from('profiles')
       .update({ phone: phone || null, name, role: 'coach' })
       .eq('id', userId);
 
     return new Response(
-      JSON.stringify({ user_id: userId }),
+      JSON.stringify({ user_id: userId, temp_password: tempPassword }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (err) {

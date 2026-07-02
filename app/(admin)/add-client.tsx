@@ -94,7 +94,8 @@ export default function AdminAddClientScreen() {
         setErrorMsg(data?.error ?? error?.message ?? 'Something went wrong');
         return;
       }
-      setSuccessMsg(`${name.trim()} has been added. They'll receive an email to set their password.`);
+      const pwdLine = data.temp_password ? `\n\nEmail: ${email.trim().toLowerCase()}\nTemp Password: ${data.temp_password}\n\nGive these credentials to the client. They can change their password after logging in.` : '\n\nPackage added to existing account.';
+      setSuccessMsg(`Client added!${pwdLine}`);
       setName('');
       setEmail('');
       setPhone('');

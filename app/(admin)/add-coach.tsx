@@ -47,7 +47,7 @@ export default function AddCoachScreen() {
         setErrorMsg(data?.error ?? error?.message ?? 'Something went wrong');
         return;
       }
-      setSuccessMsg(`${name.trim()} has been added as a coach. They'll receive an email to set their password.`);
+      setSuccessMsg(`Coach added!\n\nEmail: ${email.trim().toLowerCase()}\nTemp Password: ${data.temp_password}\n\nGive these credentials to the coach. They can change their password after logging in.`);
       setName('');
       setEmail('');
       setPhone('');
@@ -86,7 +86,7 @@ export default function AddCoachScreen() {
 
           <View style={s.note}>
             <Text style={s.noteText}>
-              The coach will receive a password-setup email at the address above. They can log in once they set their password.
+              A temporary password will be generated. Give it to the coach so they can log in and change it from their profile.
             </Text>
           </View>
 

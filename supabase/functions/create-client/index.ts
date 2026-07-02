@@ -6,11 +6,19 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function generatePassword(): string {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let pwd = '';
+  for (let i = 0; i < 10; i++) {
+    pwd += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return pwd;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    // Verify the caller is an authenticated coach
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) throw new Error('Missing authorization header');
 
@@ -18,14 +26,12 @@ serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
 
-    // Verify caller's JWT using the anon client
     const callerClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
     });
     const { data: { user: caller }, error: authErr } = await callerClient.auth.getUser();
     if (authErr || !caller) throw new Error('Unauthorized');
 
-    // Check caller is a coach
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: callerProfile } = await adminClient
       .from('profiles')
@@ -43,7 +49,6 @@ serve(async (req) => {
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Check if user already exists
     const { data: existingProfile } = await adminClient
       .from('profiles')
       .select('id, role')
@@ -51,7 +56,7 @@ serve(async (req) => {
       .maybeSingle();
 
     let userId: string;
-    let isNewUser = false;
+    let tempPassword: string | null = null;
 
     if (existingProfile) {
       if (existingProfile.role === 'coach') {
@@ -60,30 +65,26 @@ serve(async (req) => {
       // Existing client — reuse their account, just add a new package
       userId = existingProfile.id;
     } else {
-      // New user — invite creates account AND sends invitation email
-      const { data: inviteData, error: inviteErr } = await adminClient.auth.admin.inviteUserByEmail(
-        normalizedEmail,
-        {
-          data: { name, role: 'client' },
-          redirectTo: 'https://zingy-khapse-426a9f.netlify.app',
-        },
-      );
-      if (inviteErr) throw new Error(inviteErr.message);
-      userId = inviteData.user.id;
-      isNewUser = true;
+      // New user — create with temp password
+      tempPassword = generatePassword();
+      const { data: createData, error: createErr } = await adminClient.auth.admin.createUser({
+        email: normalizedEmail,
+        password: tempPassword,
+        email_confirm: true,
+        user_metadata: { name, role: 'client' },
+      });
+      if (createErr) throw new Error(createErr.message);
+      userId = createData.user.id;
 
-      // Update profile with phone + ensure name/role are set
       await adminClient
         .from('profiles')
         .update({ phone: phone || null, name, role: 'client' })
         .eq('id', userId);
     }
 
-    // Admin passes coach_id explicitly; coach uses their own ID
     const resolvedCoachId = callerProfile.role === 'admin' ? coach_id : caller.id;
     if (!resolvedCoachId) throw new Error('coach_id is required');
 
-    // Create the package
     const { data: pkg, error: pkgErr } = await adminClient
       .from('packages')
       .insert({
@@ -98,10 +99,8 @@ serve(async (req) => {
       .single();
     if (pkgErr) throw new Error(pkgErr.message);
 
-    // Invitation email already sent via inviteUserByEmail for new users
-
     return new Response(
-      JSON.stringify({ user_id: userId, package_id: pkg.id }),
+      JSON.stringify({ user_id: userId, package_id: pkg.id, temp_password: tempPassword }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
