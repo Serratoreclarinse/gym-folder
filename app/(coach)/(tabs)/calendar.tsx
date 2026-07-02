@@ -94,7 +94,7 @@ type ScheduledSession = {
   session_type: 'gym' | 'home';
   notes: string | null;
   client_confirmed_at: string | null;
-  status: 'pending' | 'client_confirmed' | 'reschedule_pending' | 'needs_manual_log';
+  status: 'pending' | 'client_confirmed' | 'reschedule_pending';
   reschedule_proposed_at: string | null;
   original_scheduled_at: string | null;
   reschedule_reason: string | null;
@@ -107,7 +107,6 @@ export default function CalendarScreen() {
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()));
   const [selectedDate, setSelectedDate] = useState(todayISO);
   const [scheduledSessions, setScheduledSessions] = useState<ScheduledSession[]>([]);
-  const [needsLogSessions, setNeedsLogSessions] = useState<ScheduledSession[]>([]);
 
   // Waitlist modal state — single modal with view/add modes
   const [waitlistSessionId, setWaitlistSessionId] = useState<string | null>(null);
@@ -160,25 +159,16 @@ export default function CalendarScreen() {
       client:profiles!scheduled_sessions_client_id_fkey(name, phone)
     `;
 
-    const [{ data: upcoming }, { data: needsLog }] = await Promise.all([
-      supabase
-        .from('scheduled_sessions')
-        .select(selectFields)
-        .eq('coach_id', profile.id)
-        .gte('scheduled_at', from)
-        .lte('scheduled_at', to)
-        .in('status', ['pending', 'client_confirmed', 'reschedule_pending'])
-        .order('scheduled_at', { ascending: true }),
-      supabase
-        .from('scheduled_sessions')
-        .select(selectFields)
-        .eq('coach_id', profile.id)
-        .eq('status', 'needs_manual_log')
-        .order('scheduled_at', { ascending: false }),
-    ]);
+    const { data: upcoming } = await supabase
+      .from('scheduled_sessions')
+      .select(selectFields)
+      .eq('coach_id', profile.id)
+      .gte('scheduled_at', from)
+      .lte('scheduled_at', to)
+      .in('status', ['pending', 'client_confirmed', 'reschedule_pending'])
+      .order('scheduled_at', { ascending: true });
 
     setScheduledSessions((upcoming ?? []).map(mapRow));
-    setNeedsLogSessions((needsLog ?? []).map(mapRow));
   }, [profile?.id]);
 
   const processOverdue = useCallback(async () => {
@@ -471,124 +461,7 @@ export default function CalendarScreen() {
           })}
         </View>
 
-        {/* ── Needs manual logging banner ────────────────────── */}
-        {needsLogSessions.length > 0 && (
-          <View style={styles.needsLogBanner}>
-            <View style={styles.needsLogHeader}>
-              <Ionicons name="alert-circle" size={16} color="#FF9800" />
-              <Text style={styles.needsLogTitle}>
-                {needsLogSessions.length} session{needsLogSessions.length !== 1 ? 's' : ''} need{needsLogSessions.length === 1 ? 's' : ''} logging
-              </Text>
-              <Text style={styles.needsLogSub}>Client confirmed attendance — did the session happen?</Text>
-            </View>
-            {needsLogSessions.map((ns) => {
-              const dt = new Date(ns.scheduled_at);
-              const label = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                + ' at '
-                + dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-              return (
-                <View key={ns.id} style={styles.needsLogRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.needsLogClient}>{ns.client_name}</Text>
-                    <Text style={styles.needsLogDate}>{label} · {ns.duration_minutes} min</Text>
-                  </View>
-                  <Pressable
-                    style={styles.needsLogBtn}
-                    onPress={() =>
-                      Alert.alert(
-                        'Confirm Session',
-                        `Session with ${ns.client_name} happened? This will deduct 1 session and save to history.`,
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'Yes, It Happened',
-                            onPress: async () => {
-                              const { data: pkg } = await supabase
-                                .from('packages')
-                                .select('id')
-                                .eq('client_id', ns.client_id)
-                                .eq('coach_id', profile!.id)
-                                .eq('status', 'active')
-                                .gt('sessions_remaining', 0)
-                                .order('created_at', { ascending: false })
-                                .limit(1)
-                                .maybeSingle();
-                              if (!pkg) {
-                                Alert.alert('No active package', 'Client has no sessions remaining.');
-                                return;
-                              }
-                              await supabase.from('workout_sessions').insert({
-                                coach_id: profile!.id,
-                                client_id: ns.client_id,
-                                package_id: pkg.id,
-                                session_date: toISO(dt),
-                                duration_minutes: ns.duration_minutes,
-                                exercises: [],
-                                notes: 'Session confirmed — client attended (logged after the fact)',
-                                status: 'confirmed',
-                                session_type: ns.session_type,
-                              });
-                              await supabase.from('scheduled_sessions').delete().eq('id', ns.id);
-                              fetchScheduled();
-                              refetch();
-                            },
-                          },
-                        ]
-                      )
-                    }
-                  >
-                    <Ionicons name="checkmark" size={13} color={Colors.bg} />
-                    <Text style={styles.needsLogBtnText}>Confirm</Text>
-                  </Pressable>
-                  <Pressable
-                    style={styles.needsLogNoShowBtn}
-                    onPress={() =>
-                      Alert.alert(
-                        'Mark as No-Show',
-                        `Mark ${ns.client_name}'s session as no-show? This will also deduct 1 session.`,
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'No-Show', style: 'destructive',
-                            onPress: async () => {
-                              const { data: pkg } = await supabase
-                                .from('packages')
-                                .select('id')
-                                .eq('client_id', ns.client_id)
-                                .eq('coach_id', profile!.id)
-                                .eq('status', 'active')
-                                .gt('sessions_remaining', 0)
-                                .order('created_at', { ascending: false })
-                                .limit(1)
-                                .maybeSingle();
-                              if (pkg) {
-                                await supabase.from('workout_sessions').insert({
-                                  coach_id: profile!.id,
-                                  client_id: ns.client_id,
-                                  package_id: pkg.id,
-                                  session_date: toISO(dt),
-                                  duration_minutes: ns.duration_minutes,
-                                  exercises: [],
-                                  notes: 'No-show — client confirmed but did not attend',
-                                  status: 'absent',
-                                  session_type: ns.session_type,
-                                });
-                              }
-                              await supabase.from('scheduled_sessions').delete().eq('id', ns.id);
-                              fetchScheduled();
-                            },
-                          },
-                        ]
-                      )
-                    }
-                  >
-                    <Text style={styles.needsLogNoShowText}>No-Show</Text>
-                  </Pressable>
-                </View>
-              );
-            })}
-          </View>
-        )}
+
 
         {/* ── Daily header ─────────────────────────────────────── */}
         <View style={styles.dayHeader}>
@@ -1151,31 +1024,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingBottom: 6,
   },
   rescheduledToText: { fontSize: 12, color: '#FFA500', fontWeight: '600' },
-
-  // Needs manual logging banner
-  needsLogBanner: {
-    backgroundColor: '#FF980010', borderRadius: 14, borderWidth: 1,
-    borderColor: '#FF980040', padding: 14, marginBottom: 12,
-  },
-  needsLogHeader: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
-  needsLogTitle: { fontSize: 13, fontWeight: '800', color: '#FF9800', flex: 1 },
-  needsLogSub: { ...Typography.caption, color: Colors.textSecondary, width: '100%', marginTop: -4 },
-  needsLogRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingTop: 10, borderTopWidth: 1, borderTopColor: '#FF980025',
-  },
-  needsLogClient: { fontSize: 13, fontWeight: '700', color: Colors.textPrimary },
-  needsLogDate: { fontSize: 12, color: Colors.textSecondary, marginTop: 1 },
-  needsLogBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: Colors.accent, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
-  },
-  needsLogBtnText: { color: Colors.bg, fontSize: 12, fontWeight: '700' },
-  needsLogNoShowBtn: {
-    backgroundColor: '#FF4D4D15', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
-    borderWidth: 1, borderColor: '#FF4D4D40',
-  },
-  needsLogNoShowText: { color: '#FF4D4D', fontSize: 12, fontWeight: '700' },
 
   // Reschedule modal inputs
   rsLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: 6, marginTop: 14 },
