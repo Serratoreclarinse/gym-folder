@@ -223,21 +223,19 @@ export default function CoachDashboard() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}
     >
       {/* Quick actions */}
-      <View style={styles.actionsGrid}>
-        <Pressable
-          style={({ pressed }) => [styles.actionBtn, styles.actionPrimary, pressed && { opacity: 0.85 }]}
-          onPress={() => router.push('/(coach)/log-session')}
-        >
-          <Ionicons name="add-circle-outline" size={20} color={Colors.bg} />
-          <Text style={styles.actionPrimaryText}>LOG SESSION</Text>
-        </Pressable>
-      </View>
+      <Pressable
+        style={({ pressed }) => [styles.logSessionBtn, pressed && { opacity: 0.85 }]}
+        onPress={() => router.push('/(coach)/log-session')}
+      >
+        <Ionicons name="add-circle-outline" size={20} color={Colors.bg} />
+        <Text style={styles.logSessionText}>LOG SESSION</Text>
+      </Pressable>
 
       <Pressable
-        style={styles.emergencyBtn}
+        style={({ pressed }) => [styles.emergencyBtn, pressed && { opacity: 0.8 }]}
         onPress={() => router.push({ pathname: '/(coach)/announcements', params: { preset: 'emergency' } } as any)}
       >
-        <Ionicons name="warning-outline" size={18} color="#fff" />
+        <Ionicons name="warning-outline" size={16} color={Colors.danger} />
         <Text style={styles.emergencyBtnText}>EMERGENCY NOTICE</Text>
       </Pressable>
 
@@ -506,14 +504,12 @@ const styles = StyleSheet.create({
   statValue: { ...Typography.title, color: Colors.textPrimary, fontSize: 22, fontWeight: '800' },
   statLabel: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
   statDiv: { width: 1, height: 32, backgroundColor: Colors.border },
-  actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4, marginBottom: 12 },
-  actionBtn: {
-    width: '47.5%', flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', gap: 8,
-    borderRadius: 14, paddingVertical: 15,
+  logSessionBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: Colors.accent, borderRadius: 14, paddingVertical: 16,
+    marginTop: 4, marginBottom: 10,
   },
-  actionPrimary: { backgroundColor: Colors.accent },
-  actionPrimaryText: { color: Colors.bg, fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
+  logSessionText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1 },
   sectionTitle: { ...Typography.label, color: Colors.textSecondary },
   strikeSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   strikeBadge: {
@@ -605,9 +601,10 @@ const styles = StyleSheet.create({
   // Emergency button
   emergencyBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-    backgroundColor: Colors.danger, borderRadius: 14, paddingVertical: 13, marginBottom: 16,
+    backgroundColor: Colors.danger + '15', borderRadius: 14, paddingVertical: 13, marginBottom: 16,
+    borderWidth: 1, borderColor: Colors.danger + '50',
   },
-  emergencyBtnText: { color: '#fff', fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+  emergencyBtnText: { color: Colors.danger, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
 
   // Pinned announcement banner
   pinnedBanner: {
