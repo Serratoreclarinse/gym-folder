@@ -40,6 +40,10 @@ export type NextScheduledSession = {
   duration_minutes: number;
   notes: string | null;
   client_confirmed_at: string | null;
+  status: 'pending' | 'client_confirmed' | 'reschedule_pending';
+  reschedule_proposed_at: string | null;
+  original_scheduled_at: string | null;
+  reschedule_reason: string | null;
 };
 
 export function useClientData() {
@@ -99,10 +103,10 @@ export function useClientData() {
 
       supabase
         .from('scheduled_sessions')
-        .select('id, scheduled_at, duration_minutes, notes, client_confirmed_at')
+        .select('id, scheduled_at, duration_minutes, notes, client_confirmed_at, status, reschedule_proposed_at, original_scheduled_at, reschedule_reason')
         .eq('client_id', user.id)
         .gte('scheduled_at', new Date().toISOString())
-        .in('status', ['pending', 'client_confirmed'])
+        .in('status', ['pending', 'client_confirmed', 'reschedule_pending'])
         .order('scheduled_at', { ascending: true }),
     ]);
 
@@ -157,6 +161,10 @@ export function useClientData() {
         duration_minutes: r.duration_minutes ?? 60,
         notes: r.notes ?? null,
         client_confirmed_at: r.client_confirmed_at ?? null,
+        status: (r.status ?? 'pending') as 'pending' | 'client_confirmed' | 'reschedule_pending',
+        reschedule_proposed_at: r.reschedule_proposed_at ?? null,
+        original_scheduled_at: r.original_scheduled_at ?? null,
+        reschedule_reason: r.reschedule_reason ?? null,
       }));
       setUpcomingScheduled(all);
       setNextScheduled(all[0] ?? null);

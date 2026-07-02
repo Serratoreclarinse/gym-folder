@@ -234,6 +234,8 @@ export default function ClientProgressScreen() {
   const [confirming, setConfirming] = useState(false);
   const [localConfirmed, setLocalConfirmed] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [acceptingReschedule, setAcceptingReschedule] = useState<string | null>(null);
+  const [decliningReschedule, setDecliningReschedule] = useState<string | null>(null);
 
   useEffect(() => {
     setLocalConfirmed(false);
@@ -246,6 +248,29 @@ export default function ClientProgressScreen() {
     const t = setInterval(update, 1000);
     return () => clearInterval(t);
   }, [nextScheduled?.scheduled_at]);
+
+  const handleAcceptReschedule = async (sessionId: string) => {
+    setAcceptingReschedule(sessionId);
+    const { data, error: err } = await supabase.rpc('client_accept_reschedule', { p_session_id: sessionId });
+    setAcceptingReschedule(null);
+    if (!err && data === 'ok') {
+      setLocalConfirmed(false);
+      refetch();
+    } else {
+      Alert.alert('Error', 'Could not accept reschedule. Please try again.');
+    }
+  };
+
+  const handleDeclineReschedule = async (sessionId: string) => {
+    setDecliningReschedule(sessionId);
+    const { data, error: err } = await supabase.rpc('client_decline_reschedule', { p_session_id: sessionId });
+    setDecliningReschedule(null);
+    if (!err && data === 'ok') {
+      refetch();
+    } else {
+      Alert.alert('Error', 'Could not decline reschedule. Please try again.');
+    }
+  };
 
   const handleConfirm = async () => {
     if (!nextScheduled || confirming) return;
@@ -424,40 +449,83 @@ export default function ClientProgressScreen() {
             <Text style={styles.countdownText}>{formatCountdown(secondsUntil)}</Text>
           </View>
 
-          {/* Confirm attendance */}
-          {(nextScheduled.client_confirmed_at || localConfirmed) ? (
-            <View style={styles.confirmedBadge}>
-              <Ionicons name="checkmark-circle" size={15} color="#4CAF50" />
-              <Text style={styles.confirmedText}>Attendance Confirmed</Text>
-            </View>
-          ) : (
-            <Pressable
-              style={[styles.confirmBtn, confirming && { opacity: 0.5 }]}
-              onPress={handleConfirm}
-              disabled={confirming}
-            >
-              <Ionicons name="checkmark" size={15} color={Colors.bg} />
-              <Text style={styles.confirmBtnText}>{confirming ? 'Confirming…' : 'Confirm Attendance'}</Text>
-            </Pressable>
-          )}
-
-          {/* Cancel button */}
-          {secondsUntil > 10800 ? (
-            <Pressable
-              style={[styles.cancelBtn, cancelling === nextScheduled.id && { opacity: 0.5 }]}
-              onPress={() => handleCancel(nextScheduled.id)}
-              disabled={cancelling === nextScheduled.id}
-            >
-              <Ionicons name="close-circle-outline" size={15} color={Colors.accent} />
-              <Text style={styles.cancelBtnText}>
-                {cancelling === nextScheduled.id ? 'Cancelling…' : 'Cancel Session'}
+          {/* Reschedule pending UI */}
+          {nextScheduled.status === 'reschedule_pending' ? (
+            <View style={styles.reschedulePending}>
+              <View style={styles.rescheduleHeader}>
+                <Ionicons name="calendar-outline" size={14} color="#FFA500" />
+                <Text style={styles.rescheduleHeaderText}>Coach Proposed a New Time</Text>
+              </View>
+              <Text style={styles.rescheduleFrom}>
+                Original: {formatScheduled(nextScheduled.scheduled_at)}
               </Text>
-            </Pressable>
-          ) : (
-            <View style={styles.cancelBtnLocked}>
-              <Ionicons name="lock-closed-outline" size={13} color={Colors.textSecondary} />
-              <Text style={styles.cancelBtnLockedText}>Cannot cancel — less than 3 hrs away</Text>
+              <Text style={styles.rescheduleTo}>
+                New: {formatScheduled(nextScheduled.reschedule_proposed_at!)}
+              </Text>
+              {nextScheduled.reschedule_reason ? (
+                <Text style={styles.rescheduleReason}>Reason: {nextScheduled.reschedule_reason}</Text>
+              ) : null}
+              <View style={styles.rescheduleActions}>
+                <Pressable
+                  style={[styles.rescheduleAcceptBtn, acceptingReschedule === nextScheduled.id && { opacity: 0.5 }]}
+                  onPress={() => handleAcceptReschedule(nextScheduled.id)}
+                  disabled={!!acceptingReschedule || !!decliningReschedule}
+                >
+                  <Ionicons name="checkmark" size={14} color={Colors.bg} />
+                  <Text style={styles.rescheduleAcceptText}>
+                    {acceptingReschedule === nextScheduled.id ? 'Accepting…' : 'Accept'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.rescheduleDeclineBtn, decliningReschedule === nextScheduled.id && { opacity: 0.5 }]}
+                  onPress={() => handleDeclineReschedule(nextScheduled.id)}
+                  disabled={!!acceptingReschedule || !!decliningReschedule}
+                >
+                  <Ionicons name="close" size={14} color="#FF4D4D" />
+                  <Text style={styles.rescheduleDeclineText}>
+                    {decliningReschedule === nextScheduled.id ? 'Declining…' : 'Decline'}
+                  </Text>
+                </Pressable>
+              </View>
             </View>
+          ) : (
+            <>
+              {/* Confirm attendance */}
+              {(nextScheduled.client_confirmed_at || localConfirmed) ? (
+                <View style={styles.confirmedBadge}>
+                  <Ionicons name="checkmark-circle" size={15} color="#4CAF50" />
+                  <Text style={styles.confirmedText}>Attendance Confirmed</Text>
+                </View>
+              ) : (
+                <Pressable
+                  style={[styles.confirmBtn, confirming && { opacity: 0.5 }]}
+                  onPress={handleConfirm}
+                  disabled={confirming}
+                >
+                  <Ionicons name="checkmark" size={15} color={Colors.bg} />
+                  <Text style={styles.confirmBtnText}>{confirming ? 'Confirming…' : 'Confirm Attendance'}</Text>
+                </Pressable>
+              )}
+
+              {/* Cancel button */}
+              {secondsUntil > 10800 ? (
+                <Pressable
+                  style={[styles.cancelBtn, cancelling === nextScheduled.id && { opacity: 0.5 }]}
+                  onPress={() => handleCancel(nextScheduled.id)}
+                  disabled={cancelling === nextScheduled.id}
+                >
+                  <Ionicons name="close-circle-outline" size={15} color={Colors.accent} />
+                  <Text style={styles.cancelBtnText}>
+                    {cancelling === nextScheduled.id ? 'Cancelling…' : 'Cancel Session'}
+                  </Text>
+                </Pressable>
+              ) : (
+                <View style={styles.cancelBtnLocked}>
+                  <Ionicons name="lock-closed-outline" size={13} color={Colors.textSecondary} />
+                  <Text style={styles.cancelBtnLockedText}>Cannot cancel — less than 3 hrs away</Text>
+                </View>
+              )}
+            </>
           )}
         </View>
       )}
@@ -479,13 +547,45 @@ export default function ClientProgressScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.upcomingDate}>{formatScheduled(s.scheduled_at)}</Text>
                     <Text style={styles.upcomingMeta}>{s.duration_minutes} min</Text>
+                    {s.status === 'reschedule_pending' && s.reschedule_proposed_at ? (
+                      <Text style={styles.upcomingRescheduledTo}>
+                        → New: {formatScheduled(s.reschedule_proposed_at)}
+                      </Text>
+                    ) : null}
                   </View>
-                  {isConfirmed && (
+                  {s.status === 'reschedule_pending' ? (
+                    <View style={styles.rescheduleBadge}>
+                      <Text style={styles.rescheduleBadgeText}>RESCHEDULED</Text>
+                    </View>
+                  ) : isConfirmed ? (
                     <Ionicons name="checkmark-circle" size={18} color="#4CAF50" />
-                  )}
+                  ) : null}
                 </View>
                 <View style={styles.upcomingActions}>
-                  {!isConfirmed && (
+                  {s.status === 'reschedule_pending' ? (
+                    <>
+                      <Pressable
+                        style={[styles.upcomingConfirmBtn, acceptingReschedule === s.id && { opacity: 0.5 }]}
+                        onPress={() => handleAcceptReschedule(s.id)}
+                        disabled={!!acceptingReschedule || !!decliningReschedule}
+                      >
+                        <Ionicons name="checkmark" size={13} color={Colors.bg} />
+                        <Text style={styles.upcomingConfirmBtnText}>
+                          {acceptingReschedule === s.id ? 'Accepting…' : 'Accept Reschedule'}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.upcomingCancelBtn, decliningReschedule === s.id && { opacity: 0.5 }]}
+                        onPress={() => handleDeclineReschedule(s.id)}
+                        disabled={!!acceptingReschedule || !!decliningReschedule}
+                      >
+                        <Ionicons name="close" size={13} color={Colors.accent} />
+                        <Text style={styles.upcomingCancelBtnText}>
+                          {decliningReschedule === s.id ? 'Declining…' : 'Decline'}
+                        </Text>
+                      </Pressable>
+                    </>
+                  ) : !isConfirmed ? (
                     <Pressable
                       style={styles.upcomingConfirmBtn}
                       onPress={async () => {
@@ -497,8 +597,8 @@ export default function ClientProgressScreen() {
                       <Ionicons name="checkmark" size={13} color={Colors.bg} />
                       <Text style={styles.upcomingConfirmBtnText}>Confirm</Text>
                     </Pressable>
-                  )}
-                  {canCancel ? (
+                  ) : null}
+                  {s.status !== 'reschedule_pending' && (canCancel ? (
                     <Pressable
                       style={[styles.upcomingCancelBtn, cancelling === s.id && { opacity: 0.5 }]}
                       onPress={() => handleCancel(s.id)}
@@ -514,7 +614,7 @@ export default function ClientProgressScreen() {
                       <Ionicons name="lock-closed-outline" size={12} color={Colors.textSecondary} />
                       <Text style={styles.upcomingLockedText}>Too late to cancel</Text>
                     </View>
-                  )}
+                  ))}
                 </View>
               </View>
             );
@@ -912,6 +1012,35 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border,
   },
   upcomingLockedText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '500' },
+  upcomingRescheduledTo: { fontSize: 12, color: '#FFA500', fontWeight: '600', marginTop: 2 },
+
+  // Reschedule pending
+  rescheduleBadge: {
+    backgroundColor: '#FFA50018', borderRadius: 6, borderWidth: 1,
+    borderColor: '#FFA50050', paddingHorizontal: 7, paddingVertical: 3,
+  },
+  rescheduleBadgeText: { fontSize: 10, fontWeight: '700', color: '#FFA500' },
+  reschedulePending: {
+    backgroundColor: '#FFA50010', borderRadius: 12, borderWidth: 1,
+    borderColor: '#FFA50040', padding: 12, marginTop: 8, gap: 4,
+  },
+  rescheduleHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  rescheduleHeaderText: { fontSize: 13, fontWeight: '700', color: '#FFA500' },
+  rescheduleFrom: { fontSize: 12, color: Colors.textSecondary },
+  rescheduleTo: { fontSize: 13, fontWeight: '600', color: Colors.textPrimary },
+  rescheduleReason: { fontSize: 12, color: Colors.textSecondary, fontStyle: 'italic', marginTop: 2 },
+  rescheduleActions: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  rescheduleAcceptBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 5, backgroundColor: Colors.accent, borderRadius: 10, paddingVertical: 10,
+  },
+  rescheduleAcceptText: { color: Colors.bg, fontSize: 13, fontWeight: '700' },
+  rescheduleDeclineBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 5, backgroundColor: '#FF4D4D18', borderRadius: 10, paddingVertical: 10,
+    borderWidth: 1, borderColor: '#FF4D4D40',
+  },
+  rescheduleDeclineText: { color: '#FF4D4D', fontSize: 13, fontWeight: '700' },
 
   // Empty states
   emptyCard: {

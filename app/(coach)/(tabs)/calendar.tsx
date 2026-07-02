@@ -11,6 +11,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -93,7 +94,10 @@ type ScheduledSession = {
   session_type: 'gym' | 'home';
   notes: string | null;
   client_confirmed_at: string | null;
-  status: 'pending' | 'client_confirmed';
+  status: 'pending' | 'client_confirmed' | 'reschedule_pending';
+  reschedule_proposed_at: string | null;
+  original_scheduled_at: string | null;
+  reschedule_reason: string | null;
 };
 
 export default function CalendarScreen() {
@@ -108,6 +112,13 @@ export default function CalendarScreen() {
   const [waitlistSessionId, setWaitlistSessionId] = useState<string | null>(null);
   const [showWaitlistModal, setShowWaitlistModal] = useState(false);
   const [wlModalMode, setWlModalMode] = useState<'view' | 'add'>('view');
+
+  // Reschedule modal state
+  const [rescheduleTarget, setRescheduleTarget] = useState<ScheduledSession | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleTime, setRescheduleTime] = useState('');
+  const [rescheduleReason, setRescheduleReason] = useState('');
+  const [rescheduling, setRescheduling] = useState(false);
 
   const { sessions, loading, refetch } = useSessions();
   const {
@@ -130,13 +141,13 @@ export default function CalendarScreen() {
       .from('scheduled_sessions')
       .select(`
         id, client_id, scheduled_at, duration_minutes, session_type, notes,
-        client_confirmed_at, status,
+        client_confirmed_at, status, reschedule_proposed_at, original_scheduled_at, reschedule_reason,
         client:profiles!scheduled_sessions_client_id_fkey(name, phone)
       `)
       .eq('coach_id', profile.id)
       .gte('scheduled_at', from)
       .lte('scheduled_at', to)
-      .in('status', ['pending', 'client_confirmed'])
+      .in('status', ['pending', 'client_confirmed', 'reschedule_pending'])
       .order('scheduled_at', { ascending: true });
 
     setScheduledSessions(
@@ -150,7 +161,10 @@ export default function CalendarScreen() {
         session_type: (row.session_type as 'gym' | 'home') ?? 'gym',
         notes: row.notes ?? null,
         client_confirmed_at: row.client_confirmed_at ?? null,
-        status: row.status as 'pending' | 'client_confirmed',
+        status: row.status as 'pending' | 'client_confirmed' | 'reschedule_pending',
+        reschedule_proposed_at: (row as any).reschedule_proposed_at ?? null,
+        original_scheduled_at: (row as any).original_scheduled_at ?? null,
+        reschedule_reason: (row as any).reschedule_reason ?? null,
       }))
     );
   }, [profile?.id]);
@@ -274,6 +288,68 @@ export default function CalendarScreen() {
     setWaitlistSessionId(sessionId);
     setWlModalMode('view');
     setShowWaitlistModal(true);
+  };
+
+  const openRescheduleModal = (ss: ScheduledSession) => {
+    const d = new Date(ss.scheduled_at);
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    const dy = String(d.getDate()).padStart(2, '0');
+    const h = d.getHours();
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    setRescheduleDate(`${y}-${mo}-${dy}`);
+    setRescheduleTime(`${h12}:${mi} ${ampm}`);
+    setRescheduleReason('');
+    setRescheduleTarget(ss);
+  };
+
+  const handleReschedule = async () => {
+    if (!rescheduleTarget) return;
+    const dateMatch = rescheduleDate.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (!dateMatch) { Alert.alert('Invalid date', 'Use format YYYY-MM-DD, e.g. 2025-08-10'); return; }
+    const time12 = rescheduleTime.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    const time24 = rescheduleTime.trim().match(/^(\d{1,2}):(\d{2})$/);
+    let h = 0, m = 0;
+    if (time12) {
+      h = parseInt(time12[1]); m = parseInt(time12[2]);
+      if (time12[3].toUpperCase() === 'PM' && h !== 12) h += 12;
+      if (time12[3].toUpperCase() === 'AM' && h === 12) h = 0;
+    } else if (time24) {
+      h = parseInt(time24[1]); m = parseInt(time24[2]);
+    } else {
+      Alert.alert('Invalid time', 'Use format like 9:00 AM or 14:30'); return;
+    }
+    const proposed = new Date(
+      parseInt(dateMatch[1]), parseInt(dateMatch[2]) - 1, parseInt(dateMatch[3]), h, m, 0
+    );
+    if (isNaN(proposed.getTime()) || proposed <= new Date()) {
+      Alert.alert('Invalid time', 'Please pick a future date and time.'); return;
+    }
+    setRescheduling(true);
+    const { error } = await supabase
+      .from('scheduled_sessions')
+      .update({
+        reschedule_proposed_at: proposed.toISOString(),
+        original_scheduled_at: rescheduleTarget.original_scheduled_at ?? rescheduleTarget.scheduled_at,
+        reschedule_reason: rescheduleReason.trim() || null,
+        status: 'reschedule_pending',
+      })
+      .eq('id', rescheduleTarget.id);
+    if (error) {
+      Alert.alert('Error', error.message);
+      setRescheduling(false);
+      return;
+    }
+    const { sendPushNotification } = await import('@/lib/pushNotifications');
+    await sendPushNotification(rescheduleTarget.client_id, {
+      title: '📅 Session Rescheduled',
+      body: `Your coach has proposed a new time for your session. Open the app to accept or decline.`,
+    });
+    setRescheduling(false);
+    setRescheduleTarget(null);
+    fetchScheduled();
   };
 
   const closeWaitlistModal = () => {
@@ -422,7 +498,12 @@ export default function CalendarScreen() {
                   </Text>
                   {ss.notes ? <Text style={styles.sessionMeta} numberOfLines={1}>{ss.notes}</Text> : null}
                 </View>
-                {isConfirmed ? (
+                {ss.status === 'reschedule_pending' ? (
+                  <View style={styles.awaitingRescheduleBadge}>
+                    <Ionicons name="time-outline" size={11} color="#FFA500" />
+                    <Text style={styles.awaitingRescheduleText}>Pending</Text>
+                  </View>
+                ) : isConfirmed ? (
                   <View style={styles.clientConfirmedBadge}>
                     <Ionicons name="checkmark-circle" size={13} color="#4CAF50" />
                     <Text style={styles.clientConfirmedText}>Confirmed</Text>
@@ -433,6 +514,16 @@ export default function CalendarScreen() {
                   </View>
                 )}
               </View>
+              {ss.status === 'reschedule_pending' && ss.reschedule_proposed_at ? (
+                <View style={styles.rescheduledToRow}>
+                  <Ionicons name="arrow-forward-outline" size={12} color="#FFA500" />
+                  <Text style={styles.rescheduledToText}>
+                    Proposed: {new Date(ss.reschedule_proposed_at).toLocaleString('en-US', {
+                      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+                    })}
+                  </Text>
+                </View>
+              ) : null}
               <View style={styles.scheduledActions}>
                 <Pressable
                   style={styles.scheduledActionLog}
@@ -446,6 +537,15 @@ export default function CalendarScreen() {
                   <Ionicons name="barbell-outline" size={12} color={Colors.bg} />
                   <Text style={styles.scheduledActionLogText}>Log Session</Text>
                 </Pressable>
+                {ss.status !== 'reschedule_pending' && (
+                  <Pressable
+                    style={styles.scheduledActionReschedule}
+                    onPress={() => openRescheduleModal(ss)}
+                  >
+                    <Ionicons name="calendar-outline" size={12} color={Colors.accent} />
+                    <Text style={styles.scheduledActionRescheduleText}>Reschedule</Text>
+                  </Pressable>
+                )}
                 <Pressable
                   style={styles.scheduledActionCancel}
                   onPress={() =>
@@ -742,6 +842,77 @@ export default function CalendarScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ── Reschedule Modal ── */}
+      <Modal
+        visible={rescheduleTarget !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRescheduleTarget(null)}
+      >
+        <View style={styles.modalRoot}>
+          <Pressable style={styles.modalOverlay} onPress={() => setRescheduleTarget(null)} />
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>PROPOSE RESCHEDULE</Text>
+            {rescheduleTarget && (
+              <Text style={styles.modalSub}>
+                {rescheduleTarget.client_name} · currently {new Date(rescheduleTarget.scheduled_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+              </Text>
+            )}
+
+            <Text style={styles.rsLabel}>NEW DATE (YYYY-MM-DD)</Text>
+            <TextInput
+              style={styles.rsInput}
+              value={rescheduleDate}
+              onChangeText={setRescheduleDate}
+              placeholder="e.g. 2025-08-10"
+              placeholderTextColor={Colors.textSecondary + '60'}
+              keyboardType="numbers-and-punctuation"
+              autoCorrect={false}
+            />
+
+            <Text style={styles.rsLabel}>NEW TIME</Text>
+            <TextInput
+              style={styles.rsInput}
+              value={rescheduleTime}
+              onChangeText={setRescheduleTime}
+              placeholder="e.g. 9:00 AM or 14:30"
+              placeholderTextColor={Colors.textSecondary + '60'}
+              autoCorrect={false}
+            />
+
+            <Text style={styles.rsLabel}>REASON (OPTIONAL)</Text>
+            <TextInput
+              style={[styles.rsInput, { height: 68, textAlignVertical: 'top' }]}
+              value={rescheduleReason}
+              onChangeText={setRescheduleReason}
+              placeholder="e.g. Coach unavailable due to personal reason"
+              placeholderTextColor={Colors.textSecondary + '60'}
+              multiline
+              autoCorrect={false}
+            />
+
+            <Pressable
+              style={[styles.rsSubmitBtn, rescheduling && { opacity: 0.5 }]}
+              onPress={handleReschedule}
+              disabled={rescheduling}
+            >
+              <Ionicons name="calendar-outline" size={16} color={Colors.bg} />
+              <Text style={styles.rsSubmitText}>
+                {rescheduling ? 'SENDING…' : 'PROPOSE RESCHEDULE'}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={styles.rsCancelBtn}
+              onPress={() => setRescheduleTarget(null)}
+            >
+              <Text style={styles.rsCancelText}>Cancel</Text>
+            </Pressable>
+            <View style={{ height: 24 }} />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -832,6 +1003,38 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#FF4D4D40',
   },
   scheduledActionCancelText: { color: '#FF4D4D', fontSize: 12, fontWeight: '700' },
+  scheduledActionReschedule: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    backgroundColor: Colors.accent + '15', borderRadius: 8, paddingVertical: 7,
+    borderWidth: 1, borderColor: Colors.accent + '40',
+  },
+  scheduledActionRescheduleText: { color: Colors.accent, fontSize: 12, fontWeight: '700' },
+  awaitingRescheduleBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#FFA50015', borderRadius: 8,
+    paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#FFA50050',
+  },
+  awaitingRescheduleText: { fontSize: 10, fontWeight: '700', color: '#FFA500' },
+  rescheduledToRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 14, paddingBottom: 6,
+  },
+  rescheduledToText: { fontSize: 12, color: '#FFA500', fontWeight: '600' },
+
+  // Reschedule modal inputs
+  rsLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: 6, marginTop: 14 },
+  rsInput: {
+    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11,
+    color: Colors.textPrimary, fontSize: 14,
+  },
+  rsSubmitBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: Colors.accent, borderRadius: 12, paddingVertical: 14, marginTop: 20,
+  },
+  rsSubmitText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 0.8 },
+  rsCancelBtn: { alignItems: 'center', paddingVertical: 14 },
+  rsCancelText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '600' },
 
   // Open slot banner
   openSlotBanner: {
