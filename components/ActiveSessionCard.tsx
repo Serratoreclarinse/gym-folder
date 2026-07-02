@@ -182,40 +182,6 @@ function TimesUpModal({
   );
 }
 
-// ── No-Show modal (auto-fires when timer ends without check-in) ───────────────
-
-function NoShowModal({
-  visible,
-  clientName,
-  onExtend,
-  onRecord,
-}: {
-  visible: boolean;
-  clientName: string;
-  onExtend: () => void;
-  onRecord: () => void;
-}) {
-  return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={tu.overlay}>
-        <View style={tu.card}>
-          <Text style={tu.emoji}>⚠️</Text>
-          <Text style={tu.title}>CLIENT NO-SHOW</Text>
-          <Text style={tu.sub}>{clientName} didn't check in.</Text>
-          <Text style={tu.sub2}>Time is up — record as no-show?</Text>
-          <Pressable style={tu.extendBtn} onPress={onExtend}>
-            <Ionicons name="time-outline" size={18} color={Colors.accent} />
-            <Text style={tu.extendText}>EXTEND TIME (CLIENT IS LATE)</Text>
-          </Pressable>
-          <Pressable style={[tu.endBtn, { backgroundColor: '#FFA50015', borderColor: '#FFA50060' }]} onPress={onRecord}>
-            <Text style={[tu.endText, { color: '#FFA500', fontWeight: '800' }]}>RECORD NO-SHOW</Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 // ── Active session card ───────────────────────────────────────────────────────
 
 export function ActiveSessionCard({
@@ -240,13 +206,13 @@ export function ActiveSessionCard({
   );
   const [showExtend, setShowExtend] = useState(false);
   const [showTimesUp, setShowTimesUp] = useState(false);
-  const [showNoShow, setShowNoShow] = useState(false);
   const [showQRScan, setShowQRScan] = useState(false);
   const [checkedIn, setCheckedIn] = useState(false);
   const [loadingWorkout, setLoadingWorkout] = useState(false);
   const alerted5Ref = useRef(false);
   const timesUpFiredRef = useRef(false);
   const checkedInRef = useRef(false);
+  const autoNoShowRef = useRef<() => Promise<void>>();
 
   useEffect(() => { checkedInRef.current = checkedIn; }, [checkedIn]);
 
@@ -271,7 +237,7 @@ export function ActiveSessionCard({
         if (checkedInRef.current) {
           setShowTimesUp(true);
         } else {
-          setShowNoShow(true);
+          autoNoShowRef.current?.();
         }
       }
     };
@@ -377,8 +343,6 @@ export function ActiveSessionCard({
   };
 
   const handleAutoNoShow = async () => {
-    setShowNoShow(false);
-    // Mark existing workout session as absent
     if (activeSession.session_id) {
       await supabase
         .from('workout_sessions')
@@ -392,6 +356,7 @@ export function ActiveSessionCard({
     }
     await onCancel();
   };
+  autoNoShowRef.current = handleAutoNoShow;
 
   return (
     <>
@@ -482,18 +447,6 @@ export function ActiveSessionCard({
           const { error } = await onEnd();
           if (error) Alert.alert('Error', error);
         }}
-      />
-
-      <NoShowModal
-        visible={showNoShow}
-        clientName={activeSession.client_name}
-        onExtend={() => {
-          setShowNoShow(false);
-          alerted5Ref.current = false;
-          timesUpFiredRef.current = false;
-          setShowExtend(true);
-        }}
-        onRecord={handleAutoNoShow}
       />
 
       <QRScanModal
