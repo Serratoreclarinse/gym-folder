@@ -6,6 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import { sendPushNotification } from '@/lib/pushNotifications';
 import { Colors, Typography } from '@/constants/theme';
 
 type Transfer = {
@@ -14,6 +15,8 @@ type Transfer = {
   notes: string | null;
   admin_notes: string | null;
   created_at: string;
+  from_coach_id: string;
+  to_coach_id: string;
   client_name: string;
   from_coach_name: string;
   to_coach_name: string;
@@ -55,7 +58,7 @@ export default function AdminTransfersScreen() {
     const { data, error } = await supabase
       .from('client_transfers')
       .select(`
-        id, status, notes, admin_notes, created_at,
+        id, status, notes, admin_notes, created_at, from_coach_id, to_coach_id,
         client:profiles!client_transfers_client_id_fkey(name),
         from_coach:profiles!client_transfers_from_coach_id_fkey(name),
         to_coach:profiles!client_transfers_to_coach_id_fkey(name),
@@ -73,6 +76,8 @@ export default function AdminTransfersScreen() {
         notes: row.notes,
         admin_notes: row.admin_notes,
         created_at: row.created_at,
+        from_coach_id: row.from_coach_id,
+        to_coach_id: row.to_coach_id,
         client_name: row.client?.name ?? '—',
         from_coach_name: row.from_coach?.name ?? '—',
         to_coach_name: row.to_coach?.name ?? '—',
@@ -93,6 +98,11 @@ export default function AdminTransfersScreen() {
     });
     setActioning(null);
     if (error) { Alert.alert('Error', error.message); return; }
+    // Notify target coach
+    await sendPushNotification(t.to_coach_id, {
+      title: '🔄 Incoming Transfer Request',
+      body: `Admin approved a transfer of ${t.client_name} to you. Open the app to accept or decline.`,
+    });
     setExpandedId(null);
     load();
   };
@@ -110,6 +120,11 @@ export default function AdminTransfersScreen() {
           });
           setActioning(null);
           if (error) { Alert.alert('Error', error.message); return; }
+          // Notify originating coach
+          await sendPushNotification(t.from_coach_id, {
+            title: '❌ Transfer Rejected',
+            body: `Your transfer request for ${t.client_name} was rejected by admin.`,
+          });
           setExpandedId(null);
           load();
         },
