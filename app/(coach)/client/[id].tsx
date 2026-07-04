@@ -42,6 +42,18 @@ const PACKAGE_OPTIONS: { value: PackageType; label: string }[] = [
   { value: '1hr', label: '1 hr' },
 ];
 
+type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'other';
+const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
+  { value: 'cash', label: 'Cash' },
+  { value: 'gcash', label: 'GCash' },
+  { value: 'maya', label: 'Maya' },
+  { value: 'bank_transfer', label: 'Bank Transfer' },
+  { value: 'other', label: 'Other' },
+];
+const METHOD_LABEL: Record<string, string> = {
+  cash: 'Cash', gcash: 'GCash', maya: 'Maya', bank_transfer: 'Bank Transfer', other: 'Other',
+};
+
 type Tab = 'overview' | 'sessions' | 'progress' | 'goals' | 'notes' | 'files';
 
 const MAX_STRIKES = 3;
@@ -263,6 +275,14 @@ export default function ClientDetailScreen() {
   const [transferNotes, setTransferNotes] = useState('');
   const [transferring, setTransferring] = useState(false);
 
+  type Payment = { id: string; amount: number; payment_method: string; notes: string | null; paid_at: string };
+  const [clientPayments, setClientPayments] = useState<Payment[]>([]);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [payAmount, setPayAmount] = useState('');
+  const [payMethod, setPayMethod] = useState<PaymentMethod>('cash');
+  const [payNotes, setPayNotes] = useState('');
+  const [savingPayment, setSavingPayment] = useState(false);
+
   const { profile } = useAuth();
   const { clients, loading: clientsLoading, error: clientsError, refetch: refetchClients } = useClients();
   const { sessions, loading: sessionsLoading, error: sessionsError, refetch: refetchSessions } = useSessions(id);
@@ -278,8 +298,20 @@ export default function ClientDetailScreen() {
     if (client?.name) navigation.setOptions({ title: client.name });
   }, [client?.name]);
 
+  useEffect(() => { fetchPayments(); }, [id]);
+
   const refreshing = clientsLoading || sessionsLoading;
-  const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); };
+  const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); fetchPayments(); };
+
+  const fetchPayments = async () => {
+    const { data } = await supabase
+      .from('payments')
+      .select('id, amount, payment_method, notes, paid_at')
+      .eq('client_id', id)
+      .order('paid_at', { ascending: false })
+      .limit(10);
+    setClientPayments((data ?? []) as Payment[]);
+  };
 
   const openTransferModal = async () => {
     const { data } = await supabase
@@ -416,6 +448,29 @@ export default function ClientDetailScreen() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Remove', style: 'destructive', onPress: () => removeStrike(strikeId) },
     ]);
+  };
+
+  const handleRecordPayment = async () => {
+    const amt = parseFloat(payAmount);
+    if (isNaN(amt) || amt <= 0) { Alert.alert('Invalid amount', 'Enter a valid amount greater than 0.'); return; }
+    if (!profile?.id) return;
+    setSavingPayment(true);
+    const { error } = await supabase.from('payments').insert({
+      client_id: id,
+      coach_id: profile.id,
+      package_id: pkg?.id ?? null,
+      amount: amt,
+      payment_method: payMethod,
+      notes: payNotes.trim() || null,
+      recorded_by: profile.id,
+    });
+    setSavingPayment(false);
+    if (error) { Alert.alert('Error', error.message); return; }
+    setShowPaymentModal(false);
+    setPayAmount('');
+    setPayNotes('');
+    setPayMethod('cash');
+    fetchPayments();
   };
 
   // ── Client Header (always visible) ──────────────────────────
@@ -709,6 +764,43 @@ export default function ClientDetailScreen() {
         )}
       </View>
 
+      {/* Payments */}
+      <View style={[styles.sectionRow, { marginTop: 20 }]}>
+        <Text style={styles.sectionTitle}>PAYMENTS</Text>
+        <Pressable style={styles.addStrikeBtn} onPress={() => setShowPaymentModal(true)}>
+          <Ionicons name="add" size={14} color={Colors.bg} />
+          <Text style={styles.addStrikeBtnText}>Record</Text>
+        </Pressable>
+      </View>
+      {clientPayments.length === 0 ? (
+        <View style={styles.emptyCard}>
+          <Text style={styles.emptyText}>No payments recorded yet</Text>
+        </View>
+      ) : (
+        <View style={styles.paymentsCard}>
+          {clientPayments.slice(0, 5).map((p, i) => (
+            <View
+              key={p.id}
+              style={[styles.paymentRow, i < Math.min(clientPayments.length, 5) - 1 && styles.paymentRowBorder]}
+            >
+              <View style={styles.paymentLeft}>
+                <Text style={styles.paymentMethodText}>{METHOD_LABEL[p.payment_method] ?? p.payment_method}</Text>
+                <Text style={styles.paymentDate}>
+                  {new Date(p.paid_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </Text>
+                {p.notes ? <Text style={styles.paymentNotes}>{p.notes}</Text> : null}
+              </View>
+              <Text style={styles.paymentAmount}>
+                ₱{p.amount.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+              </Text>
+            </View>
+          ))}
+          {clientPayments.length > 5 && (
+            <Text style={styles.paymentMore}>+{clientPayments.length - 5} more payments</Text>
+          )}
+        </View>
+      )}
+
       {/* Transfer client */}
       {pkg && (
         <>
@@ -801,6 +893,74 @@ export default function ClientDetailScreen() {
 
   return (
     <>
+    {/* Payment Modal */}
+    <Modal
+      visible={showPaymentModal}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowPaymentModal(false)}
+    >
+      <View style={styles.transferOverlay}>
+        <View style={styles.transferSheet}>
+          <View style={styles.transferHandle} />
+          <View style={styles.transferHead}>
+            <Text style={styles.transferTitle}>RECORD PAYMENT</Text>
+            <Pressable onPress={() => setShowPaymentModal(false)}>
+              <Ionicons name="close" size={20} color={Colors.textSecondary} />
+            </Pressable>
+          </View>
+          <Text style={styles.transferSub}>
+            {client?.name}{pkg ? ` — ${PACKAGE_LABEL[pkg.package_type]}` : ''}
+          </Text>
+
+          <Text style={styles.transferNotesLabel}>Amount (₱)</Text>
+          <TextInput
+            style={styles.renewInput}
+            value={payAmount}
+            onChangeText={(v) => setPayAmount(v.replace(/[^0-9.]/g, ''))}
+            placeholder="e.g. 3000"
+            placeholderTextColor={Colors.textSecondary}
+            keyboardType="decimal-pad"
+            autoFocus
+          />
+
+          <Text style={styles.transferNotesLabel}>Payment Method</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+            {PAYMENT_METHODS.map((m) => (
+              <Pressable
+                key={m.value}
+                style={[styles.methodChip, payMethod === m.value && styles.methodChipActive]}
+                onPress={() => setPayMethod(m.value)}
+              >
+                <Text style={[styles.methodChipText, payMethod === m.value && styles.methodChipTextActive]}>
+                  {m.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={styles.transferNotesLabel}>Notes (optional)</Text>
+          <TextInput
+            style={styles.transferNotesInput}
+            value={payNotes}
+            onChangeText={setPayNotes}
+            placeholder="e.g. monthly payment for July…"
+            placeholderTextColor={Colors.textSecondary}
+            multiline
+            numberOfLines={2}
+          />
+          <Pressable
+            style={[styles.transferSubmitBtn, (!payAmount || savingPayment) && { opacity: 0.45 }]}
+            onPress={handleRecordPayment}
+            disabled={!payAmount || savingPayment}
+          >
+            <Ionicons name="cash-outline" size={16} color={Colors.bg} />
+            <Text style={styles.transferSubmitText}>{savingPayment ? 'Saving…' : 'Record Payment'}</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+
     <Modal
       visible={showTransferModal}
       transparent
@@ -1257,4 +1417,25 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent, borderRadius: 12, padding: 15,
   },
   transferSubmitText: { color: Colors.bg, fontWeight: '800', fontSize: 14 },
+
+  // Payments
+  paymentsCard: {
+    backgroundColor: Colors.surface, borderRadius: 14,
+    borderWidth: 1, borderColor: Colors.border, marginBottom: 8, overflow: 'hidden',
+  },
+  paymentRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', padding: 12 },
+  paymentRowBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
+  paymentLeft: { flex: 1, marginRight: 12 },
+  paymentMethodText: { fontSize: 13, fontWeight: '700', color: Colors.textPrimary, marginBottom: 2 },
+  paymentDate: { fontSize: 12, color: Colors.textSecondary },
+  paymentNotes: { fontSize: 12, color: Colors.textSecondary, fontStyle: 'italic', marginTop: 2 },
+  paymentAmount: { fontSize: 15, fontWeight: '800', color: '#4CAF50' },
+  paymentMore: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center', paddingVertical: 10 },
+  methodChip: {
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderRadius: 8, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bg,
+  },
+  methodChipActive: { backgroundColor: Colors.accent + '15', borderColor: Colors.accent },
+  methodChipText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
+  methodChipTextActive: { color: Colors.accent, fontWeight: '700' },
 });
