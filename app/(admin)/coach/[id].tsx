@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator, Alert, Modal, Platform, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
@@ -91,14 +91,6 @@ export default function CoachDetailScreen() {
   const [editPhone, setEditPhone] = useState('');
   const [editBirthday, setEditBirthday] = useState('');
   const [editVisaExpiry, setEditVisaExpiry] = useState('');
-  const birthdayRef = useRef<any>(null);
-  const visaRef = useRef<any>(null);
-
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !editing) return;
-    if (birthdayRef.current) birthdayRef.current.type = 'date';
-    if (visaRef.current) visaRef.current.type = 'date';
-  }, [editing]);
   const [saving, setSaving] = useState(false);
 
   const [showBlockModal, setShowBlockModal] = useState(false);
@@ -299,10 +291,12 @@ export default function CoachDetailScreen() {
                     placeholder="Full name" placeholderTextColor={Colors.textSecondary} autoCapitalize="words" />
                   <TextInput style={[s.editInput, { marginTop: 6 }]} value={editPhone} onChangeText={setEditPhone}
                     placeholder="Phone (optional)" placeholderTextColor={Colors.textSecondary} keyboardType="phone-pad" />
-                  <TextInput ref={birthdayRef} style={[s.editInput, { marginTop: 6 }]} value={editBirthday} onChangeText={setEditBirthday}
-                    placeholder="Birthday (YYYY-MM-DD)" placeholderTextColor={Colors.textSecondary} />
-                  <TextInput ref={visaRef} style={[s.editInput, { marginTop: 6 }]} value={editVisaExpiry} onChangeText={setEditVisaExpiry}
-                    placeholder="Visa Expiry (YYYY-MM-DD)" placeholderTextColor={Colors.textSecondary} />
+                  {Platform.OS === 'web'
+                    ? React.createElement('input', { type: 'date', value: editBirthday, onChange: (e: any) => setEditBirthday(e.target.value), style: { marginTop: 6, background: Colors.bg, border: `1px solid ${Colors.border}`, borderRadius: 10, padding: '9px 12px', color: Colors.textPrimary, fontSize: 14, width: '100%', boxSizing: 'border-box', cursor: 'pointer', colorScheme: 'dark' } })
+                    : <TextInput style={[s.editInput, { marginTop: 6 }]} value={editBirthday} onChangeText={setEditBirthday} placeholder="Birthday (YYYY-MM-DD)" placeholderTextColor={Colors.textSecondary} />}
+                  {Platform.OS === 'web'
+                    ? React.createElement('input', { type: 'date', value: editVisaExpiry, onChange: (e: any) => setEditVisaExpiry(e.target.value), style: { marginTop: 6, background: Colors.bg, border: `1px solid ${Colors.border}`, borderRadius: 10, padding: '9px 12px', color: Colors.textPrimary, fontSize: 14, width: '100%', boxSizing: 'border-box', cursor: 'pointer', colorScheme: 'dark' } })
+                    : <TextInput style={[s.editInput, { marginTop: 6 }]} value={editVisaExpiry} onChangeText={setEditVisaExpiry} placeholder="Visa Expiry (YYYY-MM-DD)" placeholderTextColor={Colors.textSecondary} />}
                   <View style={s.editActions}>
                     <Pressable style={s.saveBtn} onPress={handleSave} disabled={saving}>
                       <Text style={s.saveBtnText}>{saving ? 'SAVING…' : 'SAVE'}</Text>
