@@ -403,6 +403,27 @@ export default function ClientDetailScreen() {
                     <Text style={s.pkgMetaValue}>{activePkg.durationWeeks} weeks</Text>
                   </View>
                 )}
+                {activePkg.durationWeeks && activePkg.startDate && (() => {
+                  const end = new Date(activePkg.startDate);
+                  end.setDate(end.getDate() + activePkg.durationWeeks * 7);
+                  const daysLeft = Math.round((end.getTime() - Date.now()) / 86400000);
+                  const endLabel = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                  const expired = daysLeft < 0;
+                  const urgent  = daysLeft >= 0 && daysLeft <= 7;
+                  const warn    = daysLeft > 7 && daysLeft <= 14;
+                  const color   = expired ? '#FF1744' : urgent ? '#FF6D00' : warn ? '#FF9800' : '#4CAF50';
+                  return (
+                    <View style={s.pkgMetaRow}>
+                      <Text style={s.pkgMetaLabel}>End Date</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={[s.pkgMetaValue, { color }]}>{endLabel}</Text>
+                        {expired && <Text style={[s.endBadge, { backgroundColor: '#FF174420', color: '#FF1744' }]}>EXPIRED</Text>}
+                        {urgent  && <Text style={[s.endBadge, { backgroundColor: '#FF6D0020', color: '#FF6D00' }]}>{daysLeft}d left</Text>}
+                        {warn    && <Text style={[s.endBadge, { backgroundColor: '#FF980020', color: '#FF9800' }]}>{daysLeft}d left</Text>}
+                      </View>
+                    </View>
+                  );
+                })()}
                 <View style={s.pkgMetaRow}>
                   <Text style={s.pkgMetaLabel}>Coach</Text>
                   <Text style={s.pkgMetaValue}>{activePkg.coachName}</Text>
@@ -741,6 +762,7 @@ const s = StyleSheet.create({
   },
   pkgMetaLabel: { ...Typography.caption, color: Colors.textSecondary },
   pkgMetaValue: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
+  endBadge: { fontSize: 10, fontWeight: '800', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
 
   pkgActions: { flexDirection: 'row', gap: 8 },
   actionPrimary: {
