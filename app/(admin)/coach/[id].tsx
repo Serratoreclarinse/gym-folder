@@ -291,25 +291,12 @@ export default function CoachDetailScreen() {
                     placeholder="Full name" placeholderTextColor={Colors.textSecondary} autoCapitalize="words" />
                   <TextInput style={[s.editInput, { marginTop: 6 }]} value={editPhone} onChangeText={setEditPhone}
                     placeholder="Phone (optional)" placeholderTextColor={Colors.textSecondary} keyboardType="phone-pad" />
-                  {Platform.OS === 'web' ? (
-                    <>
-                      <View style={[s.editInput, { marginTop: 6, justifyContent: 'center' }]}>
-                        <input type="date" value={editBirthday} onChange={(e: any) => setEditBirthday(e.target.value)}
-                          style={{ background: 'transparent', border: 'none', outline: 'none', color: 'inherit', fontSize: 14, width: '100%', colorScheme: 'dark' }} />
-                      </View>
-                      <View style={[s.editInput, { marginTop: 6, justifyContent: 'center' }]}>
-                        <input type="date" value={editVisaExpiry} onChange={(e: any) => setEditVisaExpiry(e.target.value)}
-                          style={{ background: 'transparent', border: 'none', outline: 'none', color: 'inherit', fontSize: 14, width: '100%', colorScheme: 'dark' }} />
-                      </View>
-                    </>
-                  ) : (
-                    <>
-                      <TextInput style={[s.editInput, { marginTop: 6 }]} value={editBirthday} onChangeText={setEditBirthday}
-                        placeholder="Birthday (YYYY-MM-DD)" placeholderTextColor={Colors.textSecondary} />
-                      <TextInput style={[s.editInput, { marginTop: 6 }]} value={editVisaExpiry} onChangeText={setEditVisaExpiry}
-                        placeholder="Visa Expiry (YYYY-MM-DD)" placeholderTextColor={Colors.textSecondary} />
-                    </>
-                  )}
+                  <TextInput style={[s.editInput, { marginTop: 6 }]} value={editBirthday} onChangeText={setEditBirthday}
+                    placeholder="Birthday" placeholderTextColor={Colors.textSecondary}
+                    {...(Platform.OS === 'web' ? ({ type: 'date' } as any) : {})} />
+                  <TextInput style={[s.editInput, { marginTop: 6 }]} value={editVisaExpiry} onChangeText={setEditVisaExpiry}
+                    placeholder="Visa Expiry" placeholderTextColor={Colors.textSecondary}
+                    {...(Platform.OS === 'web' ? ({ type: 'date' } as any) : {})} />
                   <View style={s.editActions}>
                     <Pressable style={s.saveBtn} onPress={handleSave} disabled={saving}>
                       <Text style={s.saveBtnText}>{saving ? 'SAVING…' : 'SAVE'}</Text>
