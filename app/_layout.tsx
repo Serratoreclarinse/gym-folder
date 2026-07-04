@@ -1,6 +1,7 @@
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as Updates from 'expo-updates';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
@@ -93,7 +94,8 @@ export default function RootLayout() {
     Inter_600SemiBold,
   });
 
-  if (!fontsLoaded) return null;
+  // On web (Vercel static build), fonts load via CSS — don't block render
+  if (!fontsLoaded && Platform.OS !== 'web') return null;
 
   return (
     <AuthProvider>
