@@ -440,10 +440,9 @@ export default function CoachDetailScreen() {
               {blockedDates.map((bd, i) => {
                 const color = TYPE_COLOR[bd.type] ?? Colors.textSecondary;
                 return (
-                  <Pressable
+                  <View
                     key={bd.id}
                     style={[s.scheduleRow, i === blockedDates.length - 1 && { borderBottomWidth: 0 }]}
-                    onLongPress={() => handleRemoveBlock(bd)}
                   >
                     <View style={[s.typeChip, { backgroundColor: color + '18', borderColor: color + '50' }]}>
                       <Text style={[s.typeChipText, { color }]}>{TYPE_LABEL[bd.type]}</Text>
@@ -452,10 +451,10 @@ export default function CoachDetailScreen() {
                       <Text style={s.scheduleClient}>{fmtDate(bd.date)}</Text>
                       {bd.notes ? <Text style={s.scheduleNotes}>{bd.notes}</Text> : null}
                     </View>
-                    <Pressable onPress={() => handleRemoveBlock(bd)} hitSlop={12}>
-                      <Ionicons name="trash-outline" size={16} color={Colors.border} />
+                    <Pressable onPress={() => handleRemoveBlock(bd)} hitSlop={16} style={{ padding: 8 }}>
+                      <Ionicons name="trash-outline" size={18} color={Colors.danger} />
                     </Pressable>
-                  </Pressable>
+                  </View>
                 );
               })}
             </View>
