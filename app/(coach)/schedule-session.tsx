@@ -10,6 +10,15 @@ import {
   TextInput,
   View,
 } from 'react-native';
+
+const TIME_SLOTS = [
+  '5:00 AM', '5:30 AM', '6:00 AM', '6:30 AM', '7:00 AM', '7:30 AM',
+  '8:00 AM', '8:30 AM', '9:00 AM', '9:30 AM', '10:00 AM', '10:30 AM',
+  '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM', '1:00 PM', '1:30 PM',
+  '2:00 PM', '2:30 PM', '3:00 PM', '3:30 PM', '4:00 PM', '4:30 PM',
+  '5:00 PM', '5:30 PM', '6:00 PM', '6:30 PM', '7:00 PM', '7:30 PM',
+  '8:00 PM', '8:30 PM', '9:00 PM',
+] as const;
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -59,6 +68,7 @@ export default function ScheduleSessionScreen() {
   const [sessionType, setSessionType] = useState<'gym' | 'home'>('gym');
   const [notes, setNotes] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const selectedClient = clients.find((c) => c.id === selectedClientId);
@@ -73,6 +83,13 @@ export default function ScheduleSessionScreen() {
   const handleSave = async () => {
     if (!selectedClientId || !profile?.id) {
       Alert.alert('Missing', 'Please select a client.');
+      return;
+    }
+    const timeUpper = sessionTime.toUpperCase().trim();
+    const validTime = /^(1[0-2]|[1-9]):[0-5][0-9]\s*(AM|PM)$/.test(timeUpper) ||
+      /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(timeUpper);
+    if (!validTime) {
+      Alert.alert('Invalid time', 'Enter a valid time, e.g. 9:00 AM or 14:30');
       return;
     }
     setSaving(true);
@@ -189,11 +206,34 @@ export default function ScheduleSessionScreen() {
 
       {/* Time */}
       <Text style={styles.label}>TIME</Text>
+      <Pressable style={styles.select} onPress={() => setTimePickerOpen((v) => !v)}>
+        <Text style={styles.selectText}>{sessionTime || '9:00 AM'}</Text>
+        <Ionicons name={timePickerOpen ? 'chevron-up' : 'chevron-down'} size={15} color={Colors.textSecondary} />
+      </Pressable>
+      {timePickerOpen && (
+        <View style={[styles.dropdown, { maxHeight: 200 }]}>
+          <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+            {TIME_SLOTS.map((slot) => {
+              const active = sessionTime.trim().toUpperCase() === slot.toUpperCase();
+              return (
+                <Pressable
+                  key={slot}
+                  style={[styles.dropItem, active && styles.dropItemActive]}
+                  onPress={() => { setSessionTime(slot); setTimePickerOpen(false); }}
+                >
+                  <Text style={[styles.dropItemText, active && { color: Colors.accent }]}>{slot}</Text>
+                  {active && <Ionicons name="checkmark" size={14} color={Colors.accent} />}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
       <TextInput
-        style={styles.input}
+        style={[styles.input, { marginTop: 6 }]}
         value={sessionTime}
-        onChangeText={setSessionTime}
-        placeholder="e.g. 9:00 AM"
+        onChangeText={(v) => { setSessionTime(v); setTimePickerOpen(false); }}
+        placeholder="or type: 9:00 AM / 14:30"
         placeholderTextColor={Colors.textSecondary + '60'}
         autoCorrect={false}
       />

@@ -286,6 +286,7 @@ export default function ClientDetailScreen() {
   const [clientPayments, setClientPayments] = useState<Payment[]>([]);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showPayReqModal, setShowPayReqModal] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [payReqAmount, setPayReqAmount] = useState('');
   const [payReqNotes, setPayReqNotes] = useState('');
   const [sendingPayReq, setSendingPayReq] = useState(false);
@@ -824,9 +825,10 @@ export default function ClientDetailScreen() {
       ) : (
         <View style={styles.paymentsCard}>
           {clientPayments.slice(0, 5).map((p, i) => (
-            <View
+            <Pressable
               key={p.id}
               style={[styles.paymentRow, i < Math.min(clientPayments.length, 5) - 1 && styles.paymentRowBorder]}
+              onPress={() => setSelectedPayment(p)}
             >
               <View style={styles.paymentLeft}>
                 <Text style={styles.paymentMethodText}>{METHOD_LABEL[p.payment_method] ?? p.payment_method}</Text>
@@ -838,7 +840,7 @@ export default function ClientDetailScreen() {
               <Text style={styles.paymentAmount}>
                 OMR {p.amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
               </Text>
-            </View>
+            </Pressable>
           ))}
           {clientPayments.length > 5 && (
             <Text style={styles.paymentMore}>+{clientPayments.length - 5} more payments</Text>
@@ -1138,6 +1140,46 @@ export default function ClientDetailScreen() {
         </View>
       </View>
     </Modal>
+
+    {/* Payment detail modal */}
+    <Modal visible={!!selectedPayment} transparent animationType="slide" onRequestClose={() => setSelectedPayment(null)}>
+      <Pressable style={styles.modalOverlay} onPress={() => setSelectedPayment(null)}>
+        <View style={styles.payDetailSheet}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.payDetailTitle}>Payment Detail</Text>
+          {selectedPayment && (
+            <>
+              <View style={styles.payDetailRow}>
+                <Text style={styles.payDetailLabel}>Amount</Text>
+                <Text style={styles.payDetailValue}>
+                  OMR {selectedPayment.amount.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                </Text>
+              </View>
+              <View style={styles.payDetailRow}>
+                <Text style={styles.payDetailLabel}>Method</Text>
+                <Text style={styles.payDetailValue}>{METHOD_LABEL[selectedPayment.payment_method] ?? selectedPayment.payment_method}</Text>
+              </View>
+              <View style={styles.payDetailRow}>
+                <Text style={styles.payDetailLabel}>Date</Text>
+                <Text style={styles.payDetailValue}>
+                  {new Date(selectedPayment.paid_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                </Text>
+              </View>
+              {selectedPayment.notes ? (
+                <View style={styles.payDetailRow}>
+                  <Text style={styles.payDetailLabel}>Notes</Text>
+                  <Text style={[styles.payDetailValue, { flex: 1, textAlign: 'right' }]}>{selectedPayment.notes}</Text>
+                </View>
+              ) : null}
+            </>
+          )}
+          <Pressable style={styles.payDetailClose} onPress={() => setSelectedPayment(null)}>
+            <Text style={styles.payDetailCloseText}>Close</Text>
+          </Pressable>
+        </View>
+      </Pressable>
+    </Modal>
+
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
@@ -1545,6 +1587,24 @@ const styles = StyleSheet.create({
   paymentNotes: { fontSize: 12, color: Colors.textSecondary, fontStyle: 'italic', marginTop: 2 },
   paymentAmount: { fontSize: 15, fontWeight: '800', color: '#4CAF50' },
   paymentMore: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center', paddingVertical: 10 },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  payDetailSheet: {
+    backgroundColor: Colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 24, paddingBottom: 36,
+  },
+  payDetailTitle: { fontSize: 17, fontWeight: '700', color: Colors.textPrimary, marginBottom: 20, textAlign: 'center' },
+  payDetailRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  payDetailLabel: { fontSize: 13, color: Colors.textSecondary, fontWeight: '600' },
+  payDetailValue: { fontSize: 14, color: Colors.textPrimary, fontWeight: '600', marginLeft: 16 },
+  payDetailClose: {
+    marginTop: 20, backgroundColor: Colors.surface, borderRadius: 12,
+    borderWidth: 1, borderColor: Colors.border, paddingVertical: 13, alignItems: 'center',
+  },
+  payDetailCloseText: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary },
   methodChip: {
     paddingHorizontal: 12, paddingVertical: 7,
     borderRadius: 8, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bg,

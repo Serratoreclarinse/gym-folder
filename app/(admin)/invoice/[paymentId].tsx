@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
@@ -50,6 +50,7 @@ export default function InvoicePage() {
   const [data, setData] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => { loadInvoice(); }, [paymentId]);
 
@@ -72,25 +73,12 @@ export default function InvoicePage() {
         supabase.from('packages').select('id').eq('client_id', pay.client_id).order('created_at', { ascending: true }).limit(1),
       ]);
 
-      let invoiceNumber = pay.invoice_number;
-      if (!invoiceNumber) {
-        const { data: counter } = await supabase
-          .from('invoice_counter')
-          .select('last_number')
-          .eq('id', 1)
-          .single();
-        const nextNum = (counter?.last_number ?? 23) + 1;
-        await supabase.from('invoice_counter').update({ last_number: nextNum }).eq('id', 1);
-        invoiceNumber = formatInvoiceNumber(nextNum, new Date(pay.paid_at));
-        await supabase.from('payments').update({ invoice_number: invoiceNumber }).eq('id', pay.id);
-      }
-
       setData({
         id: pay.id,
         amount: Number(pay.amount),
         payment_method: pay.payment_method,
         transaction_ref: pay.transaction_ref,
-        invoice_number: invoiceNumber,
+        invoice_number: pay.invoice_number,
         notes: pay.notes,
         paid_at: pay.paid_at,
         client_name: clientRes.data?.name ?? 'Unknown',
@@ -108,6 +96,22 @@ export default function InvoicePage() {
   const handlePrint = () => {
     if (Platform.OS === 'web') {
       window.print();
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (!data) return;
+    setGenerating(true);
+    try {
+      const { data: newNum, error: counterErr } = await supabase.rpc('next_invoice_number');
+      if (counterErr || newNum == null) throw new Error(counterErr?.message ?? 'Failed to allocate invoice number');
+      const invoiceNumber = formatInvoiceNumber(newNum as number, new Date(data.paid_at));
+      await supabase.from('payments').update({ invoice_number: invoiceNumber }).eq('id', data.id);
+      setData(prev => prev ? { ...prev, invoice_number: invoiceNumber } : prev);
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Failed to generate invoice number');
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -139,7 +143,7 @@ export default function InvoicePage() {
           <Ionicons name="arrow-back" size={18} color={Colors.textSecondary} />
           <Text style={s.backBtnText}>Back</Text>
         </Pressable>
-        {Platform.OS === 'web' && (
+        {Platform.OS === 'web' && data.invoice_number && (
           <Pressable style={s.printBtn} onPress={handlePrint}>
             <Ionicons name="print-outline" size={16} color={Colors.bg} />
             <Text style={s.printBtnText}>Print / Save PDF</Text>
@@ -161,7 +165,16 @@ export default function InvoicePage() {
           </View>
           <View style={s.invoiceMeta}>
             <Text style={s.invoiceTitle}>INVOICE</Text>
-            <Text style={s.invoiceNum}>Invoice No: {data.invoice_number}</Text>
+            {data.invoice_number ? (
+              <Text style={s.invoiceNum}>Invoice No: {data.invoice_number}</Text>
+            ) : (
+              <Pressable style={s.generateBtn} onPress={handleGenerate} disabled={generating}>
+                {generating
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <><Ionicons name="document-text-outline" size={14} color="#fff" /><Text style={s.generateBtnText}>Generate invoice number</Text></>
+                }
+              </Pressable>
+            )}
             <Text style={s.invoiceDate}>Date: {formattedDate}</Text>
             <Text style={s.invoiceTo}>To: {data.client_name}</Text>
           </View>
@@ -246,6 +259,13 @@ const s = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 10,
   },
   printBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+
+  generateBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: Colors.accent, borderRadius: 8,
+    paddingHorizontal: 12, paddingVertical: 7, marginTop: 4,
+  },
+  generateBtnText: { color: '#fff', fontWeight: '600', fontSize: 13 },
 
   invoice: {
     backgroundColor: '#FFFFFF', borderRadius: 4,
