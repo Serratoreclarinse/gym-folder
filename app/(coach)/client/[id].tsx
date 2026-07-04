@@ -5,6 +5,7 @@ import { formatBirthday } from '@/hooks/useBirthdays';
 import {
   Alert,
   Linking,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -256,6 +257,11 @@ export default function ClientDetailScreen() {
   const [bdInput, setBdInput] = useState('');
   const [showRenewForm, setShowRenewForm] = useState(false);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferCoaches, setTransferCoaches] = useState<{ id: string; name: string }[]>([]);
+  const [selectedTransferCoachId, setSelectedTransferCoachId] = useState<string | null>(null);
+  const [transferNotes, setTransferNotes] = useState('');
+  const [transferring, setTransferring] = useState(false);
 
   const { profile } = useAuth();
   const { clients, loading: clientsLoading, error: clientsError, refetch: refetchClients } = useClients();
@@ -274,6 +280,43 @@ export default function ClientDetailScreen() {
 
   const refreshing = clientsLoading || sessionsLoading;
   const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); };
+
+  const openTransferModal = async () => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, name')
+      .eq('role', 'coach')
+      .neq('id', profile?.id ?? '')
+      .order('name');
+    setTransferCoaches((data ?? []) as { id: string; name: string }[]);
+    setSelectedTransferCoachId(null);
+    setTransferNotes('');
+    setShowTransferModal(true);
+  };
+
+  const handleInitiateTransfer = async () => {
+    if (!selectedTransferCoachId || !pkg?.id || !id) return;
+    setTransferring(true);
+    const { error } = await supabase.rpc('coach_initiate_transfer', {
+      p_client_id: id,
+      p_to_coach_id: selectedTransferCoachId,
+      p_package_id: pkg.id,
+      p_notes: transferNotes.trim() || null,
+    });
+    setTransferring(false);
+    if (error) { Alert.alert('Error', error.message); return; }
+    // Notify admin
+    const { data: adminRows } = await supabase.from('profiles').select('id').eq('role', 'admin').limit(1);
+    if (adminRows?.[0]?.id) {
+      const targetName = transferCoaches.find((c) => c.id === selectedTransferCoachId)?.name ?? 'another coach';
+      await sendPushNotification(adminRows[0].id, {
+        title: '🔄 Transfer Request',
+        body: `${profile?.name ?? 'A coach'} wants to transfer ${client?.name ?? 'a client'} to ${targetName}.`,
+      });
+    }
+    setShowTransferModal(false);
+    Alert.alert('Transfer Requested', 'Your request has been sent to admin for approval.');
+  };
 
   const renewPackage = async (pkgType: PackageType, totalSessions: number, durationWeeks: string | null) => {
     if (!profile?.id) return;
@@ -665,6 +708,20 @@ export default function ClientDetailScreen() {
           <Text style={styles.strikeTip}>Hold a strike to remove it</Text>
         )}
       </View>
+
+      {/* Transfer client */}
+      {pkg && (
+        <>
+          <View style={[styles.sectionRow, { marginTop: 28 }]}>
+            <Text style={styles.sectionTitle}>DANGER ZONE</Text>
+          </View>
+          <Pressable style={styles.transferBtn} onPress={openTransferModal}>
+            <Ionicons name="swap-horizontal-outline" size={16} color={Colors.danger} />
+            <Text style={styles.transferBtnText}>Transfer Client to Another Coach</Text>
+            <Ionicons name="chevron-forward" size={14} color={Colors.danger} />
+          </Pressable>
+        </>
+      )}
     </>
   );
 
@@ -743,6 +800,70 @@ export default function ClientDetailScreen() {
 
 
   return (
+    <>
+    <Modal
+      visible={showTransferModal}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowTransferModal(false)}
+    >
+      <View style={styles.transferOverlay}>
+        <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowTransferModal(false)} />
+        <View style={styles.transferSheet}>
+          <View style={styles.transferHandle} />
+          <View style={styles.transferHead}>
+            <Text style={styles.transferTitle}>TRANSFER CLIENT</Text>
+            <Pressable onPress={() => setShowTransferModal(false)}>
+              <Ionicons name="close" size={22} color={Colors.textSecondary} />
+            </Pressable>
+          </View>
+          <Text style={styles.transferSub}>
+            Select the coach to transfer {client?.name ?? 'this client'} to
+          </Text>
+          <ScrollView style={{ maxHeight: 240 }} showsVerticalScrollIndicator={false}>
+            {transferCoaches.length === 0 ? (
+              <Text style={styles.transferEmpty}>No other coaches found</Text>
+            ) : (
+              transferCoaches.map((coach) => (
+                <Pressable
+                  key={coach.id}
+                  style={[styles.transferCoachRow, selectedTransferCoachId === coach.id && styles.transferCoachRowSel]}
+                  onPress={() => setSelectedTransferCoachId(coach.id)}
+                >
+                  <View style={styles.transferCoachAvatar}>
+                    <Text style={styles.transferCoachAvatarText}>
+                      {coach.name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2)}
+                    </Text>
+                  </View>
+                  <Text style={styles.transferCoachName}>{coach.name}</Text>
+                  {selectedTransferCoachId === coach.id && (
+                    <Ionicons name="checkmark-circle" size={20} color={Colors.accent} />
+                  )}
+                </Pressable>
+              ))
+            )}
+          </ScrollView>
+          <Text style={styles.transferNotesLabel}>Notes (optional)</Text>
+          <TextInput
+            style={styles.transferNotesInput}
+            value={transferNotes}
+            onChangeText={setTransferNotes}
+            placeholder="Reason for transfer…"
+            placeholderTextColor={Colors.textSecondary}
+            multiline
+            numberOfLines={2}
+          />
+          <Pressable
+            style={[styles.transferSubmitBtn, (!selectedTransferCoachId || transferring) && { opacity: 0.45 }]}
+            onPress={handleInitiateTransfer}
+            disabled={!selectedTransferCoachId || transferring}
+          >
+            <Ionicons name="swap-horizontal-outline" size={16} color={Colors.bg} />
+            <Text style={styles.transferSubmitText}>{transferring ? 'Submitting…' : 'Initiate Transfer'}</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
@@ -787,6 +908,7 @@ export default function ClientDetailScreen() {
       {activeTab === 'notes' && <ClientNotesTab clientId={id} />}
       {activeTab === 'files' && <ClientFilesTab clientId={id} />}
     </ScrollView>
+    </>
   );
 }
 
@@ -1084,4 +1206,55 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent, alignItems: 'center',
   },
   bdEditSaveText: { color: Colors.bg, fontWeight: '700', fontSize: 13 },
+
+  // Transfer client
+  transferBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderWidth: 1, borderColor: Colors.danger + '50',
+    backgroundColor: Colors.danger + '0D',
+    borderRadius: 12, padding: 14,
+  },
+  transferBtnText: { color: Colors.danger, fontSize: 14, fontWeight: '600', flex: 1 },
+
+  // Transfer modal
+  transferOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
+  transferSheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 22, borderTopRightRadius: 22,
+    padding: 20, paddingBottom: 36,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  transferHandle: {
+    width: 38, height: 4, borderRadius: 2,
+    backgroundColor: Colors.border, alignSelf: 'center', marginBottom: 16,
+  },
+  transferHead: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6,
+  },
+  transferTitle: { ...Typography.label, color: Colors.textPrimary, fontSize: 13 },
+  transferSub: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 12 },
+  transferEmpty: { ...Typography.body, color: Colors.textSecondary, paddingVertical: 12, textAlign: 'center' },
+  transferCoachRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    padding: 12, borderRadius: 10, borderWidth: 1, borderColor: 'transparent', marginBottom: 4,
+  },
+  transferCoachRowSel: { backgroundColor: Colors.accent + '12', borderColor: Colors.accent + '40' },
+  transferCoachAvatar: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: Colors.accent + '18', justifyContent: 'center', alignItems: 'center',
+  },
+  transferCoachAvatarText: { fontSize: 12, fontWeight: '800', color: Colors.accent },
+  transferCoachName: { ...Typography.body, color: Colors.textPrimary, flex: 1 },
+  transferNotesLabel: { ...Typography.label, color: Colors.textSecondary, marginTop: 14, marginBottom: 6 },
+  transferNotesInput: {
+    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10,
+    color: Colors.textPrimary, fontSize: 14, minHeight: 60,
+    textAlignVertical: 'top', marginBottom: 14,
+  },
+  transferSubmitBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: Colors.accent, borderRadius: 12, padding: 15,
+  },
+  transferSubmitText: { color: Colors.bg, fontWeight: '800', fontSize: 14 },
 });
