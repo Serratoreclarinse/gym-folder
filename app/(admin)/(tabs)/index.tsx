@@ -111,14 +111,14 @@ export default function AdminDashboardScreen() {
           <View style={s.revenueItem}>
             <Text style={s.revenueLabel}>{monthName}</Text>
             <Text style={s.revenueValue}>
-              ₱{(stats?.revenueThisMonth ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+              OMR {(stats?.revenueThisMonth ?? 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
             </Text>
           </View>
           <View style={s.revenueDivider} />
           <View style={s.revenueItem}>
             <Text style={s.revenueLabel}>All Time</Text>
             <Text style={s.revenueValue}>
-              ₱{(stats?.revenueAllTime ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+              OMR {(stats?.revenueAllTime ?? 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
             </Text>
           </View>
         </View>

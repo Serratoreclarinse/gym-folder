@@ -509,7 +509,7 @@ export default function ClientDetailScreen() {
                       </Text>
                     </View>
                     <Text style={s.payAmount}>
-                      ₱{Number(p.amount).toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                      OMR {Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                     </Text>
                   </View>
                 );
