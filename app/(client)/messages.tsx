@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -33,6 +34,14 @@ export default function ClientMessagesScreen() {
   const coachName = coachInfo?.name ?? 'Coach';
 
   const { messages, loading, sendMessage, myId } = useChat(coachId);
+
+  if (!coachId) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
   const [text, setText] = useState('');
   const listRef = useRef<FlatList>(null);
 

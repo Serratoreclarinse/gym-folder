@@ -105,6 +105,31 @@ export default function ClientDetailScreen() {
   const [renewTotal, setRenewTotal] = useState('');
   const [renewWeeks, setRenewWeeks] = useState('');
   const [renewing, setRenewing] = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
+
+  const handleDeactivateAccount = () => {
+    Alert.alert(
+      'Deactivate Account',
+      `Move ${client?.name ?? 'this client'} to the Recycle Bin? They will no longer appear in the clients list. You can restore them later.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Deactivate',
+          style: 'destructive',
+          onPress: async () => {
+            setDeactivating(true);
+            const { error } = await supabase
+              .from('profiles')
+              .update({ deactivated_at: new Date().toISOString() })
+              .eq('id', id);
+            setDeactivating(false);
+            if (error) { Alert.alert('Error', error.message); return; }
+            router.back();
+          },
+        },
+      ],
+    );
+  };
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -597,6 +622,18 @@ export default function ClientDetailScreen() {
             )}
           </View>
         </View>
+        {/* Danger Zone */}
+        <View style={s.dangerSection}>
+          <Text style={s.dangerLabel}>DANGER ZONE</Text>
+          <Pressable
+            style={[s.deactivateBtn, deactivating && { opacity: 0.5 }]}
+            onPress={handleDeactivateAccount}
+            disabled={deactivating}
+          >
+            <Ionicons name="archive-outline" size={16} color={Colors.danger} />
+            <Text style={s.deactivateBtnText}>{deactivating ? 'Deactivating…' : 'Deactivate Account'}</Text>
+          </Pressable>
+        </View>
       </ScrollView>
 
       {/* Add Sessions Modal */}
@@ -970,4 +1007,14 @@ const s = StyleSheet.create({
   segmentActive: { backgroundColor: Colors.accent },
   segmentText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
   segmentActiveText: { color: Colors.bg },
+
+  dangerSection: { marginTop: 36, marginBottom: 8, gap: 12 },
+  dangerLabel: { fontSize: 11, fontWeight: '800', color: Colors.textSecondary, letterSpacing: 1 },
+  deactivateBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderWidth: 1, borderColor: Colors.danger + '60',
+    borderRadius: 12, paddingVertical: 13, paddingHorizontal: 16,
+    backgroundColor: Colors.danger + '08',
+  },
+  deactivateBtnText: { fontSize: 14, fontWeight: '700', color: Colors.danger },
 });

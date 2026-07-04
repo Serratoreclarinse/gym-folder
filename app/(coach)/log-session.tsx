@@ -342,10 +342,10 @@ export default function LogSessionScreen() {
   const params = useLocalSearchParams<{ clientId?: string; date?: string; mode?: string }>();
   const { clients } = useClients();
   const { history: exerciseHistory } = useExerciseHistory();
-  const { getLastUsed } = useClientLastWeights(selectedClientId || null);
   const { templates, markUsed } = useTemplates();
 
   const [selectedClientId, setSelectedClientId] = useState(params.clientId ?? '');
+  const { getLastUsed } = useClientLastWeights(selectedClientId || null);
   const [sessionDate, setSessionDate] = useState(params.date ?? todayISO());
   const [sessionType, setSessionType] = useState<'gym' | 'home'>('gym');
   const [duration, setDuration] = useState('60');

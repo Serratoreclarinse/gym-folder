@@ -38,7 +38,7 @@ export default function AdminClientsScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     const [profilesRes, pkgsRes] = await Promise.all([
-      supabase.from('profiles').select('id, name, email').eq('role', 'client').order('name'),
+      supabase.from('profiles').select('id, name, email').eq('role', 'client').is('deactivated_at', null).order('name'),
       supabase
         .from('packages')
         .select(`
@@ -106,6 +106,9 @@ export default function AdminClientsScreen() {
               </Pressable>
             )}
           </View>
+          <Pressable style={s.trashBtn} onPress={() => router.push('/(admin)/recycle-bin' as any)}>
+            <Ionicons name="trash-outline" size={18} color={Colors.textSecondary} />
+          </Pressable>
           <Pressable style={s.addBtn} onPress={() => router.push('/(admin)/add-client' as any)}>
             <Ionicons name="add" size={20} color={Colors.bg} />
             {isDesktop && <Text style={s.addBtnText}>Add Client</Text>}
@@ -239,6 +242,11 @@ const s = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 10,
   },
   addBtnText: { color: Colors.bg, fontWeight: '700', fontSize: 14 },
+  trashBtn: {
+    padding: 10, borderRadius: 10,
+    borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center',
+  },
 
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 

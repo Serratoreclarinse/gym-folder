@@ -31,17 +31,15 @@ export async function sendPushNotification(
       .maybeSingle();
     if (!row?.token) return;
 
-    await fetch('https://exp.host/--/api/v2/push/send', {
+    const res = await fetch('https://exp.host/--/api/v2/push/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({
-        to: row.token,
-        title,
-        body,
-        data: data ?? {},
-        sound: 'default',
-      }),
+      body: JSON.stringify({ to: row.token, title, body, data: data ?? {}, sound: 'default' }),
     });
+    const json = await res.json().catch(() => null);
+    if (json?.data?.status === 'error' && json?.data?.details?.error === 'DeviceNotRegistered') {
+      await supabase.from('push_tokens').delete().eq('user_id', userId);
+    }
   } catch {
     // non-fatal
   }
