@@ -285,6 +285,11 @@ export default function ClientDetailScreen() {
   type Payment = { id: string; amount: number; payment_method: string; notes: string | null; paid_at: string };
   const [clientPayments, setClientPayments] = useState<Payment[]>([]);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showPayReqModal, setShowPayReqModal] = useState(false);
+  const [payReqAmount, setPayReqAmount] = useState('');
+  const [payReqNotes, setPayReqNotes] = useState('');
+  const [sendingPayReq, setSendingPayReq] = useState(false);
+  const [payReqSent, setPayReqSent] = useState(false);
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState<PaymentMethod>('cash');
   const [payNotes, setPayNotes] = useState('');
@@ -456,6 +461,21 @@ export default function ClientDetailScreen() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Remove', style: 'destructive', onPress: () => removeStrike(strikeId) },
     ]);
+  };
+
+  const handleSendPaymentRequest = async () => {
+    if (!id) return;
+    setSendingPayReq(true);
+    const amt = payReqAmount.trim();
+    const body = amt
+      ? `OMR ${amt} is due for your training package. Please complete your payment.`
+      : `You have a pending payment for your training package. Please contact your coach.`;
+    const note = payReqNotes.trim() ? `\nNote: ${payReqNotes.trim()}` : '';
+    await sendPushNotification(id, { title: '💳 Payment Request', body: body + note });
+    setSendingPayReq(false);
+    setPayReqSent(true);
+    setPayReqAmount(''); setPayReqNotes('');
+    setTimeout(() => { setShowPayReqModal(false); setPayReqSent(false); }, 1500);
   };
 
   const handleRecordPayment = async () => {
@@ -777,10 +797,16 @@ export default function ClientDetailScreen() {
       {/* Payments */}
       <View style={[styles.sectionRow, { marginTop: 20 }]}>
         <Text style={styles.sectionTitle}>PAYMENTS</Text>
-        <Pressable style={styles.addStrikeBtn} onPress={() => setShowPaymentModal(true)}>
-          <Ionicons name="add" size={14} color={Colors.bg} />
-          <Text style={styles.addStrikeBtnText}>Record</Text>
-        </Pressable>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Pressable style={styles.reqPayBtn} onPress={() => setShowPayReqModal(true)}>
+            <Ionicons name="send-outline" size={12} color="#fff" />
+            <Text style={styles.reqPayBtnText}>Request</Text>
+          </Pressable>
+          <Pressable style={styles.addStrikeBtn} onPress={() => setShowPaymentModal(true)}>
+            <Ionicons name="add" size={14} color={Colors.bg} />
+            <Text style={styles.addStrikeBtnText}>Record</Text>
+          </Pressable>
+        </View>
       </View>
       {clientPayments.length === 0 ? (
         <View style={styles.emptyCard}>
@@ -982,6 +1008,60 @@ export default function ClientDetailScreen() {
             <Ionicons name="cash-outline" size={16} color={Colors.bg} />
             <Text style={styles.transferSubmitText}>{savingPayment ? 'Saving…' : 'Record Payment'}</Text>
           </Pressable>
+        </View>
+      </View>
+    </Modal>
+
+    {/* ── Request Payment Modal ── */}
+    <Modal visible={showPayReqModal} transparent animationType="slide" onRequestClose={() => setShowPayReqModal(false)}>
+      <View style={styles.transferOverlay}>
+        <View style={styles.transferSheet}>
+          <View style={styles.transferHandle} />
+          <View style={styles.transferHead}>
+            <Text style={styles.transferTitle}>REQUEST PAYMENT</Text>
+            <Pressable onPress={() => setShowPayReqModal(false)}>
+              <Ionicons name="close" size={20} color={Colors.textSecondary} />
+            </Pressable>
+          </View>
+          <Text style={styles.transferSub}>Send a payment reminder to {client?.name}.</Text>
+
+          {payReqSent ? (
+            <View style={styles.payReqSuccess}>
+              <Ionicons name="checkmark-circle" size={32} color="#4CAF50" />
+              <Text style={styles.payReqSuccessText}>Request Sent!</Text>
+            </View>
+          ) : (
+            <>
+              <Text style={styles.transferNotesLabel}>Amount (OMR) — optional</Text>
+              <TextInput
+                style={styles.renewInput}
+                value={payReqAmount}
+                onChangeText={(v) => setPayReqAmount(v.replace(/[^0-9.]/g, ''))}
+                placeholder="e.g. 545.00"
+                placeholderTextColor={Colors.textSecondary}
+                keyboardType="decimal-pad"
+                autoFocus
+              />
+              <Text style={styles.transferNotesLabel}>Note — optional</Text>
+              <TextInput
+                style={styles.transferNotesInput}
+                value={payReqNotes}
+                onChangeText={setPayReqNotes}
+                placeholder="e.g. Monthly renewal due"
+                placeholderTextColor={Colors.textSecondary}
+                multiline
+                numberOfLines={2}
+              />
+              <Pressable
+                style={[styles.transferSubmitBtn, sendingPayReq && { opacity: 0.45 }]}
+                onPress={handleSendPaymentRequest}
+                disabled={sendingPayReq}
+              >
+                <Ionicons name="send-outline" size={16} color={Colors.bg} />
+                <Text style={styles.transferSubmitText}>{sendingPayReq ? 'Sending…' : 'Send Request'}</Text>
+              </Pressable>
+            </>
+          )}
         </View>
       </View>
     </Modal>
@@ -1463,4 +1543,12 @@ const styles = StyleSheet.create({
   methodChipActive: { backgroundColor: Colors.accent + '15', borderColor: Colors.accent },
   methodChipText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
   methodChipTextActive: { color: Colors.accent, fontWeight: '700' },
+  reqPayBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: '#1a6b2a', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 6,
+  },
+  reqPayBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  payReqSuccess: { alignItems: 'center', paddingVertical: 24, gap: 10 },
+  payReqSuccessText: { fontSize: 16, fontWeight: '700', color: '#4CAF50' },
 });
