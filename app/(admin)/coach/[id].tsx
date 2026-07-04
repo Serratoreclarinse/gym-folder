@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Modal, Pressable, RefreshControl,
+  ActivityIndicator, Alert, Modal, Platform, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -220,17 +220,19 @@ export default function CoachDetailScreen() {
     load();
   };
 
-  const handleRemoveBlock = (bd: BlockedDate) => {
-    Alert.alert('Remove', `Remove ${TYPE_LABEL[bd.type]} on ${fmtDate(bd.date)}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove', style: 'destructive',
-        onPress: async () => {
-          await supabase.from('coach_blocked_dates').delete().eq('id', bd.id);
-          setBlockedDates((prev) => prev.filter((x) => x.id !== bd.id));
-        },
-      },
-    ]);
+  const handleRemoveBlock = async (bd: BlockedDate) => {
+    const msg = `Remove ${TYPE_LABEL[bd.type]} on ${fmtDate(bd.date)}?`;
+    const confirmed = Platform.OS === 'web'
+      ? window.confirm(msg)
+      : await new Promise<boolean>((resolve) =>
+          Alert.alert('Remove', msg, [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Remove', style: 'destructive', onPress: () => resolve(true) },
+          ])
+        );
+    if (!confirmed) return;
+    await supabase.from('coach_blocked_dates').delete().eq('id', bd.id);
+    setBlockedDates((prev) => prev.filter((x) => x.id !== bd.id));
   };
 
   if (loading) {
