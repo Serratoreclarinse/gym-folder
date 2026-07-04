@@ -116,6 +116,31 @@ export default function CoachDetailScreen() {
   const [blockType, setBlockType] = useState<'leave' | 'meeting' | 'other'>('leave');
   const [blockNotes, setBlockNotes] = useState('');
   const [addingBlock, setAddingBlock] = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
+
+  const handleDeactivate = () => {
+    Alert.alert(
+      'Deactivate Account',
+      `Move ${coach?.name ?? 'this coach'} to the Recycle Bin? Their clients will remain but this coach will no longer appear in the coaches list. You can restore them later.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Deactivate',
+          style: 'destructive',
+          onPress: async () => {
+            setDeactivating(true);
+            const { error } = await supabase
+              .from('profiles')
+              .update({ deactivated_at: new Date().toISOString() })
+              .eq('id', id);
+            setDeactivating(false);
+            if (error) { Alert.alert('Error', error.message); return; }
+            router.back();
+          },
+        },
+      ],
+    );
+  };
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -498,6 +523,19 @@ export default function CoachDetailScreen() {
           <Text style={s.longPressTip}>Tap trash icon to remove a blocked date</Text>
 
         </View>
+
+        {/* Danger Zone */}
+        <View style={s.dangerSection}>
+          <Text style={s.dangerLabel}>DANGER ZONE</Text>
+          <Pressable
+            style={[s.deactivateBtn, deactivating && { opacity: 0.5 }]}
+            onPress={handleDeactivate}
+            disabled={deactivating}
+          >
+            <Ionicons name="archive-outline" size={16} color={Colors.danger} />
+            <Text style={s.deactivateBtnText}>{deactivating ? 'Deactivating…' : 'Deactivate Account'}</Text>
+          </Pressable>
+        </View>
       </ScrollView>
 
       {/* ── Add Blocked Date Modal ────────────────────────── */}
@@ -722,4 +760,14 @@ const s = StyleSheet.create({
     paddingHorizontal: 20, paddingVertical: 14, alignItems: 'center',
   },
   modalBtnCancelText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '700' },
+
+  dangerSection: { marginTop: 36, marginBottom: 8, gap: 12 },
+  dangerLabel: { fontSize: 11, fontWeight: '800', color: Colors.textSecondary, letterSpacing: 1 },
+  deactivateBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderWidth: 1, borderColor: Colors.danger + '60',
+    borderRadius: 12, paddingVertical: 13, paddingHorizontal: 16,
+    backgroundColor: Colors.danger + '08',
+  },
+  deactivateBtnText: { fontSize: 14, fontWeight: '700', color: Colors.danger },
 });
