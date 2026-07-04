@@ -57,7 +57,7 @@ export default function AdminDashboardScreen() {
     const ms = monthStart();
 
     const [coachRes, clientRes, pkgRes, sessRes, revMonthRes, revAllRes,
-           lowPkgRes, coachAlertRes] = await Promise.all([
+           lowPkgRes, coachAlertRes, neverPaidRes, allPaymentsRes] = await Promise.all([
       supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'coach'),
       supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'client'),
       supabase.from('packages').select('id', { count: 'exact', head: true }).eq('status', 'active'),
@@ -74,6 +74,12 @@ export default function AdminDashboardScreen() {
         .select('id, name, visa_expiry')
         .eq('role', 'coach')
         .not('visa_expiry', 'is', null),
+      // Active clients with NO payment ever
+      supabase.from('packages')
+        .select('client_id, profiles!packages_client_id_fkey(name)')
+        .eq('status', 'active'),
+      // All payments: get distinct client_ids who have paid
+      supabase.from('payments').select('client_id'),
     ]);
 
     const revenueThisMonth = (revMonthRes.data ?? []).reduce((s, r: any) => s + Number(r.amount), 0);
@@ -158,6 +164,21 @@ export default function AdminDashboardScreen() {
           route: `/(admin)/coach/${coach.id}`,
         });
       }
+    }
+
+    // Payment alerts — clients with active package but NO payment on file
+    const paidClientIds = new Set((allPaymentsRes.data ?? []).map((p: any) => p.client_id));
+    for (const pkg of (neverPaidRes.data ?? []) as any[]) {
+      if (paidClientIds.has(pkg.client_id)) continue;
+      const clientName = pkg.profiles?.name ?? 'Unknown Client';
+      newAlerts.push({
+        id: `nopay-${pkg.client_id}`,
+        level: 'warning',
+        icon: 'cash-outline',
+        title: `${clientName} — No Payment Recorded`,
+        subtitle: 'Active package but no payment on file',
+        route: `/(admin)/client/${pkg.client_id}`,
+      });
     }
 
     // Sort: critical first
