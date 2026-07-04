@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import {
-  Alert, KeyboardAvoidingView, Platform, Pressable,
+  Alert, KeyboardAvoidingView, Modal, Platform, Pressable,
   ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { Colors, Typography } from '@/constants/theme';
@@ -18,7 +19,7 @@ export default function AddCoachScreen() {
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
+  const [successData, setSuccessData] = useState<{ coachName: string; email: string; password: string } | null>(null);
 
   const isEmailValid = EMAIL_RE.test(email.trim());
   const emailError = emailTouched && email.trim() && !isEmailValid
@@ -29,7 +30,7 @@ export default function AddCoachScreen() {
   const handleSubmit = async () => {
     setEmailTouched(true);
     setErrorMsg('');
-    setSuccessMsg('');
+    setSuccessData(null);
     if (!name.trim() || !email.trim() || !isEmailValid) {
       setErrorMsg('Please fill in name and a valid email.');
       return;
@@ -47,7 +48,11 @@ export default function AddCoachScreen() {
         setErrorMsg(data?.error ?? error?.message ?? 'Something went wrong');
         return;
       }
-      setSuccessMsg(`Coach added!\n\nEmail: ${email.trim().toLowerCase()}\nTemp Password: ${data.temp_password}\n\nGive these credentials to the coach. They can change their password after logging in.`);
+      setSuccessData({
+        coachName: name.trim(),
+        email: email.trim().toLowerCase(),
+        password: data.temp_password ?? '(see email)',
+      });
       setName('');
       setEmail('');
       setPhone('');
@@ -70,7 +75,6 @@ export default function AddCoachScreen() {
           <Text style={s.sectionTitle}>COACH INFO</Text>
 
           {!!errorMsg && <Text style={s.errorBanner}>{errorMsg}</Text>}
-          {!!successMsg && <Text style={s.successBanner}>{successMsg}</Text>}
 
           <Field label="Full Name" value={name} onChange={setName} placeholder="John Smith" required />
           <Field
@@ -99,6 +103,28 @@ export default function AddCoachScreen() {
           </Pressable>
         </View>
       </ScrollView>
+      {/* Success modal */}
+      <Modal visible={!!successData} transparent animationType="fade" onRequestClose={() => setSuccessData(null)}>
+        <View style={s.modalOverlay}>
+          <View style={s.modalCard}>
+            <View style={s.modalIcon}>
+              <Ionicons name="checkmark-circle" size={36} color="#4CAF50" />
+            </View>
+            <Text style={s.modalTitle}>Coach Added!</Text>
+            <Text style={s.modalSub}>{successData?.coachName} is now in the system.</Text>
+            <View style={s.credBox}>
+              <Text style={s.credLabel}>EMAIL</Text>
+              <Text style={s.credValue}>{successData?.email}</Text>
+              <Text style={s.credLabel}>TEMP PASSWORD</Text>
+              <Text style={[s.credValue, s.modalBold]}>{successData?.password}</Text>
+            </View>
+            <Text style={s.credHint}>Give these credentials to the coach. They can change their password from their profile.</Text>
+            <Pressable style={s.modalBtn} onPress={() => { setSuccessData(null); router.replace('/(admin)/(tabs)/coaches' as any); }}>
+              <Text style={s.modalBtnText}>GO TO COACHES</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -158,5 +184,16 @@ const s = StyleSheet.create({
   submitDisabled: { opacity: 0.4 },
   submitText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
   errorBanner: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, color: Colors.accent, marginBottom: 16, fontSize: 14 },
-  successBanner: { backgroundColor: '#1a3a1a', borderRadius: 10, padding: 12, color: '#4caf50', marginBottom: 16, fontSize: 14 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalCard: { backgroundColor: Colors.surface, borderRadius: 20, padding: 28, width: '100%', maxWidth: 400, borderWidth: 1, borderColor: Colors.border, alignItems: 'center' },
+  modalIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#4CAF5018', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: Colors.textPrimary, marginBottom: 6, textAlign: 'center' },
+  modalSub: { ...Typography.body, color: Colors.textSecondary, marginBottom: 20, textAlign: 'center' },
+  modalBold: { fontWeight: '800', color: Colors.accent, fontSize: 16 },
+  credBox: { width: '100%', backgroundColor: Colors.bg, borderRadius: 12, padding: 16, gap: 4, marginBottom: 12 },
+  credLabel: { ...Typography.label, color: Colors.textSecondary, marginTop: 8 },
+  credValue: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
+  credHint: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center', marginBottom: 20, lineHeight: 18 },
+  modalBtn: { backgroundColor: '#4CAF50', borderRadius: 14, paddingVertical: 14, alignItems: 'center', width: '100%' },
+  modalBtnText: { color: '#fff', fontSize: 14, fontWeight: '800', letterSpacing: 1 },
 });

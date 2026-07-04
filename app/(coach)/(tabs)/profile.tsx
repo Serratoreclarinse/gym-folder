@@ -55,7 +55,7 @@ export default function CoachProfileScreen() {
       formData.append('file', { uri, name: fileName, type: 'image/jpeg' } as any);
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(fileName, formData, { upsert: true, contentType: 'multipart/form-data' });
+        .upload(fileName, formData, { upsert: true, contentType: 'image/jpeg' });
       if (uploadError) { Alert.alert('Upload failed', uploadError.message); return; }
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
       const urlWithBust = `${publicUrl}?t=${Date.now()}`;
