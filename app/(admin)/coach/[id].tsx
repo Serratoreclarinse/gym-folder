@@ -450,8 +450,9 @@ export default function CoachDetailScreen() {
                       <Text style={s.scheduleClient}>{fmtDate(bd.date)}</Text>
                       {bd.notes ? <Text style={s.scheduleNotes}>{bd.notes}</Text> : null}
                     </View>
-                    <Ionicons name="trash-outline" size={16} color={Colors.border}
-                      style={{ marginLeft: 4 }} onPress={() => handleRemoveBlock(bd)} />
+                    <Pressable onPress={() => handleRemoveBlock(bd)} hitSlop={12}>
+                      <Ionicons name="trash-outline" size={16} color={Colors.border} />
+                    </Pressable>
                   </Pressable>
                 );
               })}
