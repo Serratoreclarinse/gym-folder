@@ -106,14 +106,14 @@ export default function AdminPaymentsScreen() {
         <View style={s.summaryCard}>
           <Text style={s.summaryLabel}>{monthName}</Text>
           <Text style={s.summaryValue}>
-            ₱{monthlyTotal.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+            OMR {monthlyTotal.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
           </Text>
           <Text style={s.summaryCount}>{monthlyPayments.length} payment{monthlyPayments.length !== 1 ? 's' : ''}</Text>
         </View>
         <View style={s.summaryCard}>
           <Text style={s.summaryLabel}>All Time</Text>
           <Text style={s.summaryValue}>
-            ₱{allTimeTotal.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+            OMR {allTimeTotal.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
           </Text>
           <Text style={s.summaryCount}>{payments.length} payment{payments.length !== 1 ? 's' : ''}</Text>
         </View>
@@ -134,7 +134,7 @@ export default function AdminPaymentsScreen() {
                   <View style={[s.methodDot, { backgroundColor: METHOD_COLOR[method] ?? Colors.textSecondary }]} />
                   <Text style={s.methodName}>{METHOD_LABEL[method] ?? method}</Text>
                   <Text style={s.methodTotal}>
-                    ₱{total.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                    OMR {total.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                   </Text>
                 </View>
               ))}
@@ -178,7 +178,7 @@ export default function AdminPaymentsScreen() {
                   {p.notes ? <Text style={s.notesText}>"{p.notes}"</Text> : null}
                 </View>
                 <Text style={s.amountText}>
-                  ₱{Number(p.amount).toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                  OMR {Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                 </Text>
               </View>
             </View>

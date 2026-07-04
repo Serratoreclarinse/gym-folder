@@ -349,7 +349,7 @@ export default function CoachDetailScreen() {
             <View style={s.statDivider} />
             <View style={s.statBox}>
               <Text style={[s.statVal, { color: '#4CAF50', fontSize: 20 }]} numberOfLines={1} adjustsFontSizeToFit>
-                ₱{revenueThisMonth.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                OMR {revenueThisMonth.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               </Text>
               <Text style={s.statLbl}>Revenue · {monthName}</Text>
             </View>
@@ -378,7 +378,7 @@ export default function CoachDetailScreen() {
                     <Text style={s.clientEmail}>{c.email}</Text>
                     {c.totalPaid > 0 && (
                       <Text style={s.clientPaid}>
-                        ₱{c.totalPaid.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} total paid
+                        OMR {c.totalPaid.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} total paid
                       </Text>
                     )}
                   </View>

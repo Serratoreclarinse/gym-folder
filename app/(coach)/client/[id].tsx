@@ -791,7 +791,7 @@ export default function ClientDetailScreen() {
                 {p.notes ? <Text style={styles.paymentNotes}>{p.notes}</Text> : null}
               </View>
               <Text style={styles.paymentAmount}>
-                ₱{p.amount.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                OMR {p.amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
               </Text>
             </View>
           ))}
@@ -913,7 +913,7 @@ export default function ClientDetailScreen() {
             {client?.name}{pkg ? ` — ${PACKAGE_LABEL[pkg.package_type]}` : ''}
           </Text>
 
-          <Text style={styles.transferNotesLabel}>Amount (₱)</Text>
+          <Text style={styles.transferNotesLabel}>Amount (OMR)</Text>
           <TextInput
             style={styles.renewInput}
             value={payAmount}
