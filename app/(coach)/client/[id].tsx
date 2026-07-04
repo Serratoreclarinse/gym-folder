@@ -288,6 +288,7 @@ export default function ClientDetailScreen() {
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState<PaymentMethod>('cash');
   const [payNotes, setPayNotes] = useState('');
+  const [payTransactionRef, setPayTransactionRef] = useState('');
   const [savingPayment, setSavingPayment] = useState(false);
 
   const { profile } = useAuth();
@@ -469,6 +470,7 @@ export default function ClientDetailScreen() {
       amount: amt,
       payment_method: payMethod,
       notes: payNotes.trim() || null,
+      transaction_ref: payTransactionRef.trim() || null,
       recorded_by: profile.id,
     });
     setSavingPayment(false);
@@ -476,6 +478,7 @@ export default function ClientDetailScreen() {
     setShowPaymentModal(false);
     setPayAmount('');
     setPayNotes('');
+    setPayTransactionRef('');
     setPayMethod('cash');
     fetchPayments();
   };
@@ -945,6 +948,21 @@ export default function ClientDetailScreen() {
               </Pressable>
             ))}
           </View>
+
+          {payMethod !== 'cash' && (
+            <>
+              <Text style={styles.transferNotesLabel}>Transaction / Ref No. (optional)</Text>
+              <TextInput
+                style={styles.renewInput}
+                value={payTransactionRef}
+                onChangeText={setPayTransactionRef}
+                placeholder="e.g. 617903789219"
+                placeholderTextColor={Colors.textSecondary}
+                keyboardType="default"
+                autoCapitalize="none"
+              />
+            </>
+          )}
 
           <Text style={styles.transferNotesLabel}>Notes (optional)</Text>
           <TextInput
