@@ -6,6 +6,7 @@ import {
   FlatList,
   Linking,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -408,17 +409,19 @@ export default function CalendarScreen() {
     fetchBlockedDates();
   };
 
-  const handleRemoveLeave = (bd: BlockedDate) => {
-    Alert.alert('Remove', `Remove blocked date on ${bd.date}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove', style: 'destructive',
-        onPress: async () => {
-          await supabase.from('coach_blocked_dates').delete().eq('id', bd.id);
-          setMyBlockedDates((prev) => prev.filter((x) => x.id !== bd.id));
-        },
-      },
-    ]);
+  const handleRemoveLeave = async (bd: BlockedDate) => {
+    const msg = `Remove blocked date on ${bd.date}?`;
+    const confirmed = Platform.OS === 'web'
+      ? window.confirm(msg)
+      : await new Promise<boolean>((resolve) =>
+          Alert.alert('Remove', msg, [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Remove', style: 'destructive', onPress: () => resolve(true) },
+          ])
+        );
+    if (!confirmed) return;
+    await supabase.from('coach_blocked_dates').delete().eq('id', bd.id);
+    setMyBlockedDates((prev) => prev.filter((x) => x.id !== bd.id));
   };
 
   // Group scheduled sessions by date
@@ -462,6 +465,54 @@ export default function CalendarScreen() {
           <RefreshControl refreshing={loading} onRefresh={refetch} tintColor={Colors.accent} />
         }
       >
+        {/* ── My Blocked Dates ── */}
+        <View style={styles.blockHeader}>
+          <Text style={styles.blockSectionTitle}>MY LEAVE / BLOCKED DATES</Text>
+          <Pressable style={styles.addLeaveBtn} onPress={() => {
+            const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+            setLeaveDate(tomorrow.toISOString().split('T')[0]);
+            setLeaveType('leave');
+            setLeaveNotes('');
+            setShowLeaveModal(true);
+          }}>
+            <Ionicons name="add" size={13} color={Colors.bg} />
+            <Text style={styles.addLeaveBtnText}>Add</Text>
+          </Pressable>
+        </View>
+        {myBlockedDates.length === 0 ? (
+          <View style={styles.emptyBlockedCard}>
+            <Text style={styles.emptyBlockedText}>No upcoming leaves or blocked dates</Text>
+          </View>
+        ) : (
+          <View style={styles.blockedList}>
+            {myBlockedDates.map((bd, i) => {
+              const BLK_COLOR: Record<string, string> = { leave: Colors.danger, meeting: '#2196F3', other: Colors.textSecondary };
+              const BLK_LABEL: Record<string, string> = { leave: 'Leave', meeting: 'Meeting', other: 'Other' };
+              const color = BLK_COLOR[bd.type] ?? Colors.textSecondary;
+              return (
+                <View key={bd.id} style={[styles.blockedRow, i === myBlockedDates.length - 1 && { borderBottomWidth: 0 }]}>
+                  <View style={[styles.blockTypeTag, { backgroundColor: color + '18', borderColor: color + '50' }]}>
+                    <Text style={[styles.blockTypeTagText, { color }]}>{BLK_LABEL[bd.type] ?? bd.type}</Text>
+                  </View>
+                  <View style={styles.blockedInfo}>
+                    <Text style={styles.blockedDateText}>
+                      {new Date(bd.date + 'T00:00:00').toLocaleDateString('en-US', {
+                        weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+                      })}
+                    </Text>
+                    {bd.notes ? <Text style={styles.blockedNotes}>{bd.notes}</Text> : null}
+                  </View>
+                  <Pressable onPress={() => handleRemoveLeave(bd)}>
+                    <Ionicons name="close-circle-outline" size={22} color={Colors.danger + '80'} />
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        <View style={{ height: 1, backgroundColor: Colors.border, marginVertical: 20 }} />
+
         {/* ── Week navigation ─────────────────────────────────── */}
         <View style={styles.weekNav}>
           <Pressable
@@ -732,52 +783,6 @@ export default function CalendarScreen() {
               </View>
             );
           })
-        )}
-
-        {/* ── My Blocked Dates ── */}
-        <View style={[styles.blockHeader, { marginTop: 28 }]}>
-          <Text style={styles.blockSectionTitle}>MY LEAVE / BLOCKED DATES</Text>
-          <Pressable style={styles.addLeaveBtn} onPress={() => {
-            const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-            setLeaveDate(tomorrow.toISOString().split('T')[0]);
-            setLeaveType('leave');
-            setLeaveNotes('');
-            setShowLeaveModal(true);
-          }}>
-            <Ionicons name="add" size={13} color={Colors.bg} />
-            <Text style={styles.addLeaveBtnText}>Add</Text>
-          </Pressable>
-        </View>
-        {myBlockedDates.length === 0 ? (
-          <View style={styles.emptyBlockedCard}>
-            <Text style={styles.emptyBlockedText}>No upcoming leaves or blocked dates</Text>
-          </View>
-        ) : (
-          <View style={styles.blockedList}>
-            {myBlockedDates.map((bd, i) => {
-              const BLK_COLOR: Record<string, string> = { leave: Colors.danger, meeting: '#2196F3', other: Colors.textSecondary };
-              const BLK_LABEL: Record<string, string> = { leave: 'Leave', meeting: 'Meeting', other: 'Other' };
-              const color = BLK_COLOR[bd.type] ?? Colors.textSecondary;
-              return (
-                <View key={bd.id} style={[styles.blockedRow, i === myBlockedDates.length - 1 && { borderBottomWidth: 0 }]}>
-                  <View style={[styles.blockTypeTag, { backgroundColor: color + '18', borderColor: color + '50' }]}>
-                    <Text style={[styles.blockTypeTagText, { color }]}>{BLK_LABEL[bd.type] ?? bd.type}</Text>
-                  </View>
-                  <View style={styles.blockedInfo}>
-                    <Text style={styles.blockedDateText}>
-                      {new Date(bd.date + 'T00:00:00').toLocaleDateString('en-US', {
-                        weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
-                      })}
-                    </Text>
-                    {bd.notes ? <Text style={styles.blockedNotes}>{bd.notes}</Text> : null}
-                  </View>
-                  <Pressable onPress={() => handleRemoveLeave(bd)}>
-                    <Ionicons name="close-circle-outline" size={22} color={Colors.danger + '80'} />
-                  </Pressable>
-                </View>
-              );
-            })}
-          </View>
         )}
 
         <View style={{ height: 80 }} />
