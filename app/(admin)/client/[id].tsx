@@ -3,7 +3,7 @@ import {
   ActivityIndicator, Alert, Modal, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { Colors, Typography } from '@/constants/theme';
@@ -42,10 +42,14 @@ type PaymentRow = {
   payment_method: string;
   notes: string | null;
   paid_at: string;
+  transaction_ref: string | null;
+  invoice_number: string | null;
 };
 
 const PAY_METHOD: Record<string, string> = {
-  cash: 'Cash', gcash: 'GCash', maya: 'Maya', bank_transfer: 'Bank Transfer', other: 'Other',
+  cash: 'Cash', bank_muscat: 'Bank Muscat', nbo: 'NBO', oab: 'OAB',
+  bank_dhofar: 'Bank Dhofar', ahli_bank: 'Ahli Bank', sohar: 'Sohar Intl',
+  hsbc: 'HSBC Oman', bank_nizwa: 'Bank Nizwa', other: 'Other',
 };
 
 type PackageType = '30min' | '45min' | '1hr';
@@ -117,7 +121,7 @@ export default function ClientDetailScreen() {
         .limit(15),
       supabase
         .from('payments')
-        .select('id, amount, payment_method, notes, paid_at')
+        .select('id, amount, payment_method, notes, paid_at, transaction_ref, invoice_number')
         .eq('client_id', id)
         .order('paid_at', { ascending: false })
         .limit(10),
@@ -500,17 +504,32 @@ export default function ClientDetailScreen() {
               payments.map((p) => {
                 const d = new Date(p.paid_at);
                 return (
-                  <View key={p.id} style={[s.historyRow, { justifyContent: 'space-between' }]}>
+                  <View key={p.id} style={[s.historyRow, { justifyContent: 'space-between', alignItems: 'flex-start' }]}>
                     <View style={s.historyMid}>
                       <Text style={s.historyDur}>{PAY_METHOD[p.payment_method] ?? p.payment_method}</Text>
                       <Text style={s.historyNotes}>
                         {d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {p.transaction_ref ? ` · Ref: ${p.transaction_ref}` : ''}
                         {p.notes ? ` · ${p.notes}` : ''}
                       </Text>
+                      {p.invoice_number && (
+                        <Text style={[s.historyNotes, { color: Colors.accent, marginTop: 2 }]}>
+                          Invoice #{p.invoice_number}
+                        </Text>
+                      )}
                     </View>
-                    <Text style={s.payAmount}>
-                      OMR {Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                    </Text>
+                    <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                      <Text style={s.payAmount}>
+                        OMR {Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                      </Text>
+                      <Pressable
+                        style={s.invoiceBtn}
+                        onPress={() => router.push(`/(admin)/invoice/${p.id}` as any)}
+                      >
+                        <Ionicons name="document-text-outline" size={12} color={Colors.accent} />
+                        <Text style={s.invoiceBtnText}>Invoice</Text>
+                      </Pressable>
+                    </View>
                   </View>
                 );
               })
@@ -774,6 +793,12 @@ const s = StyleSheet.create({
   pastPkgDate: { ...Typography.caption, color: Colors.textSecondary },
   pastPkgUsed: { ...Typography.caption, color: Colors.textSecondary },
   payAmount: { fontSize: 15, fontWeight: '800', color: '#4CAF50', flexShrink: 0 },
+  invoiceBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderWidth: 1, borderColor: Colors.accent + '60',
+    borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4,
+  },
+  invoiceBtnText: { fontSize: 11, fontWeight: '700', color: Colors.accent },
 
   // Modals
   overlay: {
