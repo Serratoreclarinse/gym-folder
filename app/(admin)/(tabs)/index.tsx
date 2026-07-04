@@ -77,7 +77,7 @@ export default function AdminDashboardScreen() {
     >
       <View style={[s.inner, isDesktop && s.innerDesktop]}>
         <View style={s.header}>
-          <Text style={[s.brand, isDesktop && s.brandDesktop]}>ELEVAT3</Text>
+          <Text style={[s.brand, isDesktop && s.brandDesktop]}>ELEVATE</Text>
           <View style={s.adminPill}>
             <Text style={s.adminPillText}>ADMIN</Text>
           </View>

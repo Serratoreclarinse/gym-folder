@@ -108,7 +108,7 @@ const SECTIONS: Section[] = [
       'Q: How do I request a new session?\nA: Tap "Request Session" on the My Progress screen, fill in your preferred date and time, and send. Your coach will receive a notification and respond.',
       'Q: What happens when I get 3 strikes?\nA: One session is automatically deducted from your package and your strikes reset to zero. You\'ll receive a push notification when this happens.',
       'Q: Where are my progress photos?\nA: Go to the Records tab and scroll down to the "PROGRESS PHOTOS" section. Tap any photo to view it fullscreen.',
-      'Q: I\'m not receiving notifications. What should I do?\nA: Go to your phone\'s Settings → Apps → ELEVAT3 → Notifications → enable "Allow Notifications." Then reopen the app.',
+      'Q: I\'m not receiving notifications. What should I do?\nA: Go to your phone\'s Settings → Apps → ELEVATE → Notifications → enable "Allow Notifications." Then reopen the app.',
     ],
   },
 ];

@@ -5,6 +5,17 @@ import * as Linking from 'expo-linking';
 import * as Updates from 'expo-updates';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { useFonts } from 'expo-font';
+import {
+  Montserrat_700Bold,
+  Montserrat_800ExtraBold,
+  Montserrat_600SemiBold,
+} from '@expo-google-fonts/montserrat';
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+} from '@expo-google-fonts/inter';
 
 function useAuthDeepLink() {
   useEffect(() => {
@@ -72,6 +83,17 @@ function useAutoUpdate() {
 export default function RootLayout() {
   useAuthDeepLink();
   useAutoUpdate();
+
+  const [fontsLoaded] = useFonts({
+    Montserrat_600SemiBold,
+    Montserrat_700Bold,
+    Montserrat_800ExtraBold,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+  });
+
+  if (!fontsLoaded) return null;
 
   return (
     <AuthProvider>

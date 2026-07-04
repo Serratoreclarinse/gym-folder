@@ -13,10 +13,12 @@ export const Colors = {
 } as const;
 
 export const Typography = {
-  hero:     { fontSize: rf(36), fontWeight: '800' as const, letterSpacing: -0.5 },
-  title:    { fontSize: rf(24), fontWeight: '700' as const },
-  subtitle: { fontSize: rf(18), fontWeight: '600' as const },
-  body:     { fontSize: rf(15), fontWeight: '400' as const },
-  caption:  { fontSize: rf(13), fontWeight: '400' as const },
-  label:    { fontSize: rf(12), fontWeight: '600' as const, letterSpacing: 0.8 },
+  hero:     { fontSize: rf(34), fontFamily: 'Montserrat_800ExtraBold', letterSpacing: -0.5 },
+  title:    { fontSize: rf(22), fontFamily: 'Montserrat_700Bold' },
+  heading:  { fontSize: rf(18), fontFamily: 'Montserrat_700Bold' },
+  subtitle: { fontSize: rf(16), fontFamily: 'Montserrat_600SemiBold' },
+  body:     { fontSize: rf(15), fontFamily: 'Inter_400Regular' },
+  bodyMed:  { fontSize: rf(15), fontFamily: 'Inter_500Medium' },
+  caption:  { fontSize: rf(13), fontFamily: 'Inter_400Regular' },
+  label:    { fontSize: rf(11), fontFamily: 'Montserrat_600SemiBold', letterSpacing: 1.2 },
 } as const;
