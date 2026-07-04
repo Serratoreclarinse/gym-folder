@@ -107,7 +107,7 @@ export default function ClientDetailScreen() {
   const [renewing, setRenewing] = useState(false);
   const [deactivating, setDeactivating] = useState(false);
 
-  const handleDeactivate = () => {
+  const handleDeactivateAccount = () => {
     Alert.alert(
       'Deactivate Account',
       `Move ${client?.name ?? 'this client'} to the Recycle Bin? They will no longer appear in the clients list. You can restore them later.`,
@@ -627,7 +627,7 @@ export default function ClientDetailScreen() {
           <Text style={s.dangerLabel}>DANGER ZONE</Text>
           <Pressable
             style={[s.deactivateBtn, deactivating && { opacity: 0.5 }]}
-            onPress={handleDeactivate}
+            onPress={handleDeactivateAccount}
             disabled={deactivating}
           >
             <Ionicons name="archive-outline" size={16} color={Colors.danger} />
