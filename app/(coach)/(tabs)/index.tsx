@@ -13,6 +13,7 @@ import { useCoachBookingRequests } from '@/hooks/useBookingRequests';
 import { getDaysUntilBirthday } from '@/hooks/useBirthdays';
 import { useAnnouncements } from '@/hooks/useAnnouncements';
 import { supabase } from '@/lib/supabase';
+import { sendPushNotification } from '@/lib/pushNotifications';
 import { useActiveSessionContext } from '@/context/ActiveSessionContext';
 import { ActiveSessionCard } from '@/components/ActiveSessionCard';
 import { NextSessionCard } from '@/components/NextSessionCard';
@@ -111,7 +112,7 @@ export default function CoachDashboard() {
   const [pausedWorkout, setPausedWorkout] = useState<any | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [incomingTransfers, setIncomingTransfers] = useState<{
-    id: string; client_name: string; from_coach_name: string;
+    id: string; client_name: string; from_coach_id: string; from_coach_name: string;
     package_type: string; sessions_remaining: number; notes: string | null;
   }[]>([]);
 
@@ -120,7 +121,7 @@ export default function CoachDashboard() {
     const { data } = await supabase
       .from('client_transfers')
       .select(`
-        id, notes,
+        id, notes, from_coach_id,
         client:profiles!client_transfers_client_id_fkey(name),
         from_coach:profiles!client_transfers_from_coach_id_fkey(name),
         package:packages!client_transfers_package_id_fkey(package_type, sessions_remaining)
@@ -130,6 +131,7 @@ export default function CoachDashboard() {
     setIncomingTransfers(
       (data ?? []).map((row: any) => ({
         id: row.id,
+        from_coach_id: row.from_coach_id,
         client_name: row.client?.name ?? '—',
         from_coach_name: row.from_coach?.name ?? '—',
         package_type: row.package?.package_type ?? '—',
@@ -140,14 +142,22 @@ export default function CoachDashboard() {
   }, [profile?.id]);
 
   const handleAcceptTransfer = async (transferId: string) => {
+    const t = incomingTransfers.find((x) => x.id === transferId);
     const { error } = await supabase.rpc('coach_accept_transfer', { p_transfer_id: transferId });
     if (error) { Alert.alert('Error', error.message); return; }
+    if (t?.from_coach_id) {
+      await sendPushNotification(t.from_coach_id, {
+        title: '✅ Transfer Accepted',
+        body: `${profile?.name ?? 'The new coach'} accepted the transfer of ${t.client_name}.`,
+      });
+    }
     fetchIncomingTransfers();
     refetchClients();
     Alert.alert('Transfer Accepted', 'The client is now in your roster.');
   };
 
   const handleRejectTransfer = (transferId: string) => {
+    const t = incomingTransfers.find((x) => x.id === transferId);
     Alert.alert('Reject Transfer', 'Decline this client transfer request?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -155,6 +165,12 @@ export default function CoachDashboard() {
         onPress: async () => {
           const { error } = await supabase.rpc('coach_reject_transfer', { p_transfer_id: transferId });
           if (error) { Alert.alert('Error', error.message); return; }
+          if (t?.from_coach_id) {
+            await sendPushNotification(t.from_coach_id, {
+              title: '❌ Transfer Declined',
+              body: `${profile?.name ?? 'The coach'} declined the transfer of ${t.client_name}.`,
+            });
+          }
           fetchIncomingTransfers();
         },
       },

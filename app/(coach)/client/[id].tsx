@@ -305,6 +305,15 @@ export default function ClientDetailScreen() {
     });
     setTransferring(false);
     if (error) { Alert.alert('Error', error.message); return; }
+    // Notify admin
+    const { data: adminRows } = await supabase.from('profiles').select('id').eq('role', 'admin').limit(1);
+    if (adminRows?.[0]?.id) {
+      const targetName = transferCoaches.find((c) => c.id === selectedTransferCoachId)?.name ?? 'another coach';
+      await sendPushNotification(adminRows[0].id, {
+        title: '🔄 Transfer Request',
+        body: `${profile?.name ?? 'A coach'} wants to transfer ${client?.name ?? 'a client'} to ${targetName}.`,
+      });
+    }
     setShowTransferModal(false);
     Alert.alert('Transfer Requested', 'Your request has been sent to admin for approval.');
   };
