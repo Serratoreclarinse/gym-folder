@@ -35,6 +35,7 @@ export default function CoachDetailScreen() {
   const [coach, setCoach] = useState<CoachProfile | null>(null);
   const [clients, setClients] = useState<ActiveClient[]>([]);
   const [sessionsThisMonth, setSessionsThisMonth] = useState(0);
+  const [revenueThisMonth, setRevenueThisMonth] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const [editing, setEditing] = useState(false);
@@ -49,7 +50,7 @@ export default function CoachDetailScreen() {
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
 
-    const [profileRes, pkgsRes, sessRes] = await Promise.all([
+    const [profileRes, pkgsRes, sessRes, revRes] = await Promise.all([
       supabase.from('profiles').select('id, name, email, phone').eq('id', id).single(),
       supabase
         .from('packages')
@@ -61,6 +62,11 @@ export default function CoachDetailScreen() {
         .select('id', { count: 'exact', head: true })
         .eq('coach_id', id)
         .gte('session_date', monthStart.toISOString().split('T')[0]),
+      supabase
+        .from('payments')
+        .select('amount')
+        .eq('coach_id', id)
+        .gte('paid_at', monthStart.toISOString().split('T')[0]),
     ]);
 
     if (profileRes.data) {
@@ -81,6 +87,7 @@ export default function CoachDetailScreen() {
     );
 
     setSessionsThisMonth(sessRes.count ?? 0);
+    setRevenueThisMonth((revRes.data ?? []).reduce((sum, r: any) => sum + Number(r.amount), 0));
     setLoading(false);
   }, [id]);
 
@@ -178,6 +185,13 @@ export default function CoachDetailScreen() {
           <View style={s.statBox}>
             <Text style={[s.statVal, { color: '#9C27B0' }]}>{sessionsThisMonth}</Text>
             <Text style={s.statLbl}>Sessions · {monthName}</Text>
+          </View>
+          <View style={s.statDivider} />
+          <View style={s.statBox}>
+            <Text style={[s.statVal, { color: '#4CAF50', fontSize: 20 }]} numberOfLines={1} adjustsFontSizeToFit>
+              ₱{revenueThisMonth.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+            </Text>
+            <Text style={s.statLbl}>Revenue · {monthName}</Text>
           </View>
         </View>
 

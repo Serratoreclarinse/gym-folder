@@ -9,6 +9,8 @@ type Stats = {
   clientCount: number;
   activePackages: number;
   sessionsThisMonth: number;
+  revenueThisMonth: number;
+  revenueAllTime: number;
 };
 
 function monthStart(): string {
@@ -27,20 +29,24 @@ export default function AdminDashboardScreen() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [coachRes, clientRes, pkgRes, sessRes] = await Promise.all([
+    const ms = monthStart();
+    const [coachRes, clientRes, pkgRes, sessRes, revMonthRes, revAllRes] = await Promise.all([
       supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'coach'),
       supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'client'),
       supabase.from('packages').select('id', { count: 'exact', head: true }).eq('status', 'active'),
-      supabase
-        .from('workout_sessions')
-        .select('id', { count: 'exact', head: true })
-        .gte('session_date', monthStart()),
+      supabase.from('workout_sessions').select('id', { count: 'exact', head: true }).gte('session_date', ms),
+      supabase.from('payments').select('amount').gte('paid_at', ms),
+      supabase.from('payments').select('amount'),
     ]);
+    const revenueThisMonth = (revMonthRes.data ?? []).reduce((sum, r: any) => sum + Number(r.amount), 0);
+    const revenueAllTime   = (revAllRes.data  ?? []).reduce((sum, r: any) => sum + Number(r.amount), 0);
     setStats({
       coachCount: coachRes.count ?? 0,
       clientCount: clientRes.count ?? 0,
       activePackages: pkgRes.count ?? 0,
       sessionsThisMonth: sessRes.count ?? 0,
+      revenueThisMonth,
+      revenueAllTime,
     });
     setLoading(false);
   }, []);
@@ -98,6 +104,24 @@ export default function AdminDashboardScreen() {
             </View>
           ))}
         </View>
+
+        {/* Revenue summary */}
+        <Text style={[s.sectionTitle, { marginTop: 28 }]}>REVENUE</Text>
+        <View style={s.revenueCard}>
+          <View style={s.revenueItem}>
+            <Text style={s.revenueLabel}>{monthName}</Text>
+            <Text style={s.revenueValue}>
+              ₱{(stats?.revenueThisMonth ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+            </Text>
+          </View>
+          <View style={s.revenueDivider} />
+          <View style={s.revenueItem}>
+            <Text style={s.revenueLabel}>All Time</Text>
+            <Text style={s.revenueValue}>
+              ₱{(stats?.revenueAllTime ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+            </Text>
+          </View>
+        </View>
       </View>
     </ScrollView>
   );
@@ -145,4 +169,13 @@ const s = StyleSheet.create({
   statValue: { fontSize: 24, fontWeight: '800', lineHeight: 28 },
   statValueDesktop: { fontSize: 30, lineHeight: 34 },
   statLabel: { ...Typography.caption, color: Colors.textSecondary, lineHeight: 15, fontSize: 11 },
+
+  revenueCard: {
+    flexDirection: 'row', backgroundColor: Colors.surface,
+    borderRadius: 14, borderWidth: 1, borderColor: '#4CAF5030', overflow: 'hidden',
+  },
+  revenueItem: { flex: 1, alignItems: 'center', paddingVertical: 20 },
+  revenueDivider: { width: 1, backgroundColor: Colors.border },
+  revenueLabel: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 6 },
+  revenueValue: { fontSize: 22, fontWeight: '900', color: '#4CAF50' },
 });

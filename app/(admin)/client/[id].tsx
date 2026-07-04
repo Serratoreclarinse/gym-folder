@@ -36,6 +36,18 @@ type SessionRow = {
   status: string | null;
 };
 
+type PaymentRow = {
+  id: string;
+  amount: number;
+  payment_method: string;
+  notes: string | null;
+  paid_at: string;
+};
+
+const PAY_METHOD: Record<string, string> = {
+  cash: 'Cash', gcash: 'GCash', maya: 'Maya', bank_transfer: 'Bank Transfer', other: 'Other',
+};
+
 type PackageType = '30min' | '45min' | '1hr';
 const PKG_OPTIONS: { value: PackageType; label: string }[] = [
   { value: '30min', label: '30 min' },
@@ -59,6 +71,7 @@ export default function ClientDetailScreen() {
   const [client, setClient] = useState<ClientProfile | null>(null);
   const [packages, setPackages] = useState<Pkg[]>([]);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Edit profile
@@ -85,7 +98,7 @@ export default function ClientDetailScreen() {
     if (!id) return;
     setLoading(true);
 
-    const [profileRes, pkgsRes, sessRes] = await Promise.all([
+    const [profileRes, pkgsRes, sessRes, payRes] = await Promise.all([
       supabase.from('profiles').select('id, name, email, phone').eq('id', id).single(),
       supabase
         .from('packages')
@@ -102,6 +115,12 @@ export default function ClientDetailScreen() {
         .eq('client_id', id)
         .order('session_date', { ascending: false })
         .limit(15),
+      supabase
+        .from('payments')
+        .select('id, amount, payment_method, notes, paid_at')
+        .eq('client_id', id)
+        .order('paid_at', { ascending: false })
+        .limit(10),
     ]);
 
     if (profileRes.data) {
@@ -135,6 +154,8 @@ export default function ClientDetailScreen() {
         status: row.status ?? null,
       })),
     );
+
+    setPayments((payRes.data ?? []) as PaymentRow[]);
 
     setLoading(false);
   }, [id]);
@@ -467,6 +488,34 @@ export default function ClientDetailScreen() {
               </View>
             </>
           )}
+
+          {/* Payment history */}
+          <Text style={[s.sectionTitle, { marginTop: 24 }]}>PAYMENT HISTORY</Text>
+          <View style={s.historyList}>
+            {payments.length === 0 ? (
+              <View style={{ padding: 24, alignItems: 'center' }}>
+                <Text style={s.grayText}>No payments recorded</Text>
+              </View>
+            ) : (
+              payments.map((p) => {
+                const d = new Date(p.paid_at);
+                return (
+                  <View key={p.id} style={[s.historyRow, { justifyContent: 'space-between' }]}>
+                    <View style={s.historyMid}>
+                      <Text style={s.historyDur}>{PAY_METHOD[p.payment_method] ?? p.payment_method}</Text>
+                      <Text style={s.historyNotes}>
+                        {d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {p.notes ? ` · ${p.notes}` : ''}
+                      </Text>
+                    </View>
+                    <Text style={s.payAmount}>
+                      ₱{Number(p.amount).toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                    </Text>
+                  </View>
+                );
+              })
+            )}
+          </View>
         </View>
       </ScrollView>
 
@@ -724,6 +773,7 @@ const s = StyleSheet.create({
   pastPkgType: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
   pastPkgDate: { ...Typography.caption, color: Colors.textSecondary },
   pastPkgUsed: { ...Typography.caption, color: Colors.textSecondary },
+  payAmount: { fontSize: 15, fontWeight: '800', color: '#4CAF50', flexShrink: 0 },
 
   // Modals
   overlay: {
