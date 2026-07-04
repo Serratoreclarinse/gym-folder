@@ -42,16 +42,23 @@ const PACKAGE_OPTIONS: { value: PackageType; label: string }[] = [
   { value: '1hr', label: '1 hr' },
 ];
 
-type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'other';
+type PaymentMethod = 'cash' | 'bank_muscat' | 'nbo' | 'oab' | 'bank_dhofar' | 'ahli_bank' | 'sohar' | 'hsbc' | 'bank_nizwa' | 'other';
 const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
-  { value: 'cash', label: 'Cash' },
-  { value: 'gcash', label: 'GCash' },
-  { value: 'maya', label: 'Maya' },
-  { value: 'bank_transfer', label: 'Bank Transfer' },
-  { value: 'other', label: 'Other' },
+  { value: 'cash',        label: 'Cash' },
+  { value: 'bank_muscat', label: 'Bank Muscat' },
+  { value: 'nbo',         label: 'NBO' },
+  { value: 'oab',         label: 'OAB' },
+  { value: 'bank_dhofar', label: 'Bank Dhofar' },
+  { value: 'ahli_bank',   label: 'Ahli Bank' },
+  { value: 'sohar',       label: 'Sohar Intl' },
+  { value: 'hsbc',        label: 'HSBC Oman' },
+  { value: 'bank_nizwa',  label: 'Bank Nizwa' },
+  { value: 'other',       label: 'Other' },
 ];
 const METHOD_LABEL: Record<string, string> = {
-  cash: 'Cash', gcash: 'GCash', maya: 'Maya', bank_transfer: 'Bank Transfer', other: 'Other',
+  cash: 'Cash', bank_muscat: 'Bank Muscat', nbo: 'NBO', oab: 'OAB',
+  bank_dhofar: 'Bank Dhofar', ahli_bank: 'Ahli Bank', sohar: 'Sohar Intl',
+  hsbc: 'HSBC Oman', bank_nizwa: 'Bank Nizwa', other: 'Other',
 };
 
 type Tab = 'overview' | 'sessions' | 'progress' | 'goals' | 'notes' | 'files';
