@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, KeyboardAvoidingView, Platform, Pressable,
+  KeyboardAvoidingView, Modal, Platform, Pressable,
   ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -43,7 +43,7 @@ export default function AdminAddClientScreen() {
   const [durationWeeks, setDurationWeeks] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
+  const [successData, setSuccessData] = useState<{ clientName: string; email: string; password?: string } | null>(null);
 
   const loadCoaches = useCallback(async () => {
     setLoadingCoaches(true);
@@ -71,7 +71,6 @@ export default function AdminAddClientScreen() {
   const handleSubmit = async () => {
     setEmailTouched(true);
     setErrorMsg('');
-    setSuccessMsg('');
     if (!selectedCoachId) { setErrorMsg('Please choose which coach this client belongs to.'); return; }
     if (!name.trim() || !email.trim() || !isEmailValid || !totalSessions || Number(totalSessions) <= 0) {
       setErrorMsg('Please fill in all required fields.');
@@ -94,15 +93,14 @@ export default function AdminAddClientScreen() {
         setErrorMsg(data?.error ?? error?.message ?? 'Something went wrong');
         return;
       }
-      const pwdLine = data.temp_password ? `\n\nEmail: ${email.trim().toLowerCase()}\nTemp Password: ${data.temp_password}\n\nGive these credentials to the client. They can change their password after logging in.` : '\n\nPackage added to existing account.';
-      setSuccessMsg(`Client added!${pwdLine}`);
-      setName('');
-      setEmail('');
-      setPhone('');
-      setTotalSessions('');
-      setDurationWeeks('');
-      setSelectedCoachId('');
-      setEmailTouched(false);
+      setSuccessData({
+        clientName: name.trim(),
+        email: email.trim().toLowerCase(),
+        password: data.temp_password ?? undefined,
+      });
+      setName(''); setEmail(''); setPhone('');
+      setTotalSessions(''); setDurationWeeks('');
+      setSelectedCoachId(''); setEmailTouched(false);
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to create client');
     } finally {
@@ -120,7 +118,6 @@ export default function AdminAddClientScreen() {
         <View style={[s.form, isDesktop && s.formDesktop]}>
 
         {!!errorMsg && <Text style={s.errorBanner}>{errorMsg}</Text>}
-        {!!successMsg && <Text style={s.successBanner}>{successMsg}</Text>}
 
         {/* Coach selection */}
         <Text style={s.sectionTitle}>ASSIGN TO COACH <Text style={{ color: Colors.accent }}>*</Text></Text>
@@ -217,6 +214,41 @@ export default function AdminAddClientScreen() {
         </Pressable>
         </View>
       </ScrollView>
+      {/* ── Success Modal ── */}
+      <Modal visible={!!successData} transparent animationType="fade">
+        <View style={s.modalOverlay}>
+          <View style={s.modalCard}>
+            <Text style={s.modalIcon}>✅</Text>
+            <Text style={s.modalTitle}>Client Added!</Text>
+            <Text style={s.modalSub}>
+              <Text style={s.modalBold}>{successData?.clientName}</Text> has been created and assigned.
+            </Text>
+
+            <View style={s.credBox}>
+              <Text style={s.credLabel}>EMAIL</Text>
+              <Text style={s.credValue}>{successData?.email}</Text>
+              {successData?.password ? (
+                <>
+                  <Text style={[s.credLabel, { marginTop: 12 }]}>TEMP PASSWORD</Text>
+                  <Text style={[s.credValue, { color: Colors.accent, fontSize: 18, letterSpacing: 2 }]}>
+                    {successData.password}
+                  </Text>
+                  <Text style={s.credHint}>Share these credentials with the client. They can change their password after logging in.</Text>
+                </>
+              ) : (
+                <Text style={s.credHint}>Package added to existing account.</Text>
+              )}
+            </View>
+
+            <Pressable style={s.modalBtn} onPress={() => {
+              setSuccessData(null);
+              router.replace('/(admin)/(tabs)/clients');
+            }}>
+              <Text style={s.modalBtnText}>GO TO CLIENTS</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -312,5 +344,31 @@ const s = StyleSheet.create({
   submitDisabled: { opacity: 0.4 },
   submitText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
   errorBanner: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, color: Colors.accent, marginBottom: 16, fontSize: 14 },
-  successBanner: { backgroundColor: '#1a3a1a', borderRadius: 10, padding: 12, color: '#4caf50', marginBottom: 16, fontSize: 14 },
+
+  // Success modal
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'center', alignItems: 'center', padding: 24,
+  },
+  modalCard: {
+    backgroundColor: Colors.surface, borderRadius: 20,
+    borderWidth: 1, borderColor: Colors.border,
+    padding: 28, width: '100%', maxWidth: 420, alignItems: 'center',
+  },
+  modalIcon: { fontSize: 40, marginBottom: 12 },
+  modalTitle: { ...Typography.heading, color: Colors.textPrimary, marginBottom: 6, textAlign: 'center' },
+  modalSub: { ...Typography.body, color: Colors.textSecondary, marginBottom: 20, textAlign: 'center' },
+  modalBold: { fontWeight: '700', color: Colors.textPrimary },
+  credBox: {
+    width: '100%', backgroundColor: Colors.bg, borderRadius: 12,
+    borderWidth: 1, borderColor: Colors.border, padding: 16, marginBottom: 24,
+  },
+  credLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: 4 },
+  credValue: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700', fontSize: 15 },
+  credHint: { ...Typography.caption, color: Colors.textSecondary, marginTop: 10, lineHeight: 18 },
+  modalBtn: {
+    backgroundColor: Colors.accent, borderRadius: 12,
+    paddingVertical: 14, paddingHorizontal: 32, alignItems: 'center', width: '100%',
+  },
+  modalBtnText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
 });
