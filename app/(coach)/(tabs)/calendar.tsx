@@ -120,6 +120,15 @@ export default function CalendarScreen() {
   const [rescheduleReason, setRescheduleReason] = useState('');
   const [rescheduling, setRescheduling] = useState(false);
 
+  // Blocked dates / leave state
+  type BlockedDate = { id: string; date: string; type: string; notes: string | null };
+  const [myBlockedDates, setMyBlockedDates] = useState<BlockedDate[]>([]);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [leaveDate, setLeaveDate] = useState('');
+  const [leaveType, setLeaveType] = useState<'leave' | 'meeting' | 'other'>('leave');
+  const [leaveNotes, setLeaveNotes] = useState('');
+  const [addingLeave, setAddingLeave] = useState(false);
+
   const { sessions, loading, refetch } = useSessions();
   const {
     entries: wlEntries,
@@ -176,11 +185,25 @@ export default function CalendarScreen() {
     await supabase.rpc('process_overdue_sessions', { p_coach_id: profile.id });
   }, [profile?.id]);
 
+  const fetchBlockedDates = useCallback(async () => {
+    if (!profile?.id) return;
+    const today = new Date().toISOString().split('T')[0];
+    const { data } = await supabase
+      .from('coach_blocked_dates')
+      .select('id, date, type, notes')
+      .eq('coach_id', profile.id)
+      .gte('date', today)
+      .order('date')
+      .limit(30);
+    setMyBlockedDates((data ?? []) as BlockedDate[]);
+  }, [profile?.id]);
+
   useFocusEffect(useCallback(() => {
     refetch();
     refetchWaitlist();
     fetchScheduled();
     processOverdue();
+    fetchBlockedDates();
   }, []));
 
   const handleConfirm = async (sessionId: string) => {
@@ -365,6 +388,38 @@ export default function CalendarScreen() {
     if (!byDate[s.session_date]) byDate[s.session_date] = [];
     byDate[s.session_date].push(s);
   }
+
+  const handleAddLeave = async () => {
+    if (!leaveDate.trim() || !profile?.id) return;
+    setAddingLeave(true);
+    const { error } = await supabase.from('coach_blocked_dates').insert({
+      coach_id: profile.id,
+      date: leaveDate.trim(),
+      type: leaveType,
+      notes: leaveNotes.trim() || null,
+      created_by: profile.id,
+    });
+    setAddingLeave(false);
+    if (error) { Alert.alert('Error', error.message); return; }
+    setShowLeaveModal(false);
+    setLeaveDate('');
+    setLeaveNotes('');
+    setLeaveType('leave');
+    fetchBlockedDates();
+  };
+
+  const handleRemoveLeave = (bd: BlockedDate) => {
+    Alert.alert('Remove', `Remove blocked date on ${bd.date}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove', style: 'destructive',
+        onPress: async () => {
+          await supabase.from('coach_blocked_dates').delete().eq('id', bd.id);
+          setMyBlockedDates((prev) => prev.filter((x) => x.id !== bd.id));
+        },
+      },
+    ]);
+  };
 
   // Group scheduled sessions by date
   const scheduledByDate: Record<string, ScheduledSession[]> = {};
@@ -679,6 +734,52 @@ export default function CalendarScreen() {
           })
         )}
 
+        {/* ── My Blocked Dates ── */}
+        <View style={[styles.blockHeader, { marginTop: 28 }]}>
+          <Text style={styles.blockSectionTitle}>MY LEAVE / BLOCKED DATES</Text>
+          <Pressable style={styles.addLeaveBtn} onPress={() => {
+            const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+            setLeaveDate(tomorrow.toISOString().split('T')[0]);
+            setLeaveType('leave');
+            setLeaveNotes('');
+            setShowLeaveModal(true);
+          }}>
+            <Ionicons name="add" size={13} color={Colors.bg} />
+            <Text style={styles.addLeaveBtnText}>Add</Text>
+          </Pressable>
+        </View>
+        {myBlockedDates.length === 0 ? (
+          <View style={styles.emptyBlockedCard}>
+            <Text style={styles.emptyBlockedText}>No upcoming leaves or blocked dates</Text>
+          </View>
+        ) : (
+          <View style={styles.blockedList}>
+            {myBlockedDates.map((bd, i) => {
+              const BLK_COLOR: Record<string, string> = { leave: Colors.danger, meeting: '#2196F3', other: Colors.textSecondary };
+              const BLK_LABEL: Record<string, string> = { leave: 'Leave', meeting: 'Meeting', other: 'Other' };
+              const color = BLK_COLOR[bd.type] ?? Colors.textSecondary;
+              return (
+                <View key={bd.id} style={[styles.blockedRow, i === myBlockedDates.length - 1 && { borderBottomWidth: 0 }]}>
+                  <View style={[styles.blockTypeTag, { backgroundColor: color + '18', borderColor: color + '50' }]}>
+                    <Text style={[styles.blockTypeTagText, { color }]}>{BLK_LABEL[bd.type] ?? bd.type}</Text>
+                  </View>
+                  <View style={styles.blockedInfo}>
+                    <Text style={styles.blockedDateText}>
+                      {new Date(bd.date + 'T00:00:00').toLocaleDateString('en-US', {
+                        weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+                      })}
+                    </Text>
+                    {bd.notes ? <Text style={styles.blockedNotes}>{bd.notes}</Text> : null}
+                  </View>
+                  <Pressable onPress={() => handleRemoveLeave(bd)}>
+                    <Ionicons name="close-circle-outline" size={22} color={Colors.danger + '80'} />
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
         <View style={{ height: 80 }} />
       </ScrollView>
 
@@ -911,6 +1012,70 @@ export default function CalendarScreen() {
               style={styles.rsCancelBtn}
               onPress={() => setRescheduleTarget(null)}
             >
+              <Text style={styles.rsCancelText}>Cancel</Text>
+            </Pressable>
+            <View style={{ height: 24 }} />
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Leave / Block Date Modal ── */}
+      <Modal visible={showLeaveModal} transparent animationType="slide" onRequestClose={() => setShowLeaveModal(false)}>
+        <View style={styles.modalRoot}>
+          <Pressable style={styles.modalOverlay} onPress={() => setShowLeaveModal(false)} />
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>BLOCK A DATE</Text>
+
+            <Text style={styles.rsLabel}>DATE (YYYY-MM-DD)</Text>
+            <TextInput
+              style={styles.rsInput}
+              value={leaveDate}
+              onChangeText={setLeaveDate}
+              placeholder="e.g. 2026-07-20"
+              placeholderTextColor={Colors.textSecondary + '60'}
+              keyboardType="numbers-and-punctuation"
+              autoCorrect={false}
+              autoFocus
+            />
+
+            <Text style={styles.rsLabel}>TYPE</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 4 }}>
+              {(['leave', 'meeting', 'other'] as const).map((t) => (
+                <Pressable
+                  key={t}
+                  style={[
+                    styles.leaveTypeBtn,
+                    leaveType === t && { backgroundColor: Colors.accent, borderColor: Colors.accent },
+                  ]}
+                  onPress={() => setLeaveType(t)}
+                >
+                  <Text style={[styles.leaveTypeBtnText, leaveType === t && { color: Colors.bg }]}>
+                    {t === 'leave' ? 'Leave' : t === 'meeting' ? 'Meeting' : 'Other'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={styles.rsLabel}>NOTES (OPTIONAL)</Text>
+            <TextInput
+              style={[styles.rsInput, { height: 60, textAlignVertical: 'top' }]}
+              value={leaveNotes}
+              onChangeText={setLeaveNotes}
+              placeholder="e.g. Out of town, Staff meeting 10am…"
+              placeholderTextColor={Colors.textSecondary + '60'}
+              multiline
+            />
+
+            <Pressable
+              style={[styles.rsSubmitBtn, addingLeave && { opacity: 0.5 }]}
+              onPress={handleAddLeave}
+              disabled={addingLeave}
+            >
+              <Ionicons name="calendar-outline" size={16} color={Colors.bg} />
+              <Text style={styles.rsSubmitText}>{addingLeave ? 'SAVING…' : 'BLOCK DATE'}</Text>
+            </Pressable>
+            <Pressable style={styles.rsCancelBtn} onPress={() => setShowLeaveModal(false)}>
               <Text style={styles.rsCancelText}>Cancel</Text>
             </Pressable>
             <View style={{ height: 24 }} />
@@ -1201,4 +1366,43 @@ const styles = StyleSheet.create({
   clientPickInfo: { flex: 1 },
   clientPickName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
   clientPickMeta: { ...Typography.caption, color: Colors.textSecondary },
+
+  // Blocked dates section
+  blockHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  blockSectionTitle: { ...Typography.label, color: Colors.textSecondary },
+  addLeaveBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: Colors.accent, borderRadius: 8,
+    paddingHorizontal: 12, paddingVertical: 6,
+  },
+  addLeaveBtnText: { color: Colors.bg, fontSize: 12, fontWeight: '800' },
+  emptyBlockedCard: {
+    backgroundColor: Colors.surface, borderRadius: 12,
+    borderWidth: 1, borderColor: Colors.border,
+    padding: 20, alignItems: 'center',
+  },
+  emptyBlockedText: { ...Typography.body, color: Colors.textSecondary },
+  blockedList: {
+    backgroundColor: Colors.surface, borderRadius: 14,
+    borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
+  },
+  blockedRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    padding: 14, borderBottomWidth: 1, borderBottomColor: Colors.border + '80',
+  },
+  blockTypeTag: {
+    borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5,
+    flexShrink: 0, minWidth: 60, alignItems: 'center',
+  },
+  blockTypeTagText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
+  blockedInfo: { flex: 1 },
+  blockedDateText: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
+  blockedNotes: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic' },
+
+  // Leave type buttons (in modal)
+  leaveTypeBtn: {
+    flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bg,
+  },
+  leaveTypeBtnText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
 });
