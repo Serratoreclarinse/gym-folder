@@ -22,6 +22,8 @@ export default function AdminRootLayout() {
         name="add-client"
         options={{ title: 'Add Client', presentation: 'modal', animation: 'slide_from_bottom' }}
       />
+      <Stack.Screen name="coach/[id]" options={{ title: 'Coach Details' }} />
+      <Stack.Screen name="client/[id]" options={{ title: 'Client Details' }} />
     </Stack>
   );
 }

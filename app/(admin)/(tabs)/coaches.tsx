@@ -111,9 +111,10 @@ export default function AdminCoachesScreen() {
                   <Text style={[s.thCell, { flex: 1, textAlign: 'right' }]}>CLIENTS</Text>
                 </View>
                 {filtered.map((coach, i) => (
-                  <View
+                  <Pressable
                     key={coach.id}
                     style={[s.tableRow, s.tableDataRow, i % 2 === 1 && s.tableRowAlt]}
+                    onPress={() => router.push(`/(admin)/coach/${coach.id}` as any)}
                   >
                     <View style={[s.tdCell, { flex: 2 }]}>
                       <View style={s.nameRow}>
@@ -126,13 +127,17 @@ export default function AdminCoachesScreen() {
                     <Text style={[s.tdText, { flex: 2 }]}>{coach.email}</Text>
                     <Text style={[s.tdText, { flex: 1 }]}>{coach.phone ?? '—'}</Text>
                     <Text style={[s.tdNum, { flex: 1, textAlign: 'right' }]}>{coach.activeClients}</Text>
-                  </View>
+                  </Pressable>
                 ))}
               </View>
             ) : (
               /* ── Mobile cards ── */
               filtered.map((coach) => (
-                <View key={coach.id} style={s.coachCard}>
+                <Pressable
+                  key={coach.id}
+                  style={s.coachCard}
+                  onPress={() => router.push(`/(admin)/coach/${coach.id}` as any)}
+                >
                   <View style={s.avatar}>
                     <Text style={s.avatarText}>{initials(coach.name)}</Text>
                   </View>
@@ -145,7 +150,8 @@ export default function AdminCoachesScreen() {
                     <Text style={s.statNum}>{coach.activeClients}</Text>
                     <Text style={s.statLbl}>clients</Text>
                   </View>
-                </View>
+                  <Ionicons name="chevron-forward" size={16} color={Colors.border} style={{ marginLeft: 4 }} />
+                </Pressable>
               ))
             )}
           </View>

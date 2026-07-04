@@ -140,9 +140,10 @@ export default function AdminClientsScreen() {
                 {filtered.map((client, i) => {
                   const statusColor = STATUS_COLOR[client.packageStatus];
                   return (
-                    <View
+                    <Pressable
                       key={client.id}
                       style={[s.tableRow, s.tableDataRow, i % 2 === 1 && s.tableRowAlt]}
+                      onPress={() => router.push(`/(admin)/client/${client.id}` as any)}
                     >
                       <View style={[s.tdCell, { flex: 2 }]}>
                         <View style={s.nameRow}>
@@ -168,7 +169,7 @@ export default function AdminClientsScreen() {
                           <Text style={s.tdText}>—</Text>
                         )}
                       </View>
-                    </View>
+                    </Pressable>
                   );
                 })}
               </View>
@@ -177,7 +178,11 @@ export default function AdminClientsScreen() {
               filtered.map((client) => {
                 const statusColor = STATUS_COLOR[client.packageStatus];
                 return (
-                  <View key={client.id} style={s.clientCard}>
+                  <Pressable
+                    key={client.id}
+                    style={s.clientCard}
+                    onPress={() => router.push(`/(admin)/client/${client.id}` as any)}
+                  >
                     <View style={s.avatar}>
                       <Text style={s.avatarText}>{initials(client.name)}</Text>
                     </View>
@@ -201,7 +206,8 @@ export default function AdminClientsScreen() {
                         <Text style={[s.pkgLabel, { color: statusColor }]}>sessions</Text>
                       </View>
                     )}
-                  </View>
+                    <Ionicons name="chevron-forward" size={16} color={Colors.border} />
+                  </Pressable>
                 );
               })
             )}
