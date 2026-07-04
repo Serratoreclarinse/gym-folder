@@ -33,10 +33,11 @@ function ExerciseRow({ name, sets, reps, weight, notes }: {
 }
 
 // ─── Session card ────────────────────────────────────────────
-function SessionCard({ session, showRateBadge, onRate }: {
+function SessionCard({ session, showRateBadge, onRate, ratingExpired }: {
   session: ClientSession;
   showRateBadge?: boolean;
   onRate?: () => void;
+  ratingExpired?: boolean;
 }) {
   const isNoShow = session.status === 'absent';
   const date = new Date(session.session_date).toLocaleDateString('en-US', {
@@ -94,6 +95,12 @@ function SessionCard({ session, showRateBadge, onRate }: {
           <Text style={styles.ratePromptText}>Rate this session</Text>
         </Pressable>
       )}
+      {ratingExpired && !isNoShow && (
+        <View style={styles.rateExpiredRow}>
+          <Ionicons name="time-outline" size={12} color={Colors.textSecondary} />
+          <Text style={styles.rateExpiredText}>Rating window closed (48 hrs)</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -128,12 +135,24 @@ export default function ClientWorkoutsScreen() {
   const [selectedRating, setSelectedRating] = useState(0);
   const [submittingRating, setSubmittingRating] = useState(false);
 
+  const [ratingExpiredSession, setRatingExpiredSession] = useState<ClientSession | null>(null);
+
   useEffect(() => {
     if (sessions.length === 0) return;
     const recent = sessions[0];
     if (recent.status === 'absent') return;
     const sessionDate = new Date(recent.session_date + 'T00:00:00');
     const diffHours = (Date.now() - sessionDate.getTime()) / 3600000;
+    if (diffHours > 48 && diffHours <= 7 * 24) {
+      // Recently passed — show "window closed" hint
+      supabase
+        .from('session_ratings')
+        .select('id')
+        .eq('session_id', recent.id)
+        .maybeSingle()
+        .then(({ data }) => { if (!data) setRatingExpiredSession(recent); });
+      return;
+    }
     if (diffHours > 48) return;
     supabase
       .from('session_ratings')
@@ -245,6 +264,7 @@ export default function ClientWorkoutsScreen() {
               session={s}
               showRateBadge={unratedSession?.id === s.id}
               onRate={() => { setSelectedRating(0); setShowRatingModal(true); }}
+              ratingExpired={ratingExpiredSession?.id === s.id}
             />
           ))}
         </View>
@@ -373,6 +393,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   ratePromptText: { color: '#FFD700', fontWeight: '700', fontSize: 13 },
+  rateExpiredRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.border,
+    justifyContent: 'center',
+  },
+  rateExpiredText: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic' },
 
   // Rating modal
   ratingBg: {
