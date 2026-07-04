@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  KeyboardAvoidingView,
   Linking,
   Modal,
   Platform,
@@ -1026,6 +1027,7 @@ export default function CalendarScreen() {
 
       {/* ── Leave / Block Date Modal ── */}
       <Modal visible={showLeaveModal} transparent animationType="slide" onRequestClose={() => setShowLeaveModal(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.modalRoot}>
           <Pressable style={styles.modalOverlay} onPress={() => setShowLeaveModal(false)} />
           <View style={styles.modalSheet}>
@@ -1086,6 +1088,7 @@ export default function CalendarScreen() {
             <View style={{ height: 24 }} />
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
