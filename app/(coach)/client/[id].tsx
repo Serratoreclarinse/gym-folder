@@ -366,10 +366,9 @@ export default function ClientDetailScreen() {
   const renewPackage = async (pkgType: PackageType, totalSessions: number, durationWeeks: string | null) => {
     if (!profile?.id) return;
     setShowRenewForm(false);
-    if (pkg) {
-      await supabase.from('packages').update({ status: 'expired' }).eq('id', pkg.id);
-    }
-    await supabase.from('packages').insert({
+
+    // Insert new package first — if it fails, old package stays active
+    const { error: insertErr } = await supabase.from('packages').insert({
       coach_id: profile.id,
       client_id: id,
       package_type: pkgType,
@@ -379,6 +378,16 @@ export default function ClientDetailScreen() {
       start_date: new Date().toISOString().slice(0, 10),
       ...(durationWeeks && Number(durationWeeks) > 0 ? { duration_weeks: Number(durationWeeks) } : {}),
     });
+
+    if (insertErr) {
+      Alert.alert('Error', insertErr.message ?? 'Failed to create new package');
+      return;
+    }
+
+    // New package confirmed — now expire the previous one
+    if (pkg) {
+      await supabase.from('packages').update({ status: 'expired' }).eq('id', pkg.id);
+    }
     refetchClients();
   };
 

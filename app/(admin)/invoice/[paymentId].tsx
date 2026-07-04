@@ -11,6 +11,7 @@ const COMPANY = {
   address: 'Madinat Qaboos, Muscat, Oman',
   phone: '+968 91760908',
   website: 'www.elevate-training.com',
+  vat: '', // Add VAT registration number when available
 };
 
 const PAY_LABEL: Record<string, string> = {
@@ -68,7 +69,7 @@ export default function InvoicePage() {
         pay.package_id
           ? supabase.from('packages').select('package_type').eq('id', pay.package_id).single()
           : Promise.resolve({ data: null }),
-        supabase.from('packages').select('id', { count: 'exact' }).eq('client_id', pay.client_id),
+        supabase.from('packages').select('id').eq('client_id', pay.client_id).order('created_at', { ascending: true }).limit(1),
       ]);
 
       let invoiceNumber = pay.invoice_number;
@@ -95,7 +96,7 @@ export default function InvoicePage() {
         client_name: clientRes.data?.name ?? 'Unknown',
         coach_name: coachRes.data?.name ?? 'Unknown',
         package_type: (pkgRes as any).data?.package_type ?? null,
-        is_renewal: (pkgCountRes.count ?? 1) > 1,
+        is_renewal: pay.package_id ? (pkgCountRes.data?.[0]?.id !== pay.package_id) : false,
       });
     } catch (e: any) {
       setError(e.message ?? 'Failed to load invoice');
@@ -156,7 +157,7 @@ export default function InvoicePage() {
             <Text style={s.companyDetail}>{COMPANY.address}</Text>
             <Text style={s.companyDetail}>{COMPANY.phone}</Text>
             <Text style={s.companyDetail}>{COMPANY.website}</Text>
-            <Text style={s.companyDetail}>VAT No.</Text>
+            {COMPANY.vat ? <Text style={s.companyDetail}>VAT No. {COMPANY.vat}</Text> : null}
           </View>
           <View style={s.invoiceMeta}>
             <Text style={s.invoiceTitle}>INVOICE</Text>

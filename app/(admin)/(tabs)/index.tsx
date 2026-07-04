@@ -203,10 +203,10 @@ export default function AdminDashboardScreen() {
 
   const monthName = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const statCards = [
-    { icon: 'people-outline',  label: 'Coaches',                    value: stats?.coachCount ?? 0,        color: Colors.accent },
-    { icon: 'person-outline',  label: 'Clients',                    value: stats?.clientCount ?? 0,       color: '#4CAF50' },
-    { icon: 'cube-outline',    label: 'Active Packages',            value: stats?.activePackages ?? 0,    color: '#FF9800' },
-    { icon: 'barbell-outline', label: `Sessions · ${monthName}`,   value: stats?.sessionsThisMonth ?? 0, color: '#9C27B0' },
+    { icon: 'people-outline',  label: 'Coaches',                    value: stats?.coachCount ?? 0,        color: Colors.accent, route: '/(admin)/(tabs)/coaches' },
+    { icon: 'person-outline',  label: 'Clients',                    value: stats?.clientCount ?? 0,       color: '#4CAF50',     route: '/(admin)/(tabs)/clients' },
+    { icon: 'cube-outline',    label: 'Active Packages',            value: stats?.activePackages ?? 0,    color: '#FF9800',     route: null },
+    { icon: 'barbell-outline', label: `Sessions · ${monthName}`,   value: stats?.sessionsThisMonth ?? 0, color: '#9C27B0',     route: null },
   ] as const;
 
   return (
@@ -274,13 +274,17 @@ export default function AdminDashboardScreen() {
         <Text style={[s.sectionTitle, { marginTop: 28 }]}>OVERVIEW</Text>
         <View style={[s.statsGrid, isDesktop && s.statsGridDesktop]}>
           {statCards.map((c) => (
-            <View key={c.label} style={[s.statCard, { borderColor: c.color + '30' }, isDesktop && s.statCardDesktop]}>
+            <Pressable
+              key={c.label}
+              style={({ pressed }) => [s.statCard, { borderColor: c.color + '30' }, isDesktop && s.statCardDesktop, pressed && c.route && { opacity: 0.75 }]}
+              onPress={c.route ? () => router.push(c.route as any) : undefined}
+            >
               <View style={[s.statIcon, { backgroundColor: c.color + '15' }]}>
                 <Ionicons name={c.icon as any} size={isDesktop ? 20 : 16} color={c.color} />
               </View>
               <Text style={[s.statValue, { color: c.color }, isDesktop && s.statValueDesktop]}>{c.value}</Text>
               <Text style={s.statLabel}>{c.label}</Text>
-            </View>
+            </Pressable>
           ))}
         </View>
 

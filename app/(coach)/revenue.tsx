@@ -64,9 +64,9 @@ function getLast6Months(): { key: string; label: string }[] {
 }
 
 const METHOD_LABEL: Record<PaymentMethod, string> = {
-  cash: 'Cash',
-  bank_transfer: 'Bank',
-  other: 'Other',
+  cash: 'Cash', bank_muscat: 'Bank Muscat', nbo: 'NBO', oab: 'OAB',
+  bank_dhofar: 'Bank Dhofar', ahli_bank: 'Ahli Bank', sohar: 'Sohar Intl',
+  hsbc: 'HSBC Oman', bank_nizwa: 'Bank Nizwa', other: 'Other',
 };
 
 // ─── Bar Chart ──────────────────────────────────────────────────────────────
@@ -467,16 +467,17 @@ function PaymentFormModal({ visible, editing, clients, onClose, onSave }: FormPr
 
             {/* Payment method */}
             <Text style={fm.label}>PAYMENT METHOD</Text>
-            <View style={fm.segRow}>
-              {(['cash', 'bank_transfer', 'other'] as PaymentMethod[]).map((m) => (
+            <View style={fm.methodList}>
+              {(['cash', 'bank_muscat', 'nbo', 'oab', 'bank_dhofar', 'ahli_bank', 'sohar', 'hsbc', 'bank_nizwa', 'other'] as PaymentMethod[]).map((m) => (
                 <Pressable
                   key={m}
-                  style={[fm.seg, method === m && fm.segActive]}
+                  style={[fm.methodOption, method === m && fm.methodOptionActive]}
                   onPress={() => setMethod(m)}
                 >
-                  <Text style={[fm.segText, method === m && fm.segTextActive]}>
+                  <Text style={[fm.methodOptionText, method === m && fm.methodOptionTextActive]}>
                     {METHOD_LABEL[m]}
                   </Text>
+                  {method === m && <Ionicons name="checkmark" size={14} color={Colors.accent} />}
                 </Pressable>
               ))}
             </View>
@@ -930,7 +931,7 @@ const fm = StyleSheet.create({
   peso: { ...Typography.body, color: Colors.accent, fontWeight: '800' },
   amountInput: { flex: 1, fontSize: 20, fontWeight: '700' },
 
-  // Segment controls
+  // Segment controls (status only)
   segRow: { flexDirection: 'row', gap: 8 },
   seg: {
     flex: 1, paddingVertical: 10, borderRadius: 10,
@@ -942,6 +943,18 @@ const fm = StyleSheet.create({
   segPending: { backgroundColor: '#FFA50020', borderColor: '#FFA50060' },
   segText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
   segTextActive: { color: Colors.bg },
+
+  // Payment method list
+  methodList: { gap: 4 },
+  methodOption: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: Colors.surfaceRaised, borderRadius: 10,
+    borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: 14, paddingVertical: 10,
+  },
+  methodOptionActive: { backgroundColor: Colors.accent + '15', borderColor: Colors.accent },
+  methodOptionText: { fontSize: 14, color: Colors.textSecondary, fontWeight: '600' },
+  methodOptionTextActive: { color: Colors.accent, fontWeight: '700' },
 
   // Buttons
   btnRow: { flexDirection: 'row', gap: 10, marginTop: 24 },

@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react';
 import {
-  ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View,
+  ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { Colors, Typography } from '@/constants/theme';
 
@@ -18,19 +18,15 @@ type Payment = {
 };
 
 const METHOD_LABEL: Record<string, string> = {
-  cash: 'Cash',
-  gcash: 'GCash',
-  maya: 'Maya',
-  bank_transfer: 'Bank Transfer',
-  other: 'Other',
+  cash: 'Cash', bank_muscat: 'Bank Muscat', nbo: 'NBO', oab: 'OAB',
+  bank_dhofar: 'Bank Dhofar', ahli_bank: 'Ahli Bank', sohar: 'Sohar Intl',
+  hsbc: 'HSBC Oman', bank_nizwa: 'Bank Nizwa', other: 'Other',
 };
 
 const METHOD_COLOR: Record<string, string> = {
-  cash: '#4CAF50',
-  gcash: '#2196F3',
-  maya: '#9C27B0',
-  bank_transfer: '#FF9800',
-  other: Colors.textSecondary,
+  cash: '#4CAF50', bank_muscat: '#2196F3', nbo: '#FF9800', oab: '#9C27B0',
+  bank_dhofar: '#00BCD4', ahli_bank: '#FF5722', sohar: '#8BC34A',
+  hsbc: '#E91E63', bank_nizwa: '#3F51B5', other: Colors.textSecondary,
 };
 
 function monthStart(): string {
@@ -159,7 +155,11 @@ export default function AdminPaymentsScreen() {
             month: 'short', day: 'numeric', year: 'numeric',
           });
           return (
-            <View key={p.id} style={s.paymentCard}>
+            <Pressable
+              key={p.id}
+              style={({ pressed }) => [s.paymentCard, pressed && { opacity: 0.75 }]}
+              onPress={() => router.push(`/(admin)/invoice/${p.id}` as any)}
+            >
               <View style={s.paymentTop}>
                 <View style={s.clientAvatar}>
                   <Text style={s.clientAvatarText}>{initials(p.client_name)}</Text>
@@ -177,11 +177,14 @@ export default function AdminPaymentsScreen() {
                   </View>
                   {p.notes ? <Text style={s.notesText}>"{p.notes}"</Text> : null}
                 </View>
-                <Text style={s.amountText}>
-                  OMR {Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                </Text>
+                <View style={s.amountRight}>
+                  <Text style={s.amountText}>
+                    OMR {Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                  </Text>
+                  <Ionicons name="receipt-outline" size={14} color={Colors.textSecondary} style={{ marginTop: 4 }} />
+                </View>
               </View>
-            </View>
+            </Pressable>
           );
         })
       )}
@@ -238,7 +241,8 @@ const s = StyleSheet.create({
   methodPillText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
   dateText: { ...Typography.caption, color: Colors.textSecondary },
   notesText: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic' },
-  amountText: { fontSize: 16, fontWeight: '900', color: '#4CAF50', flexShrink: 0 },
+  amountRight: { alignItems: 'flex-end', flexShrink: 0 },
+  amountText: { fontSize: 16, fontWeight: '900', color: '#4CAF50' },
 
   emptyCard: { alignItems: 'center', paddingVertical: 60, gap: 10 },
   emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 8 },

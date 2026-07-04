@@ -181,7 +181,7 @@ export default function CoachDashboard() {
   const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers(); };
 
   useFocusEffect(useCallback(() => {
-    refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); fetchIncomingTransfers();
+    refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers();
     AsyncStorage.getItem('@elevat3/paused_workout').then((data) => {
       if (data) {
         const w = JSON.parse(data);

@@ -229,22 +229,29 @@ export default function ClientDetailScreen() {
     }
     if (!client) return;
     setRenewing(true);
-    const { data, error } = await supabase.functions.invoke('create-client', {
-      body: {
-        name: client.name,
-        email: client.email,
-        phone: client.phone || null,
-        package_type: renewPkgType,
-        total_sessions: parseInt(renewTotal, 10),
-        coach_id: renewTarget.coachId,
-        ...(renewWeeks && parseInt(renewWeeks, 10) > 0 ? { duration_weeks: parseInt(renewWeeks, 10) } : {}),
-      },
+
+    // Insert new package first — if this fails, old package remains untouched
+    const { error: insertErr } = await supabase.from('packages').insert({
+      coach_id: renewTarget.coachId,
+      client_id: client.id,
+      package_type: renewPkgType,
+      total_sessions: parseInt(renewTotal, 10),
+      sessions_used: 0,
+      status: 'active',
+      start_date: new Date().toISOString().slice(0, 10),
+      ...(renewWeeks && parseInt(renewWeeks, 10) > 0 ? { duration_weeks: parseInt(renewWeeks, 10) } : {}),
     });
-    setRenewing(false);
-    if (error || data?.error) {
-      Alert.alert('Error', data?.error ?? error?.message ?? 'Failed to renew');
+
+    if (insertErr) {
+      setRenewing(false);
+      Alert.alert('Error', insertErr.message ?? 'Failed to create new package');
       return;
     }
+
+    // New package confirmed — now expire the previous one
+    await supabase.from('packages').update({ status: 'expired' }).eq('id', renewTarget.id);
+
+    setRenewing(false);
     setRenewModal(false);
     setRenewTotal('');
     setRenewWeeks('');
@@ -925,6 +932,10 @@ const s = StyleSheet.create({
   overlay: {
     flex: 1, backgroundColor: '#00000080',
     justifyContent: 'flex-end',
+  },
+  modalHandle: {
+    width: 36, height: 4, borderRadius: 2,
+    backgroundColor: Colors.border, alignSelf: 'center', marginBottom: 16,
   },
   modalBox: {
     backgroundColor: Colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 
-export type PaymentMethod = 'cash' | 'bank_transfer' | 'other';
+export type PaymentMethod = 'cash' | 'bank_muscat' | 'nbo' | 'oab' | 'bank_dhofar' | 'ahli_bank' | 'sohar' | 'hsbc' | 'bank_nizwa' | 'other';
 export type PaymentStatus = 'paid' | 'pending';
 
 export type Payment = {

@@ -198,7 +198,7 @@ export default function CoachDetailScreen() {
   const handleSave = async () => {
     if (!editName.trim() || !id) return;
     setSaving(true);
-    await Promise.all([
+    const [r1, r2] = await Promise.all([
       supabase.rpc('admin_update_profile', {
         p_user_id: id, p_name: editName.trim(), p_phone: editPhone.trim(),
       }),
@@ -209,6 +209,10 @@ export default function CoachDetailScreen() {
       }),
     ]);
     setSaving(false);
+    if (r1.error || r2.error) {
+      Alert.alert('Error', r1.error?.message ?? r2.error?.message ?? 'Failed to save');
+      return;
+    }
     setCoach((c) => c ? {
       ...c,
       name: editName.trim(),
