@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
@@ -12,6 +12,7 @@ import { useWaitlist } from '@/hooks/useWaitlist';
 import { useCoachBookingRequests } from '@/hooks/useBookingRequests';
 import { getDaysUntilBirthday } from '@/hooks/useBirthdays';
 import { useAnnouncements } from '@/hooks/useAnnouncements';
+import { supabase } from '@/lib/supabase';
 import { useActiveSessionContext } from '@/context/ActiveSessionContext';
 import { ActiveSessionCard } from '@/components/ActiveSessionCard';
 import { NextSessionCard } from '@/components/NextSessionCard';
@@ -109,12 +110,62 @@ export default function CoachDashboard() {
   const { activeSession, nextSession, extendSession, endSession, cancelSession, refetch: refetchTimer } = useActiveSessionContext();
   const [pausedWorkout, setPausedWorkout] = useState<any | null>(null);
   const [showPicker, setShowPicker] = useState(false);
+  const [incomingTransfers, setIncomingTransfers] = useState<{
+    id: string; client_name: string; from_coach_name: string;
+    package_type: string; sessions_remaining: number; notes: string | null;
+  }[]>([]);
+
+  const fetchIncomingTransfers = useCallback(async () => {
+    if (!profile?.id) return;
+    const { data } = await supabase
+      .from('client_transfers')
+      .select(`
+        id, notes,
+        client:profiles!client_transfers_client_id_fkey(name),
+        from_coach:profiles!client_transfers_from_coach_id_fkey(name),
+        package:packages!client_transfers_package_id_fkey(package_type, sessions_remaining)
+      `)
+      .eq('status', 'pending_coach')
+      .eq('to_coach_id', profile.id);
+    setIncomingTransfers(
+      (data ?? []).map((row: any) => ({
+        id: row.id,
+        client_name: row.client?.name ?? '—',
+        from_coach_name: row.from_coach?.name ?? '—',
+        package_type: row.package?.package_type ?? '—',
+        sessions_remaining: row.package?.sessions_remaining ?? 0,
+        notes: row.notes,
+      })),
+    );
+  }, [profile?.id]);
+
+  const handleAcceptTransfer = async (transferId: string) => {
+    const { error } = await supabase.rpc('coach_accept_transfer', { p_transfer_id: transferId });
+    if (error) { Alert.alert('Error', error.message); return; }
+    fetchIncomingTransfers();
+    refetchClients();
+    Alert.alert('Transfer Accepted', 'The client is now in your roster.');
+  };
+
+  const handleRejectTransfer = (transferId: string) => {
+    Alert.alert('Reject Transfer', 'Decline this client transfer request?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Reject', style: 'destructive',
+        onPress: async () => {
+          const { error } = await supabase.rpc('coach_reject_transfer', { p_transfer_id: transferId });
+          if (error) { Alert.alert('Error', error.message); return; }
+          fetchIncomingTransfers();
+        },
+      },
+    ]);
+  };
 
   const refreshing = cLoading || sLoading;
-  const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); };
+  const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers(); };
 
   useFocusEffect(useCallback(() => {
-    refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer();
+    refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); fetchIncomingTransfers();
     AsyncStorage.getItem('@elevat3/paused_workout').then((data) => {
       if (data) {
         const w = JSON.parse(data);
@@ -316,6 +367,44 @@ export default function CoachDashboard() {
             <Ionicons name="close-circle-outline" size={18} color={Colors.textSecondary} />
           </Pressable>
         </View>
+      )}
+
+      {/* Incoming Transfers */}
+      {incomingTransfers.length > 0 && (
+        <>
+          <View style={styles.strikeSectionHeader}>
+            <Text style={styles.sectionTitle}>INCOMING TRANSFERS</Text>
+            <View style={[styles.strikeBadge, { backgroundColor: '#9C27B020', borderColor: '#9C27B060' }]}>
+              <Text style={[styles.strikeBadgeText, { color: '#9C27B0' }]}>{incomingTransfers.length}</Text>
+            </View>
+          </View>
+          {incomingTransfers.map((t) => {
+            const initials = t.client_name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
+            return (
+              <View key={t.id} style={styles.reqCard}>
+                <View style={styles.reqCardTop}>
+                  <View style={[styles.reqTypeBadge, { borderColor: '#9C27B050', backgroundColor: '#9C27B015' }]}>
+                    <Ionicons name="swap-horizontal-outline" size={13} color="#9C27B0" />
+                    <Text style={[styles.reqTypeText, { color: '#9C27B0' }]}>Transfer</Text>
+                  </View>
+                  <Text style={styles.reqClientName}>{t.client_name}</Text>
+                </View>
+                <Text style={styles.reqDateTime}>
+                  From {t.from_coach_name} · {t.package_type} · {t.sessions_remaining} sessions
+                </Text>
+                {t.notes ? <Text style={styles.reqNotes}>{t.notes}</Text> : null}
+                <View style={styles.reqActions}>
+                  <Pressable style={styles.reqDeclineBtn} onPress={() => handleRejectTransfer(t.id)}>
+                    <Text style={styles.reqDeclineBtnText}>Decline</Text>
+                  </Pressable>
+                  <Pressable style={styles.reqAcceptBtn} onPress={() => handleAcceptTransfer(t.id)}>
+                    <Text style={styles.reqAcceptBtnText}>Accept</Text>
+                  </Pressable>
+                </View>
+              </View>
+            );
+          })}
+        </>
       )}
 
       {/* Client Requests */}
