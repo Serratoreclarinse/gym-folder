@@ -6,6 +6,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
+import { sendPushNotification } from '@/lib/pushNotifications';
 import { Colors, Typography } from '@/constants/theme';
 
 type ClientProfile = {
@@ -77,6 +78,13 @@ export default function ClientDetailScreen() {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Payment request
+  const [showPayReqModal, setShowPayReqModal] = useState(false);
+  const [payReqAmount, setPayReqAmount] = useState('');
+  const [payReqNotes, setPayReqNotes] = useState('');
+  const [sendingPayReq, setSendingPayReq] = useState(false);
+  const [payReqSent, setPayReqSent] = useState(false);
 
   // Edit profile
   const [editing, setEditing] = useState(false);
@@ -241,6 +249,25 @@ export default function ClientDetailScreen() {
     setRenewTotal('');
     setRenewWeeks('');
     load();
+  };
+
+  const handleSendPaymentRequest = async () => {
+    if (!id) return;
+    setSendingPayReq(true);
+    const amt = payReqAmount.trim();
+    const bodyText = amt
+      ? `OMR ${amt} is due for your training package. Please complete your payment at your earliest convenience.`
+      : `You have a pending payment for your training package. Please contact your coach to settle.`;
+    const notesPart = payReqNotes.trim() ? `\nNote: ${payReqNotes.trim()}` : '';
+    await sendPushNotification(id, {
+      title: '💳 Payment Request',
+      body: bodyText + notesPart,
+    });
+    setSendingPayReq(false);
+    setPayReqSent(true);
+    setPayReqAmount('');
+    setPayReqNotes('');
+    setTimeout(() => { setShowPayReqModal(false); setPayReqSent(false); }, 1500);
   };
 
   if (loading) {
@@ -515,7 +542,13 @@ export default function ClientDetailScreen() {
           )}
 
           {/* Payment history */}
-          <Text style={[s.sectionTitle, { marginTop: 24 }]}>PAYMENT HISTORY</Text>
+          <View style={[s.sectionRow, { marginTop: 24 }]}>
+            <Text style={s.sectionTitle}>PAYMENT HISTORY</Text>
+            <Pressable style={s.reqPayBtn} onPress={() => setShowPayReqModal(true)}>
+              <Ionicons name="send-outline" size={12} color="#fff" />
+              <Text style={s.reqPayBtnText}>Request Payment</Text>
+            </Pressable>
+          </View>
           <View style={s.historyList}>
             {payments.length === 0 ? (
               <View style={{ padding: 24, alignItems: 'center' }}>
@@ -646,6 +679,62 @@ export default function ClientDetailScreen() {
                 <Text style={s.modalBtnCancelText}>CANCEL</Text>
               </Pressable>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Request Payment Modal ── */}
+      <Modal visible={showPayReqModal} transparent animationType="slide" onRequestClose={() => setShowPayReqModal(false)}>
+        <View style={s.overlay}>
+          <View style={s.modalBox}>
+            <View style={s.modalHandle} />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <Text style={s.modalTitle}>REQUEST PAYMENT</Text>
+              <Pressable onPress={() => setShowPayReqModal(false)}>
+                <Ionicons name="close" size={20} color={Colors.textSecondary} />
+              </Pressable>
+            </View>
+            <Text style={[s.modalSub, { marginBottom: 20 }]}>
+              Send a push notification to {client?.name} requesting payment.
+            </Text>
+
+            {payReqSent ? (
+              <View style={s.payReqSuccess}>
+                <Ionicons name="checkmark-circle" size={28} color="#4CAF50" />
+                <Text style={s.payReqSuccessText}>Request Sent!</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={s.modalLabel}>Amount (OMR) — optional</Text>
+                <TextInput
+                  style={s.modalInput}
+                  value={payReqAmount}
+                  onChangeText={(v) => setPayReqAmount(v.replace(/[^0-9.]/g, ''))}
+                  placeholder="e.g. 545.00"
+                  placeholderTextColor={Colors.textSecondary}
+                  keyboardType="decimal-pad"
+                />
+                <Text style={[s.modalLabel, { marginTop: 12 }]}>Note — optional</Text>
+                <TextInput
+                  style={[s.modalInput, { height: 70 }]}
+                  value={payReqNotes}
+                  onChangeText={setPayReqNotes}
+                  placeholder="e.g. Monthly renewal due"
+                  placeholderTextColor={Colors.textSecondary}
+                  multiline
+                />
+                <Pressable
+                  style={[s.modalBtnPrimary, sendingPayReq && { opacity: 0.5 }]}
+                  onPress={handleSendPaymentRequest}
+                  disabled={sendingPayReq}
+                >
+                  <Ionicons name="send-outline" size={15} color="#fff" />
+                  <Text style={s.modalBtnPrimaryText}>
+                    {sendingPayReq ? 'Sending…' : 'Send Payment Request'}
+                  </Text>
+                </Pressable>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -821,6 +910,16 @@ const s = StyleSheet.create({
     borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4,
   },
   invoiceBtnText: { fontSize: 11, fontWeight: '700', color: Colors.accent },
+
+  sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  reqPayBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#1a6b2a', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 6,
+  },
+  reqPayBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  payReqSuccess: { alignItems: 'center', paddingVertical: 24, gap: 10 },
+  payReqSuccessText: { fontSize: 16, fontWeight: '700', color: '#4CAF50' },
 
   // Modals
   overlay: {
