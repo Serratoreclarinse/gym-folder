@@ -72,6 +72,24 @@ function nextBirthdayDays(birthdayISO: string): number {
   return Math.round((next.getTime() - today.getTime()) / 86400000);
 }
 
+type VisaLevel = 'expired' | 'critical' | 'urgent' | 'notice';
+
+const VISA_STYLE: Record<VisaLevel, { color: string; bg: string; border: string; icon: string }> = {
+  expired:  { color: '#FF1744', bg: '#FF174415', border: '#FF174460', icon: 'alert-circle' },
+  critical: { color: '#F44336', bg: '#F4433612', border: '#F4433660', icon: 'alert-circle-outline' },
+  urgent:   { color: '#FF6D00', bg: '#FF6D0012', border: '#FF6D0060', icon: 'warning-outline' },
+  notice:   { color: '#FF9800', bg: '#FF980012', border: '#FF980050', icon: 'time-outline' },
+};
+
+function getVisaLevel(days: number | null): VisaLevel | null {
+  if (days === null) return null;
+  if (days < 0)   return 'expired';
+  if (days <= 7)  return 'critical';
+  if (days <= 15) return 'urgent';
+  if (days <= 30) return 'notice';
+  return null;
+}
+
 export default function CoachDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { profile: adminProfile } = useAuth();
@@ -245,10 +263,10 @@ export default function CoachDetailScreen() {
   const monthName = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   // Warning computations
-  const bdDays  = coach.birthday    ? nextBirthdayDays(coach.birthday)  : null;
-  const visaDays = coach.visa_expiry ? daysUntil(coach.visa_expiry)       : null;
-  const bdWarn   = bdDays !== null  && bdDays <= 14;
-  const visaWarn = visaDays !== null && visaDays <= 60;
+  const bdDays   = coach.birthday    ? nextBirthdayDays(coach.birthday) : null;
+  const visaDays = coach.visa_expiry ? daysUntil(coach.visa_expiry)     : null;
+  const bdWarn   = bdDays !== null && bdDays <= 30;
+  const visaLevel = getVisaLevel(visaDays);
 
   return (
     <>
@@ -260,21 +278,33 @@ export default function CoachDetailScreen() {
         <View style={[s.inner, isDesktop && s.innerDesktop]}>
 
           {/* ── Alerts ───────────────────────────────────────── */}
-          {bdWarn && (
-            <View style={[s.alertBanner, { borderColor: '#FF980060', backgroundColor: '#FF980010' }]}>
+          {bdWarn && bdDays !== null && (
+            <View style={[s.alertBanner, {
+              borderColor: bdDays <= 7 ? '#FF980080' : '#FF980040',
+              backgroundColor: bdDays <= 7 ? '#FF980015' : '#FF980008',
+            }]}>
               <Ionicons name="gift-outline" size={16} color="#FF9800" />
               <Text style={[s.alertText, { color: '#FF9800' }]}>
-                {coach.name.split(' ')[0]}'s birthday is in {bdDays === 0 ? 'TODAY! 🎉' : `${bdDays} day${bdDays !== 1 ? 's' : ''}`}
+                {bdDays === 0
+                  ? `TODAY is ${coach.name.split(' ')[0]}'s birthday! 🎉`
+                  : bdDays <= 7
+                    ? `🎂 ${coach.name.split(' ')[0]}'s birthday is in ${bdDays} day${bdDays !== 1 ? 's' : ''}!`
+                    : `${coach.name.split(' ')[0]}'s birthday is in ${bdDays} day${bdDays !== 1 ? 's' : ''}`}
               </Text>
             </View>
           )}
-          {visaWarn && visaDays !== null && (
-            <View style={[s.alertBanner, { borderColor: Colors.danger + '60', backgroundColor: Colors.danger + '10' }]}>
-              <Ionicons name="alert-circle-outline" size={16} color={Colors.danger} />
-              <Text style={[s.alertText, { color: Colors.danger }]}>
-                {visaDays <= 0
-                  ? `Visa EXPIRED ${Math.abs(visaDays)} day${Math.abs(visaDays) !== 1 ? 's' : ''} ago!`
-                  : `Visa expires in ${visaDays} day${visaDays !== 1 ? 's' : ''} — ${fmtDate(coach.visa_expiry!)}`}
+          {visaLevel !== null && visaDays !== null && (
+            <View style={[s.alertBanner, {
+              borderColor: VISA_STYLE[visaLevel].border,
+              backgroundColor: VISA_STYLE[visaLevel].bg,
+            }]}>
+              <Ionicons name={VISA_STYLE[visaLevel].icon as any} size={16} color={VISA_STYLE[visaLevel].color} />
+              <Text style={[s.alertText, { color: VISA_STYLE[visaLevel].color }]}>
+                {visaDays < 0
+                  ? `Visa EXPIRED ${Math.abs(visaDays)} day${Math.abs(visaDays) !== 1 ? 's' : ''} ago — ${fmtDate(coach.visa_expiry!)}`
+                  : visaDays === 0
+                    ? `Visa expires TODAY — ${fmtDate(coach.visa_expiry!)}`
+                    : `Visa expires in ${visaDays} day${visaDays !== 1 ? 's' : ''} — ${fmtDate(coach.visa_expiry!)}`}
               </Text>
             </View>
           )}
@@ -323,8 +353,8 @@ export default function CoachDetailScreen() {
                   )}
                   {coach.visa_expiry && (
                     <View style={s.pillRow}>
-                      <Ionicons name="card-outline" size={12} color={visaWarn ? Colors.danger : Colors.textSecondary} />
-                      <Text style={[s.pillText, visaWarn && { color: Colors.danger }]}>
+                      <Ionicons name="card-outline" size={12} color={visaLevel ? VISA_STYLE[visaLevel].color : Colors.textSecondary} />
+                      <Text style={[s.pillText, visaLevel ? { color: VISA_STYLE[visaLevel].color } : null]}>
                         Visa: {fmtDate(coach.visa_expiry)}
                       </Text>
                     </View>
