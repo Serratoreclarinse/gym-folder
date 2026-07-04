@@ -30,6 +30,7 @@ export default function AdminAddClientScreen() {
   const [coaches, setCoaches] = useState<CoachOption[]>([]);
   const [loadingCoaches, setLoadingCoaches] = useState(true);
   const [selectedCoachId, setSelectedCoachId] = useState('');
+  const [coachSearch, setCoachSearch] = useState('');
 
   // Client fields
   const [name, setName] = useState('');
@@ -131,8 +132,25 @@ export default function AdminAddClientScreen() {
             <Text style={s.noCoachesText}>No coaches found. Add a coach first.</Text>
           </View>
         ) : (
+          <>
+          <View style={s.coachSearchWrap}>
+            <Ionicons name="search-outline" size={16} color={Colors.textSecondary} style={{ marginRight: 8 }} />
+            <TextInput
+              style={s.coachSearchInput}
+              value={coachSearch}
+              onChangeText={setCoachSearch}
+              placeholder="Search coach…"
+              placeholderTextColor={Colors.textSecondary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              clearButtonMode="while-editing"
+            />
+          </View>
           <View style={s.coachList}>
-            {coaches.map((c) => {
+            {coaches.filter((c) =>
+              c.name.toLowerCase().includes(coachSearch.toLowerCase()) ||
+              c.email.toLowerCase().includes(coachSearch.toLowerCase())
+            ).map((c) => {
               const selected = selectedCoachId === c.id;
               return (
                 <Pressable
@@ -154,6 +172,7 @@ export default function AdminAddClientScreen() {
               );
             })}
           </View>
+          </>
         )}
 
         {/* Client info */}
@@ -298,6 +317,12 @@ const s = StyleSheet.create({
   },
   noCoachesText: { ...Typography.body, color: '#FFA500', flex: 1 },
 
+  coachSearchWrap: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 8,
+  },
+  coachSearchInput: { flex: 1, color: Colors.textPrimary, fontSize: 14 },
   coachList: {
     backgroundColor: Colors.surface, borderRadius: 14,
     borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
