@@ -255,9 +255,6 @@ export default function CoachDashboard() {
           <Pressable style={styles.addBtn} onPress={() => router.push('/(coach)/announcements' as any)}>
             <Ionicons name="megaphone-outline" size={20} color={Colors.accent} />
           </Pressable>
-          <Pressable style={styles.addBtn} onPress={() => router.push('/(coach)/add-client')}>
-            <Ionicons name="person-add-outline" size={20} color={Colors.accent} />
-          </Pressable>
         </View>
       </View>
 

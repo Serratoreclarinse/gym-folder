@@ -117,9 +117,6 @@ export default function LoginScreen() {
           <Text style={styles.btnText}>{loading ? 'SIGNING IN…' : 'SIGN IN'}</Text>
         </Pressable>
 
-        <Pressable style={styles.signupLink} onPress={() => router.push('/(auth)/signup')}>
-          <Text style={styles.signupLinkText}>No account? <Text style={styles.signupLinkAccent}>Create one</Text></Text>
-        </Pressable>
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -237,17 +234,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     letterSpacing: 1.5,
-  },
-  signupLink: {
-    marginTop: 24,
-    alignItems: 'center',
-  },
-  signupLinkText: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-  },
-  signupLinkAccent: {
-    color: Colors.accent,
-    fontWeight: '600',
   },
 });
