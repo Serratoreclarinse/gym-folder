@@ -130,9 +130,7 @@ export default function CoachDetailScreen() {
           onPress: async () => {
             setDeactivating(true);
             const { error } = await supabase
-              .from('profiles')
-              .update({ deactivated_at: new Date().toISOString() })
-              .eq('id', id);
+              .rpc('admin_deactivate_account', { p_user_id: id });
             setDeactivating(false);
             if (error) { Alert.alert('Error', error.message); return; }
             router.back();
