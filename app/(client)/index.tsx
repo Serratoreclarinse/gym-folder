@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useClientData, type ClientPackage } from '@/hooks/useClientData';
 import { useClientAnnouncements } from '@/hooks/useClientAnnouncements';
@@ -369,6 +369,8 @@ export default function ClientProgressScreen() {
   };
 
   return (
+    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
+      <Image source={require('@/assets/images/logo.png')} style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.05 }} resizeMode="contain" />
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
@@ -782,11 +784,12 @@ export default function ClientProgressScreen() {
         </>
       )}
     </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll:   { flex: 1, backgroundColor: Colors.bg },
+  scroll:   { flex: 1 },
   content:  { padding: HP, paddingBottom: rs(48) },
 
   header:   { marginBottom: 20 },

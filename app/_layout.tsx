@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as Updates from 'expo-updates';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { ThemeProvider, useTheme } from '@/context/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { useFonts } from 'expo-font';
 import {
@@ -64,6 +65,11 @@ function AuthNavigation() {
   return null;
 }
 
+function ThemedStatusBar() {
+  const { isDark } = useTheme();
+  return <StatusBar style={isDark ? 'light' : 'dark'} />;
+}
+
 function useAutoUpdate() {
   useEffect(() => {
     if (__DEV__) return;
@@ -98,10 +104,12 @@ export default function RootLayout() {
   if (!fontsLoaded && Platform.OS !== 'web') return null;
 
   return (
-    <AuthProvider>
-      <StatusBar style="light" />
-      <AuthNavigation />
-      <Slot />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <ThemedStatusBar />
+        <AuthNavigation />
+        <Slot />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

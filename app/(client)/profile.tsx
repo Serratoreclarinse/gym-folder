@@ -1,4 +1,4 @@
-import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useEffect, useState } from 'react';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,9 +8,11 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useClientData } from '@/hooks/useClientData';
 import { Colors, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 export default function ClientProfileScreen() {
   const { profile, signOut, refreshProfile } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const { coachInfo } = useClientData();
   const [timeWindow, setTimeWindow] = useState(() => Math.floor(Date.now() / 300000));
   const [secondsLeft, setSecondsLeft] = useState(() => 300 - Math.floor((Date.now() % 300000) / 1000));
@@ -247,6 +249,20 @@ export default function ClientProfileScreen() {
         <Text style={styles.guideBtnText}>User Guide</Text>
         <Ionicons name="chevron-forward" size={14} color={Colors.accent} style={{ marginLeft: 'auto' }} />
       </Pressable>
+
+      <View style={[styles.infoRow, { marginBottom: 8 }]}>
+        <Ionicons name={isDark ? 'moon-outline' : 'sunny-outline'} size={18} color={Colors.textSecondary} style={{ marginRight: 10 }} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.infoLabel}>APPEARANCE</Text>
+          <Text style={styles.infoValue}>{isDark ? 'Dark Mode' : 'Light Mode'}</Text>
+        </View>
+        <Switch
+          value={!isDark}
+          onValueChange={toggleTheme}
+          trackColor={{ false: Colors.border, true: Colors.accent + '80' }}
+          thumbColor={!isDark ? Colors.accent : Colors.textSecondary}
+        />
+      </View>
 
       <Pressable
         style={({ pressed }) => [styles.signOutBtn, pressed && { opacity: 0.7 }]}

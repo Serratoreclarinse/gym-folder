@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Pressable, RefreshControl,
+  ActivityIndicator, Image, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, useWindowDimensions, View,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -210,6 +210,8 @@ export default function AdminDashboardScreen() {
   ] as const;
 
   return (
+    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
+      <Image source={require('@/assets/images/logo.png')} style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.05 }} resizeMode="contain" />
     <ScrollView
       style={s.scroll}
       contentContainerStyle={[s.content, isDesktop && s.contentDesktop]}
@@ -307,11 +309,12 @@ export default function AdminDashboardScreen() {
         </View>
       </View>
     </ScrollView>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: Colors.bg },
+  scroll: { flex: 1 },
   content: { padding: 20, paddingBottom: 48 },
   contentDesktop: { padding: 40, paddingTop: 32 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.bg },

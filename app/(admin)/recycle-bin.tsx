@@ -47,10 +47,7 @@ export default function RecycleBinScreen() {
 
   const handleRestore = async (p: DeactivatedProfile) => {
     setActionId(p.id);
-    const { error } = await supabase
-      .from('profiles')
-      .update({ deactivated_at: null })
-      .eq('id', p.id);
+    const { error } = await supabase.rpc('admin_restore_account', { p_user_id: p.id });
     setActionId(null);
     if (error) { Alert.alert('Error', error.message); return; }
     setProfiles((prev) => prev.filter((x) => x.id !== p.id));

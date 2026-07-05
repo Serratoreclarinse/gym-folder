@@ -1,30 +1,36 @@
-import { View } from 'react-native';
+import { Image, View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActiveSessionProvider } from '@/context/ActiveSessionContext';
 import { FloatingSessionBar } from '@/components/FloatingSessionBar';
-import { Colors } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 export default function CoachTabsLayout() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   return (
     <ActiveSessionProvider>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        <Image
+          source={require('@/assets/images/logo.png')}
+          style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.05 }}
+          resizeMode="contain"
+        />
         <Tabs
           screenOptions={{
-            tabBarActiveTintColor: Colors.accent,
-            tabBarInactiveTintColor: Colors.textSecondary,
+            tabBarActiveTintColor: colors.accent,
+            tabBarInactiveTintColor: colors.textSecondary,
             tabBarStyle: {
-              backgroundColor: Colors.surface,
-              borderTopColor: Colors.border,
+              backgroundColor: colors.surface,
+              borderTopColor: colors.border,
               borderTopWidth: 1,
               paddingBottom: insets.bottom || 4,
               height: 58 + (insets.bottom || 0),
             },
             tabBarLabelStyle: { fontSize: 11, fontWeight: '600', letterSpacing: 0.3 },
-            headerStyle: { backgroundColor: Colors.bg },
-            headerTintColor: Colors.textPrimary,
+            headerStyle: { backgroundColor: colors.bg },
+            headerTintColor: colors.textPrimary,
             headerTitleStyle: { fontWeight: '700', fontSize: 17 },
             headerShadowVisible: false,
           }}

@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
@@ -236,7 +236,8 @@ export default function CoachDashboard() {
   const weekSessions = sessions.filter((s) => new Date(s.session_date) >= weekAgo).length;
 
   return (
-    <>
+    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
+      <Image source={require('@/assets/images/logo.png')} style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.05 }} resizeMode="contain" />
     <View style={styles.fixedTop}>
       {/* Header */}
       <View style={styles.header}>
@@ -560,7 +561,7 @@ export default function CoachDashboard() {
       onClose={() => setShowPicker(false)}
       onSelect={(id) => { setShowPicker(false); router.push(`/(coach)/client/${id}` as any); }}
     />
-    </>
+    </View>
   );
 }
 
@@ -575,13 +576,12 @@ const styles = StyleSheet.create({
   resumeSub: { color: Colors.textSecondary, fontSize: 13 },
 
   fixedTop: {
-    backgroundColor: Colors.bg,
     paddingHorizontal: HP,
     paddingTop: HP,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  scroll: { flex: 1, backgroundColor: Colors.bg },
+  scroll: { flex: 1 },
   content: { padding: HP, paddingBottom: rs(40) },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: rs(20) },
   greeting: { ...Typography.title, color: Colors.textPrimary, marginBottom: 4 },

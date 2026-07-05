@@ -1,4 +1,4 @@
-import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useState } from 'react';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,9 +6,11 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Colors, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 export default function CoachProfileScreen() {
   const { profile, signOut, refreshProfile } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const [editing, setEditing] = useState(false);
   const [phone, setPhone] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
@@ -224,7 +226,7 @@ export default function CoachProfileScreen() {
           <Ionicons name="chevron-forward" size={14} color={Colors.textSecondary} />
         </Pressable>
         <Pressable
-          style={({ pressed }) => [styles.infoRow, pressed && { opacity: 0.7 }]}
+          style={({ pressed }) => [styles.infoRow, styles.infoRowBorder, pressed && { opacity: 0.7 }]}
           onPress={() => router.push('/(coach)/revenue')}
         >
           <Ionicons name="bar-chart-outline" size={18} color={Colors.textSecondary} style={styles.rowIcon} />
@@ -234,6 +236,19 @@ export default function CoachProfileScreen() {
           </View>
           <Ionicons name="chevron-forward" size={14} color={Colors.textSecondary} />
         </Pressable>
+        <View style={styles.infoRow}>
+          <Ionicons name={isDark ? 'moon-outline' : 'sunny-outline'} size={18} color={Colors.textSecondary} style={styles.rowIcon} />
+          <View style={styles.rowContent}>
+            <Text style={styles.infoLabel}>APPEARANCE</Text>
+            <Text style={styles.infoValue}>{isDark ? 'Dark Mode' : 'Light Mode'}</Text>
+          </View>
+          <Switch
+            value={!isDark}
+            onValueChange={toggleTheme}
+            trackColor={{ false: Colors.border, true: Colors.accent + '80' }}
+            thumbColor={!isDark ? Colors.accent : Colors.textSecondary}
+          />
+        </View>
       </View>
 
       {/* Account */}
