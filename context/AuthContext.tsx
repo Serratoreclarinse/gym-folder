@@ -53,12 +53,18 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 function buildProfileFromSession(session: Session): Profile {
-  const meta = session.user.user_metadata ?? {};
+  const userMeta = session.user.user_metadata ?? {};
+  const appMeta  = session.user.app_metadata  ?? {};
+  // Admin role must come from app_metadata (server-set only, not writable by the client).
+  // Coach/client roles come from user_metadata (set by Edge Functions via service role).
+  const role = appMeta.role === 'admin'
+    ? 'admin'
+    : userMeta.role === 'coach' ? 'coach' : 'client';
   return {
     id: session.user.id,
-    name: meta.name || session.user.email || '',
+    name: userMeta.name || session.user.email || '',
     email: session.user.email || '',
-    role: meta.role === 'coach' ? 'coach' : meta.role === 'admin' ? 'admin' : 'client',
+    role,
     phone: null,
     whatsapp: null,
     instagram: null,
@@ -89,8 +95,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshProfile = async () => {
     if (!session?.user) return;
-    const meta = session.user.user_metadata ?? {};
-    const jwtRole = (meta.role === 'coach' ? 'coach' : meta.role === 'admin' ? 'admin' : 'client') as UserRole;
+    const userMeta = session.user.user_metadata ?? {};
+    const appMeta  = session.user.app_metadata  ?? {};
+    const jwtRole = (appMeta.role === 'admin' ? 'admin' : userMeta.role === 'coach' ? 'coach' : 'client') as UserRole;
     await syncProfileFromDB(session.user.id, jwtRole);
   };
 

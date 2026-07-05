@@ -9,7 +9,7 @@ DROP POLICY IF EXISTS "profiles: admin read all" ON public.profiles;
 CREATE POLICY "profiles: admin read all"
   ON public.profiles
   FOR SELECT
-  USING ((auth.jwt() -> 'user_metadata' ->> 'role') = 'admin');
+  USING ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 
 -- ── 2. admin_deactivate_account ─────────────────────────────
 -- Soft-deletes a profile by setting deactivated_at = now().
