@@ -48,6 +48,13 @@ export default function CoachTabsLayout() {
             }}
           />
           <Tabs.Screen
+            name="rankings"
+            options={{
+              title: 'Rank',
+              tabBarIcon: ({ color, size }) => <Ionicons name="podium-outline" size={size} color={color} />,
+            }}
+          />
+          <Tabs.Screen
             name="qr-scanner"
             options={{
               title: 'Scan',
