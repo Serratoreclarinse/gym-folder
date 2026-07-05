@@ -59,6 +59,13 @@ export default function AdminTabsLayout() {
           tabBarIcon: ({ color, size }) => <Ionicons name="cash-outline" size={size} color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="rankings"
+        options={{
+          title: 'Rankings',
+          tabBarIcon: ({ color, size }) => <Ionicons name="podium-outline" size={size} color={color} />,
+        }}
+      />
     </Tabs>
   );
 }
