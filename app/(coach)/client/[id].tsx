@@ -26,6 +26,7 @@ import { ClientProgressTab } from '@/components/ClientProgressTab';
 import { ClientNotesTab } from '@/components/ClientNotesTab';
 import { ClientFilesTab } from '@/components/ClientFilesTab';
 import { ClientGoalsTab } from '@/components/ClientGoalsTab';
+import { ClientPhotosTab } from '@/components/ClientPhotosTab';
 import { Colors, Typography } from '@/constants/theme';
 import { sendPushNotification } from '@/lib/pushNotifications';
 
@@ -61,7 +62,7 @@ const METHOD_LABEL: Record<string, string> = {
   hsbc: 'HSBC Oman', bank_nizwa: 'Bank Nizwa', other: 'Other',
 };
 
-type Tab = 'overview' | 'sessions' | 'progress' | 'goals' | 'notes' | 'files';
+type Tab = 'overview' | 'sessions' | 'progress' | 'goals' | 'notes' | 'files' | 'photos';
 
 const MAX_STRIKES = 3;
 
@@ -1198,7 +1199,7 @@ export default function ClientDetailScreen() {
         style={styles.tabBar}
         contentContainerStyle={styles.tabBarContent}
       >
-        {(['overview', 'sessions', 'progress', 'goals', 'notes', 'files'] as Tab[]).map((tab) => (
+        {(['overview', 'sessions', 'progress', 'goals', 'notes', 'files', 'photos'] as Tab[]).map((tab) => (
           <Pressable
             key={tab}
             style={[styles.tabBtn, activeTab === tab && styles.tabBtnActive]}
@@ -1210,7 +1211,8 @@ export default function ClientDetailScreen() {
                 : tab === 'progress' ? 'Progress'
                 : tab === 'goals' ? 'Goals'
                 : tab === 'notes' ? 'Notes'
-                : 'Files'}
+                : tab === 'files' ? 'Files'
+                : 'Photos'}
             </Text>
           </Pressable>
         ))}
@@ -1223,6 +1225,7 @@ export default function ClientDetailScreen() {
       {activeTab === 'goals' && <ClientGoalsTab clientId={id} />}
       {activeTab === 'notes' && <ClientNotesTab clientId={id} />}
       {activeTab === 'files' && <ClientFilesTab clientId={id} />}
+      {activeTab === 'photos' && <ClientPhotosTab clientId={id} />}
     </ScrollView>
     </>
   );

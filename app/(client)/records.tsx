@@ -1,15 +1,43 @@
-import { useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  Alert,
+  Dimensions,
+  Image,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as ImagePicker from 'expo-image-picker';
 import { useClientPRs, type PersonalRecord } from '@/hooks/useClientPRs';
+import { useMyProgressPhotos, type ProgressPhoto } from '@/hooks/useProgressPhotos';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Colors, Typography } from '@/constants/theme';
 
+const SCREEN_W = Dimensions.get('window').width;
+const PAD = 20;
+const GAP = 3;
+const COLS = 3;
+const THUMB = (SCREEN_W - PAD * 2 - GAP * (COLS - 1)) / COLS;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function fmtDate(iso: string) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  });
+}
+
+function fmtDateTime(iso: string) {
+  return new Date(iso).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
   });
 }
@@ -124,10 +152,78 @@ async function buildReportHtml(
 </html>`;
 }
 
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+
 export default function RecordsScreen() {
   const { user, profile } = useAuth();
   const { prs, loading, refetch } = useClientPRs();
   const [generating, setGenerating] = useState(false);
+
+  // Coach ID from active package
+  const [coachId, setCoachId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from('packages')
+      .select('coach_id')
+      .eq('client_id', user.id)
+      .eq('status', 'active')
+      .single()
+      .then(({ data }) => setCoachId(data?.coach_id ?? null));
+  }, [user?.id]);
+
+  // Progress photos
+  const { photos, sendPhoto, deletePhoto } = useMyProgressPhotos(user?.id ?? null);
+  const [photoModal, setPhotoModal] = useState(false);
+  const [pickedUri, setPickedUri] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [viewing, setViewing] = useState<ProgressPhoto | null>(null);
+
+  async function handlePickPhoto() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Allow access to your photos to send a progress photo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      allowsEditing: true,
+      quality: 0.85,
+    });
+    if (result.canceled) return;
+    setPickedUri(result.assets[0].uri);
+    setNoteText('');
+    setPhotoModal(true);
+  }
+
+  async function handleSendPhoto() {
+    if (!pickedUri || !coachId) return;
+    setSending(true);
+    const { error } = await sendPhoto(coachId, pickedUri, noteText);
+    setSending(false);
+    if (error) {
+      Alert.alert('Upload failed', error);
+    } else {
+      setPhotoModal(false);
+      setPickedUri(null);
+      setNoteText('');
+    }
+  }
+
+  function handleDeletePhoto(photo: ProgressPhoto) {
+    Alert.alert('Delete photo?', 'This will permanently remove it.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          const { error } = await deletePhoto(photo);
+          if (error) Alert.alert('Error', error);
+          if (viewing?.id === photo.id) setViewing(null);
+        },
+      },
+    ]);
+  }
 
   async function handleGenerateReport() {
     if (!user?.id) return;
@@ -152,70 +248,158 @@ export default function RecordsScreen() {
   }
 
   return (
-    <ScrollView
-      style={s.scroll}
-      contentContainerStyle={s.content}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={Colors.accent} />}
-    >
-      <View style={s.titleRow}>
-        <View>
-          <Text style={s.sectionHeading}>PERSONAL RECORDS</Text>
-          <Text style={s.sub}>Your best lift for each exercise, tracked automatically from your sessions.</Text>
+    <>
+      <ScrollView
+        style={s.scroll}
+        contentContainerStyle={s.content}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={Colors.accent} />}
+      >
+        {/* ── PRs header ── */}
+        <View style={s.titleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.sectionHeading}>PERSONAL RECORDS</Text>
+            <Text style={s.sub}>Your best lift for each exercise, tracked automatically.</Text>
+          </View>
+          <Pressable
+            style={[s.reportBtn, generating && { opacity: 0.6 }]}
+            onPress={handleGenerateReport}
+            disabled={generating}
+          >
+            <Ionicons name="document-text-outline" size={15} color={Colors.accent} />
+            <Text style={s.reportBtnText}>{generating ? 'Generating…' : 'PDF Report'}</Text>
+          </Pressable>
         </View>
-        <Pressable
-          style={[s.reportBtn, generating && { opacity: 0.6 }]}
-          onPress={handleGenerateReport}
-          disabled={generating}
-        >
-          <Ionicons name="document-text-outline" size={15} color={Colors.accent} />
-          <Text style={s.reportBtnText}>{generating ? 'Generating…' : 'PDF Report'}</Text>
-        </Pressable>
-      </View>
 
-      {!loading && prs.length === 0 ? (
-        <View style={s.empty}>
-          <Ionicons name="trophy-outline" size={56} color={Colors.border} />
-          <Text style={s.emptyTitle}>No records yet</Text>
-          <Text style={s.emptySub}>Complete sessions with weighted exercises to start tracking PRs</Text>
-        </View>
-      ) : (
-        prs.map((pr, i) => (
-          <View key={pr.exercise_name} style={s.card}>
-            <View style={s.rankCol}>
-              {i === 0 ? <Text style={s.medal}>🥇</Text>
-                : i === 1 ? <Text style={s.medal}>🥈</Text>
-                : i === 2 ? <Text style={s.medal}>🥉</Text>
-                : <Text style={s.rankNum}>{i + 1}</Text>}
-            </View>
-            <View style={s.info}>
-              <Text style={s.exerciseName}>{pr.exercise_name}</Text>
-              <View style={s.metaRow}>
-                <Ionicons name="calendar-outline" size={11} color={Colors.textSecondary} />
-                <Text style={s.metaText}>{fmtDate(pr.achieved_date)}</Text>
-                <Text style={s.dot}>·</Text>
-                <Ionicons name="repeat-outline" size={11} color={Colors.textSecondary} />
-                <Text style={s.metaText}>{pr.session_count}× performed</Text>
+        {/* ── PR list ── */}
+        {!loading && prs.length === 0 ? (
+          <View style={s.empty}>
+            <Ionicons name="trophy-outline" size={56} color={Colors.border} />
+            <Text style={s.emptyTitle}>No records yet</Text>
+            <Text style={s.emptySub}>Complete sessions with weighted exercises to start tracking PRs</Text>
+          </View>
+        ) : (
+          prs.map((pr, i) => (
+            <View key={pr.exercise_name} style={s.card}>
+              <View style={s.rankCol}>
+                {i === 0 ? <Text style={s.medal}>🥇</Text>
+                  : i === 1 ? <Text style={s.medal}>🥈</Text>
+                  : i === 2 ? <Text style={s.medal}>🥉</Text>
+                  : <Text style={s.rankNum}>{i + 1}</Text>}
+              </View>
+              <View style={s.info}>
+                <Text style={s.exerciseName}>{pr.exercise_name}</Text>
+                <View style={s.metaRow}>
+                  <Ionicons name="calendar-outline" size={11} color={Colors.textSecondary} />
+                  <Text style={s.metaText}>{fmtDate(pr.achieved_date)}</Text>
+                  <Text style={s.dot}>·</Text>
+                  <Ionicons name="repeat-outline" size={11} color={Colors.textSecondary} />
+                  <Text style={s.metaText}>{pr.session_count}× performed</Text>
+                </View>
+              </View>
+              <View style={s.weightCol}>
+                <Text style={s.weight}>{pr.best_weight_str}</Text>
+                <Text style={s.weightLabel}>BEST</Text>
               </View>
             </View>
-            <View style={s.weightCol}>
-              <Text style={s.weight}>{pr.best_weight_str}</Text>
-              <Text style={s.weightLabel}>BEST</Text>
+          ))
+        )}
+
+        {/* ── Progress Photos ── */}
+        {coachId ? (
+          <>
+            <View style={s.photoHeader}>
+              <View>
+                <Text style={s.sectionHeading}>PROGRESS PHOTOS</Text>
+                <Text style={s.sub}>Sent privately to your coach only.</Text>
+              </View>
+              <Pressable style={s.sendBtn} onPress={handlePickPhoto}>
+                <Ionicons name="camera-outline" size={15} color={Colors.accent} />
+                <Text style={s.sendBtnText}>Send Photo</Text>
+              </Pressable>
             </View>
-          </View>
-        ))
-      )}
-      <View style={{ height: 32 }} />
-    </ScrollView>
+
+            {photos.length === 0 ? (
+              <View style={s.photoEmpty}>
+                <Ionicons name="camera-outline" size={36} color={Colors.border} />
+                <Text style={s.photoEmptyText}>No photos sent yet</Text>
+              </View>
+            ) : (
+              <View style={s.photoGrid}>
+                {photos.map((p) => (
+                  <Pressable key={p.id} onPress={() => setViewing(p)}>
+                    <Image source={{ uri: p.file_url }} style={s.photoThumb} resizeMode="cover" />
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </>
+        ) : null}
+
+        <View style={{ height: 32 }} />
+      </ScrollView>
+
+      {/* ── Send Photo modal ── */}
+      <Modal visible={photoModal} transparent animationType="slide" onRequestClose={() => setPhotoModal(false)}>
+        <Pressable style={s.modalBackdrop} onPress={() => setPhotoModal(false)} />
+        <View style={s.modalSheet}>
+          <Text style={s.modalTitle}>Send to Coach</Text>
+          {pickedUri && (
+            <Image source={{ uri: pickedUri }} style={s.modalPreview} resizeMode="cover" />
+          )}
+          <TextInput
+            style={s.noteInput}
+            placeholder="Add a note (optional)"
+            placeholderTextColor={Colors.textSecondary}
+            value={noteText}
+            onChangeText={setNoteText}
+            maxLength={200}
+          />
+          <Pressable
+            style={[s.sendConfirmBtn, sending && { opacity: 0.6 }]}
+            onPress={handleSendPhoto}
+            disabled={sending}
+          >
+            <Text style={s.sendConfirmText}>{sending ? 'Sending…' : 'Send'}</Text>
+          </Pressable>
+        </View>
+      </Modal>
+
+      {/* ── Fullscreen viewer ── */}
+      <Modal visible={!!viewing} transparent animationType="fade" onRequestClose={() => setViewing(null)}>
+        <View style={s.viewerOverlay}>
+          <Pressable style={s.viewerClose} onPress={() => setViewing(null)}>
+            <Ionicons name="close" size={26} color="#fff" />
+          </Pressable>
+          <Pressable
+            style={s.viewerDelete}
+            onPress={() => viewing && handleDeletePhoto(viewing)}
+          >
+            <Ionicons name="trash-outline" size={22} color="#FF4D4D" />
+          </Pressable>
+          {viewing && (
+            <>
+              <Image source={{ uri: viewing.file_url }} style={s.viewerImg} resizeMode="contain" />
+              <View style={s.viewerCaption}>
+                <Text style={s.viewerDate}>{fmtDateTime(viewing.sent_at)}</Text>
+                {viewing.note ? <Text style={s.viewerNote}>{viewing.note}</Text> : null}
+              </View>
+            </>
+          )}
+        </View>
+      </Modal>
+    </>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const s = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: Colors.bg },
-  content: { padding: 20, paddingTop: 24 },
+  content: { padding: PAD, paddingTop: 24 },
 
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 12 },
   sectionHeading: { ...Typography.label, color: Colors.textSecondary, marginBottom: 4 },
-  sub: { ...Typography.caption, color: Colors.textSecondary, lineHeight: 18, maxWidth: 220 },
+  sub: { ...Typography.caption, color: Colors.textSecondary, lineHeight: 18 },
 
   reportBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
@@ -225,7 +409,7 @@ const s = StyleSheet.create({
   },
   reportBtnText: { ...Typography.caption, color: Colors.accent, fontWeight: '600' },
 
-  empty: { alignItems: 'center', paddingTop: 60, paddingBottom: 8, gap: 8 },
+  empty: { alignItems: 'center', paddingTop: 48, paddingBottom: 8, gap: 8 },
   emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 12 },
   emptySub: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
 
@@ -247,4 +431,57 @@ const s = StyleSheet.create({
   weightCol: { alignItems: 'flex-end' },
   weight: { ...Typography.subtitle, color: Colors.accent, fontWeight: '700' },
   weightLabel: { ...Typography.label, color: Colors.textSecondary, fontSize: 9, marginTop: 1 },
+
+  // Progress photos
+  photoHeader: {
+    flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
+    marginTop: 28, marginBottom: 14, gap: 12,
+  },
+  sendBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    borderWidth: 1, borderColor: Colors.accent + '60',
+    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
+    backgroundColor: Colors.accent + '10',
+  },
+  sendBtnText: { ...Typography.caption, color: Colors.accent, fontWeight: '600' },
+  photoEmpty: { alignItems: 'center', paddingVertical: 28, gap: 8 },
+  photoEmptyText: { ...Typography.body, color: Colors.textSecondary },
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },
+  photoThumb: { width: THUMB, height: THUMB, borderRadius: 4, backgroundColor: Colors.surface },
+
+  // Send modal
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  modalSheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 24, gap: 14,
+  },
+  modalTitle: { ...Typography.subtitle, color: Colors.textPrimary, fontWeight: '700' },
+  modalPreview: {
+    width: '100%', height: 220, borderRadius: 12,
+    backgroundColor: Colors.border,
+  },
+  noteInput: {
+    borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 10, padding: 12,
+    ...Typography.body, color: Colors.textPrimary,
+    backgroundColor: Colors.bg,
+  },
+  sendConfirmBtn: {
+    backgroundColor: Colors.accent, borderRadius: 12,
+    padding: 14, alignItems: 'center',
+  },
+  sendConfirmText: { ...Typography.subtitle, color: '#fff', fontWeight: '700' },
+
+  // Viewer
+  viewerOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.92)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  viewerClose: { position: 'absolute', top: 52, right: 20, zIndex: 10, padding: 8 },
+  viewerDelete: { position: 'absolute', top: 52, left: 20, zIndex: 10, padding: 8 },
+  viewerImg: { width: SCREEN_W, height: SCREEN_W * 1.2 },
+  viewerCaption: { marginTop: 16, alignItems: 'center', gap: 4, paddingHorizontal: 24 },
+  viewerDate: { ...Typography.caption, color: 'rgba(255,255,255,0.6)' },
+  viewerNote: { ...Typography.body, color: '#fff', textAlign: 'center' },
 });
