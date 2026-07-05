@@ -7,6 +7,7 @@ import { useClientBookingRequests } from '@/hooks/useBookingRequests';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { supabase } from '@/lib/supabase';
 import { registerPushToken, sendPushNotification } from '@/lib/pushNotifications';
+import * as Notifications from 'expo-notifications';
 import { Colors, Typography } from '@/constants/theme';
 import { HP, rs } from '@/constants/responsive';
 import { Ionicons } from '@expo/vector-icons';
@@ -167,6 +168,31 @@ function formatCountdown(secs: number): string {
 }
 
 // ─── Screen ──────────────────────────────────────────────────
+function computeStreak(sessions: { session_date: string; status: string | null }[]): number {
+  const attended = sessions.filter(s => s.status !== 'absent');
+  if (attended.length === 0) return 0;
+  function weekKey(date: Date): number {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return d.getUTCFullYear() * 100 + Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  }
+  const weekSet = new Set<number>();
+  for (const s of attended) weekSet.add(weekKey(new Date(s.session_date + 'T00:00:00')));
+  const now = new Date();
+  let check = new Date(now);
+  if (!weekSet.has(weekKey(check))) {
+    check.setDate(check.getDate() - 7);
+    if (!weekSet.has(weekKey(check))) return 0;
+  }
+  let streak = 0;
+  while (weekSet.has(weekKey(check)) && streak < 200) {
+    streak++;
+    check.setDate(check.getDate() - 7);
+  }
+  return streak;
+}
+
 export default function ClientProgressScreen() {
   const { profile, user } = useAuth();
   const firstName = profile?.name?.split(' ')[0] ?? 'there';
@@ -183,6 +209,30 @@ export default function ClientProgressScreen() {
   useEffect(() => {
     if (user?.id) registerPushToken(user.id);
   }, [user?.id]);
+
+  // ── Session reminders (1 hr before each upcoming session) ───
+  useEffect(() => {
+    if (!upcomingScheduled.length) return;
+    let cancelled = false;
+    (async () => {
+      await Notifications.cancelAllScheduledNotificationsAsync();
+      if (cancelled) return;
+      for (const s of upcomingScheduled) {
+        const fireAt = new Date(new Date(s.scheduled_at).getTime() - 60 * 60 * 1000);
+        if (fireAt > new Date()) {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: '⏰ Session in 1 hour',
+              body: `Your training session starts at ${new Date(s.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Get ready!`,
+              sound: true,
+            },
+            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: fireAt },
+          });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [upcomingScheduled]);
 
   // ── Strike count ────────────────────────────────────────────
   const [strikeCount, setStrikeCount] = useState(0);
@@ -657,6 +707,24 @@ export default function ClientProgressScreen() {
         <PackageCard pkg={pkg} />
       ) : null}
 
+      {/* Attendance streak */}
+      {(() => {
+        const streak = computeStreak(sessions);
+        if (streak === 0) return null;
+        return (
+          <View style={styles.streakCard}>
+            <Text style={styles.streakFlame}>🔥</Text>
+            <View style={styles.streakInfo}>
+              <Text style={styles.streakNum}>{streak}</Text>
+              <Text style={styles.streakLabel}>week streak</Text>
+            </View>
+            <Text style={styles.streakSub}>
+              {streak >= 4 ? 'Unstoppable!' : streak >= 2 ? 'Keep it up!' : 'Great start!'}
+            </Text>
+          </View>
+        );
+      })()}
+
       {/* Recent workouts */}
       <Text style={[styles.sectionTitle, { marginTop: 28 }]}>RECENT WORKOUTS</Text>
       {!loading && recentSessions.length === 0 ? (
@@ -726,6 +794,19 @@ const styles = StyleSheet.create({
   date:     { ...Typography.body, color: Colors.textSecondary },
 
   sectionTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 14 },
+
+  streakCard: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#FF6B3514',
+    borderRadius: 14, borderWidth: 1, borderColor: '#FF6B3530',
+    paddingVertical: 14, paddingHorizontal: 16,
+    marginTop: 10, gap: 12,
+  },
+  streakFlame: { fontSize: 28 },
+  streakInfo: { alignItems: 'center', minWidth: 44 },
+  streakNum: { ...Typography.title, color: '#FF6B35', fontWeight: '800', lineHeight: 30 },
+  streakLabel: { ...Typography.label, color: '#FF6B35', fontSize: 10, opacity: 0.8 },
+  streakSub: { ...Typography.body, color: Colors.textSecondary, flex: 1, textAlign: 'right' },
 
   // Next session card
   nextCard: {
