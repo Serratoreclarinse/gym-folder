@@ -25,6 +25,7 @@ export default function AdminRootLayout() {
       <Stack.Screen name="coach/[id]" options={{ title: 'Coach Details' }} />
       <Stack.Screen name="client/[id]" options={{ title: 'Client Details' }} />
       <Stack.Screen name="recycle-bin" options={{ title: 'Recycle Bin' }} />
+      <Stack.Screen name="invoice/[paymentId]" options={{ title: 'Invoice' }} />
     </Stack>
   );
 }
