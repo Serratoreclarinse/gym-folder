@@ -10,6 +10,7 @@ ALTER TABLE public.packages
 -- ── 2. admin_update_profile ─────────────────────────────────
 -- Admin updates a user's name + phone. SECURITY DEFINER bypasses
 -- RLS so admin can touch any profile row.
+DROP FUNCTION IF EXISTS public.admin_update_profile(uuid, text, text);
 CREATE OR REPLACE FUNCTION public.admin_update_profile(
   p_user_id UUID,
   p_name    TEXT,
@@ -30,6 +31,7 @@ $$;
 
 -- ── 3. admin_deactivate_package ─────────────────────────────
 -- Marks a package as expired immediately (manual override).
+DROP FUNCTION IF EXISTS public.admin_deactivate_package(uuid);
 CREATE OR REPLACE FUNCTION public.admin_deactivate_package(
   p_package_id UUID
 )
@@ -48,6 +50,7 @@ $$;
 -- ── 4. admin_add_sessions ────────────────────────────────────
 -- Adds N sessions to an existing package and re-activates it
 -- if it was expired.
+DROP FUNCTION IF EXISTS public.admin_add_sessions(uuid, integer);
 CREATE OR REPLACE FUNCTION public.admin_add_sessions(
   p_package_id      UUID,
   p_sessions_to_add INTEGER
