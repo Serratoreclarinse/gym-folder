@@ -16,8 +16,10 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as ImagePicker from 'expo-image-picker';
+import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 import { useClientPRs, type PersonalRecord } from '@/hooks/useClientPRs';
 import { useMyProgressPhotos, type ProgressPhoto } from '@/hooks/useProgressPhotos';
+import { useMyMeasurements } from '@/hooks/useBodyMeasurements';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Colors, Typography } from '@/constants/theme';
@@ -27,6 +29,9 @@ const PAD = 20;
 const GAP = 3;
 const COLS = 3;
 const THUMB = (SCREEN_W - PAD * 2 - GAP * (COLS - 1)) / COLS;
+const CHART_W = SCREEN_W - PAD * 2;
+const CHART_H = 140;
+const CP = { top: 12, right: 8, bottom: 28, left: 36 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -154,6 +159,39 @@ async function buildReportHtml(
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
+function MiniWeightChart({ points }: { points: { logged_at: string; weight_kg: number }[] }) {
+  if (points.length < 2) return null;
+  const weights = points.map((p) => p.weight_kg);
+  const minW = Math.min(...weights), maxW = Math.max(...weights);
+  const range = maxW - minW || 1;
+  const iW = CHART_W - CP.left - CP.right;
+  const iH = CHART_H - CP.top - CP.bottom;
+  const x = (i: number) => CP.left + (i / (points.length - 1)) * iW;
+  const y = (w: number) => CP.top + (1 - (w - minW) / range) * iH;
+  const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(p.weight_kg)}`).join(' ');
+  const yLabels = [minW, maxW];
+  return (
+    <Svg width={CHART_W} height={CHART_H}>
+      {yLabels.map((v, i) => (
+        <SvgText key={i} x={CP.left - 4} y={y(v) + 4} fontSize={9} fill={Colors.textSecondary} textAnchor="end">
+          {v.toFixed(1)}
+        </SvgText>
+      ))}
+      <Line x1={CP.left} y1={CP.top} x2={CP.left} y2={CP.top + iH} stroke={Colors.border} strokeWidth={1} />
+      <Line x1={CP.left} y1={CP.top + iH} x2={CP.left + iW} y2={CP.top + iH} stroke={Colors.border} strokeWidth={1} />
+      <Path d={d} stroke={Colors.accent} strokeWidth={2} fill="none" />
+      {points.map((p, i) => (
+        <Circle key={i} cx={x(i)} cy={y(p.weight_kg)} r={3} fill={Colors.accent} />
+      ))}
+      {[0, points.length - 1].map((i) => (
+        <SvgText key={i} x={x(i)} y={CHART_H - 4} fontSize={9} fill={Colors.textSecondary} textAnchor={i === 0 ? 'start' : 'end'}>
+          {new Date(points[i].logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+        </SvgText>
+      ))}
+    </Svg>
+  );
+}
+
 export default function RecordsScreen() {
   const { user, profile } = useAuth();
   const { prs, loading, refetch } = useClientPRs();
@@ -171,6 +209,59 @@ export default function RecordsScreen() {
       .single()
       .then(({ data }) => setCoachId(data?.coach_id ?? null));
   }, [user?.id]);
+
+  // Body measurements
+  const { measurements, upsert: upsertMeasurement } = useMyMeasurements(user?.id ?? undefined);
+  const [measModal, setMeasModal] = useState(false);
+  const [mWeight, setMWeight] = useState('');
+  const [mFat, setMFat] = useState('');
+  const [mMuscle, setMMuscle] = useState('');
+  const [mChest, setMChest] = useState('');
+  const [mWaist, setMWaist] = useState('');
+  const [mHips, setMHips] = useState('');
+  const [mArms, setMArms] = useState('');
+  const [mThighs, setMThighs] = useState('');
+  const [mNotes, setMNotes] = useState('');
+  const [savingMeas, setSavingMeas] = useState(false);
+
+  function openMeasModal() {
+    const today = measurements.find((m) => m.logged_at === new Date().toISOString().slice(0, 10));
+    setMWeight(today?.weight_kg?.toString() ?? '');
+    setMFat(today?.body_fat_pct?.toString() ?? '');
+    setMMuscle(today?.muscle_mass_kg?.toString() ?? '');
+    setMChest(today?.chest_cm?.toString() ?? '');
+    setMWaist(today?.waist_cm?.toString() ?? '');
+    setMHips(today?.hips_cm?.toString() ?? '');
+    setMArms(today?.arms_cm?.toString() ?? '');
+    setMThighs(today?.thighs_cm?.toString() ?? '');
+    setMNotes(today?.notes ?? '');
+    setMeasModal(true);
+  }
+
+  async function handleSaveMeasurement() {
+    const parse = (v: string) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+    if (!mWeight && !mFat && !mMuscle && !mChest && !mWaist && !mHips && !mArms && !mThighs) {
+      Alert.alert('Nothing to save', 'Enter at least one measurement.');
+      return;
+    }
+    setSavingMeas(true);
+    const err = await upsertMeasurement({
+      client_id: user!.id,
+      logged_at: new Date().toISOString().slice(0, 10),
+      weight_kg: parse(mWeight),
+      body_fat_pct: parse(mFat),
+      muscle_mass_kg: parse(mMuscle),
+      chest_cm: parse(mChest),
+      waist_cm: parse(mWaist),
+      hips_cm: parse(mHips),
+      arms_cm: parse(mArms),
+      thighs_cm: parse(mThighs),
+      notes: mNotes.trim() || null,
+    });
+    setSavingMeas(false);
+    if (err) { Alert.alert('Error', err); return; }
+    setMeasModal(false);
+  }
 
   // Progress photos
   const { photos, sendPhoto, deletePhoto } = useMyProgressPhotos(user?.id ?? null);
@@ -335,10 +426,129 @@ export default function RecordsScreen() {
           </>
         ) : null}
 
+        {/* ── Body Measurements ── */}
+        <View style={s.measHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.sectionHeading}>BODY MEASUREMENTS</Text>
+            <Text style={s.sub}>Track your weight and body measurements over time.</Text>
+          </View>
+          <Pressable style={s.sendBtn} onPress={openMeasModal}>
+            <Ionicons name="add-outline" size={15} color={Colors.accent} />
+            <Text style={s.sendBtnText}>Log Today</Text>
+          </Pressable>
+        </View>
+
+        {measurements.length === 0 ? (
+          <View style={s.photoEmpty}>
+            <Ionicons name="body-outline" size={36} color={Colors.border} />
+            <Text style={s.photoEmptyText}>No measurements logged yet</Text>
+          </View>
+        ) : (
+          <>
+            {(() => {
+              const chartPoints = [...measurements]
+                .filter((m) => m.weight_kg != null)
+                .reverse()
+                .map((m) => ({ logged_at: m.logged_at, weight_kg: m.weight_kg as number }));
+              return chartPoints.length >= 2 ? (
+                <View style={s.measChartCard}>
+                  <Text style={[s.sectionHeading, { marginBottom: 8 }]}>WEIGHT TREND</Text>
+                  <MiniWeightChart points={chartPoints} />
+                </View>
+              ) : null;
+            })()}
+            {measurements.slice(0, 10).map((m) => (
+              <View key={m.id} style={s.measRow}>
+                <Text style={s.measDate}>
+                  {new Date(m.logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </Text>
+                <View style={s.measStats}>
+                  {m.weight_kg != null && <Text style={s.measStat}>{m.weight_kg} kg</Text>}
+                  {m.body_fat_pct != null && <Text style={s.measStatMuted}>{m.body_fat_pct}% fat</Text>}
+                  {m.muscle_mass_kg != null && <Text style={s.measStatMuted}>{m.muscle_mass_kg} kg muscle</Text>}
+                  {m.waist_cm != null && <Text style={s.measStatMuted}>waist {m.waist_cm} cm</Text>}
+                </View>
+              </View>
+            ))}
+          </>
+        )}
+
         <View style={{ height: 32 }} />
       </ScrollView>
 
       {/* ── Send Photo modal ── */}
+      {/* ── Log Measurement modal ── */}
+      <Modal visible={measModal} transparent animationType="slide" onRequestClose={() => setMeasModal(false)}>
+        <Pressable style={s.modalBackdrop} onPress={() => setMeasModal(false)} />
+        <ScrollView style={s.measModalSheet} keyboardShouldPersistTaps="handled">
+          <Text style={s.modalTitle}>Log Measurements</Text>
+          <Text style={[s.sub, { marginBottom: 16 }]}>Today — {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</Text>
+
+          <View style={s.measInputRow}>
+            <View style={s.measInputGroup}>
+              <Text style={s.measInputLabel}>Weight (kg)</Text>
+              <TextInput style={s.measInput} placeholder="e.g. 72.5" placeholderTextColor={Colors.textSecondary}
+                keyboardType="decimal-pad" value={mWeight} onChangeText={setMWeight} />
+            </View>
+            <View style={s.measInputGroup}>
+              <Text style={s.measInputLabel}>Body fat (%)</Text>
+              <TextInput style={s.measInput} placeholder="e.g. 18.0" placeholderTextColor={Colors.textSecondary}
+                keyboardType="decimal-pad" value={mFat} onChangeText={setMFat} />
+            </View>
+          </View>
+          <View style={s.measInputRow}>
+            <View style={s.measInputGroup}>
+              <Text style={s.measInputLabel}>Muscle mass (kg)</Text>
+              <TextInput style={s.measInput} placeholder="e.g. 35.0" placeholderTextColor={Colors.textSecondary}
+                keyboardType="decimal-pad" value={mMuscle} onChangeText={setMMuscle} />
+            </View>
+            <View style={s.measInputGroup}>
+              <Text style={s.measInputLabel}>Chest (cm)</Text>
+              <TextInput style={s.measInput} placeholder="e.g. 95" placeholderTextColor={Colors.textSecondary}
+                keyboardType="decimal-pad" value={mChest} onChangeText={setMChest} />
+            </View>
+          </View>
+          <View style={s.measInputRow}>
+            <View style={s.measInputGroup}>
+              <Text style={s.measInputLabel}>Waist (cm)</Text>
+              <TextInput style={s.measInput} placeholder="e.g. 80" placeholderTextColor={Colors.textSecondary}
+                keyboardType="decimal-pad" value={mWaist} onChangeText={setMWaist} />
+            </View>
+            <View style={s.measInputGroup}>
+              <Text style={s.measInputLabel}>Hips (cm)</Text>
+              <TextInput style={s.measInput} placeholder="e.g. 98" placeholderTextColor={Colors.textSecondary}
+                keyboardType="decimal-pad" value={mHips} onChangeText={setMHips} />
+            </View>
+          </View>
+          <View style={s.measInputRow}>
+            <View style={s.measInputGroup}>
+              <Text style={s.measInputLabel}>Arms (cm)</Text>
+              <TextInput style={s.measInput} placeholder="e.g. 35" placeholderTextColor={Colors.textSecondary}
+                keyboardType="decimal-pad" value={mArms} onChangeText={setMArms} />
+            </View>
+            <View style={s.measInputGroup}>
+              <Text style={s.measInputLabel}>Thighs (cm)</Text>
+              <TextInput style={s.measInput} placeholder="e.g. 58" placeholderTextColor={Colors.textSecondary}
+                keyboardType="decimal-pad" value={mThighs} onChangeText={setMThighs} />
+            </View>
+          </View>
+          <TextInput
+            style={[s.measInput, { marginBottom: 16 }]}
+            placeholder="Notes (optional)"
+            placeholderTextColor={Colors.textSecondary}
+            value={mNotes} onChangeText={setMNotes}
+          />
+          <Pressable
+            style={[s.sendConfirmBtn, savingMeas && { opacity: 0.6 }]}
+            onPress={handleSaveMeasurement}
+            disabled={savingMeas}
+          >
+            <Text style={s.sendConfirmText}>{savingMeas ? 'Saving…' : 'Save'}</Text>
+          </Pressable>
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </Modal>
+
       <Modal visible={photoModal} transparent animationType="slide" onRequestClose={() => setPhotoModal(false)}>
         <Pressable style={s.modalBackdrop} onPress={() => setPhotoModal(false)} />
         <View style={s.modalSheet}>
@@ -472,6 +682,41 @@ const s = StyleSheet.create({
     padding: 14, alignItems: 'center',
   },
   sendConfirmText: { ...Typography.subtitle, color: '#fff', fontWeight: '700' },
+
+  // Body measurements
+  measHeader: {
+    flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
+    marginTop: 28, marginBottom: 14, gap: 12,
+  },
+  measChartCard: {
+    backgroundColor: Colors.surface, borderRadius: 14,
+    borderWidth: 1, borderColor: Colors.border,
+    padding: 14, marginBottom: 8,
+  },
+  measRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.surface, borderRadius: 12,
+    borderWidth: 1, borderColor: Colors.border,
+    paddingVertical: 10, paddingHorizontal: 14,
+    marginBottom: 6, gap: 12,
+  },
+  measDate: { width: 52, ...Typography.caption, color: Colors.textSecondary },
+  measStats: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  measStat: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
+  measStatMuted: { ...Typography.caption, color: Colors.textSecondary },
+  measModalSheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 24,
+  },
+  measInputRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+  measInputGroup: { flex: 1, gap: 5 },
+  measInputLabel: { ...Typography.label, color: Colors.textSecondary, fontSize: 10 },
+  measInput: {
+    borderWidth: 1, borderColor: Colors.border, borderRadius: 10,
+    padding: 11, ...Typography.body, color: Colors.textPrimary,
+    backgroundColor: Colors.bg,
+  },
 
   // Viewer
   viewerOverlay: {
