@@ -245,7 +245,7 @@ export default function CoachDashboard() {
             <Ionicons name="menu-outline" size={22} color={Colors.accent} />
           </Pressable>
           <View>
-            <Text style={styles.greeting}>Hey, {firstName} 👊</Text>
+            <Text style={styles.greeting}>Hi Coach, {firstName} 👊</Text>
             <Text style={styles.date}>
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </Text>

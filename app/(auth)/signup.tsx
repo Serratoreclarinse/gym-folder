@@ -80,7 +80,7 @@ export default function SignUpScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <Image
-        source={require('@/assets/images/logo.jpg')}
+        source={require('@/assets/images/logo.png')}
         style={styles.bgLogo}
         resizeMode="contain"
       />
@@ -88,7 +88,7 @@ export default function SignUpScreen() {
         <View style={[isWeb ? styles.card : undefined, cardWidth !== undefined && { width: cardWidth }]}>
         <View style={styles.logoWrap}>
           <Image
-            source={require('@/assets/images/logo.jpg')}
+            source={require('@/assets/images/logo.png')}
             style={styles.logo}
             resizeMode="contain"
           />
@@ -218,8 +218,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   logo: {
-    width: 120,
-    height: 48,
+    width: 200,
+    height: 80,
   },
   heading: {
     ...Typography.hero,
