@@ -25,15 +25,15 @@ export const darkColors: ColorScheme = {
 };
 
 export const lightColors: ColorScheme = {
-  accent: '#E8001D',
-  accentDim: '#E8001D18',
-  bg: '#F2F2F7',
-  surface: '#FFFFFF',
-  surfaceRaised: '#F8F8F8',
-  border: '#E0E0E0',
-  textPrimary: '#0A0A0A',
-  textSecondary: '#666666',
-  danger: '#D32F2F',
+  accent: '#C8001A',
+  accentDim: '#C8001A18',
+  bg: '#EAEAEF',
+  surface: '#F8F8FC',
+  surfaceRaised: '#FFFFFF',
+  border: '#D4D4DC',
+  textPrimary: '#111111',
+  textSecondary: '#5A5A6E',
+  danger: '#C62828',
 };
 
 // Static fallback — screens not yet migrated to useTheme() will keep using this (always dark)

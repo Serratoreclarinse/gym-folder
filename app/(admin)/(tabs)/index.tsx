@@ -48,7 +48,7 @@ function daysUntil(dateStr: string): number {
 export default function AdminDashboardScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
-  const { colors } = useTheme();
+  const { colors, isDark, toggleTheme } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
 
   const [stats, setStats]   = useState<Stats | null>(null);
@@ -221,8 +221,13 @@ export default function AdminDashboardScreen() {
       <View style={[s.inner, isDesktop && s.innerDesktop]}>
         <View style={s.header}>
           <Text style={[s.brand, isDesktop && s.brandDesktop]}>ELEVATE</Text>
-          <View style={s.adminPill}>
-            <Text style={s.adminPillText}>ADMIN</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Pressable onPress={toggleTheme} style={s.themeBtn} hitSlop={8}>
+              <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={16} color={colors.textSecondary} />
+            </Pressable>
+            <View style={s.adminPill}>
+              <Text style={s.adminPillText}>ADMIN</Text>
+            </View>
           </View>
         </View>
 
@@ -326,6 +331,11 @@ function makeStyles(c: ColorScheme) {
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 },
   brand: { fontSize: 18, fontWeight: '800', color: c.textPrimary, letterSpacing: 2 },
   brandDesktop: { fontSize: 22 },
+  themeBtn: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
+    justifyContent: 'center', alignItems: 'center',
+  },
   adminPill: {
     backgroundColor: c.accent + '18', borderRadius: 8,
     paddingHorizontal: 10, paddingVertical: 4,
