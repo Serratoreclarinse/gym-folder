@@ -258,14 +258,9 @@ export default function CoachDashboard() {
             </Text>
           </View>
         </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Pressable style={styles.iconBtn} onPress={() => router.push('/(coach)/exercise-library' as any)}>
-            <Ionicons name="library-outline" size={18} color={colors.accent} />
-          </Pressable>
-          <Pressable style={styles.iconBtn} onPress={() => router.push('/(coach)/announcements' as any)}>
-            <Ionicons name="megaphone-outline" size={18} color={colors.accent} />
-          </Pressable>
-        </View>
+        <Pressable style={styles.iconBtn} onPress={() => router.push('/(coach)/announcements' as any)}>
+          <Ionicons name="megaphone-outline" size={18} color={colors.accent} />
+        </Pressable>
       </View>
 
       {(cError || sError) && (

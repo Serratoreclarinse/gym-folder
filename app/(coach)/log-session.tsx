@@ -830,6 +830,10 @@ export default function LogSessionScreen() {
                 <Text style={styles.historyBtnText}>HISTORY</Text>
               </Pressable>
             )}
+            <Pressable style={styles.historyBtn} onPress={() => router.push('/(coach)/exercise-library' as any)}>
+              <Ionicons name="library-outline" size={14} color={colors.accent} />
+              <Text style={styles.historyBtnText}>LIBRARY</Text>
+            </Pressable>
             <Pressable style={styles.addExBtn} onPress={addExercise}>
               <Ionicons name="add" size={16} color={colors.bg} />
               <Text style={styles.addExBtnText}>ADD</Text>
