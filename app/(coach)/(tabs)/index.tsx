@@ -258,12 +258,12 @@ export default function CoachDashboard() {
             </Text>
           </View>
         </View>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Pressable style={styles.addBtn} onPress={() => router.push('/(coach)/exercise-library' as any)}>
-            <Ionicons name="library-outline" size={20} color={colors.accent} />
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Pressable style={styles.iconBtn} onPress={() => router.push('/(coach)/exercise-library' as any)}>
+            <Ionicons name="library-outline" size={18} color={colors.accent} />
           </Pressable>
-          <Pressable style={styles.addBtn} onPress={() => router.push('/(coach)/announcements' as any)}>
-            <Ionicons name="megaphone-outline" size={20} color={colors.accent} />
+          <Pressable style={styles.iconBtn} onPress={() => router.push('/(coach)/announcements' as any)}>
+            <Ionicons name="megaphone-outline" size={18} color={colors.accent} />
           </Pressable>
         </View>
       </View>
@@ -600,6 +600,16 @@ function makeStyles(c: ColorScheme) {
       justifyContent: 'center',
       alignItems: 'center',
     },
+    iconBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: c.accent + '15',
+      borderWidth: 1,
+      borderColor: c.accent + '40',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
     statsStrip: {
       flexDirection: 'row', alignItems: 'center',
       backgroundColor: c.surface, borderRadius: 16,
@@ -613,7 +623,7 @@ function makeStyles(c: ColorScheme) {
     logSessionBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
       backgroundColor: c.accent, borderRadius: 14, paddingVertical: 16,
-      marginTop: 4, marginBottom: 10,
+      marginTop: 16, marginBottom: 12,
     },
     logSessionText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1 },
     sectionTitle: { ...Typography.label, color: c.textSecondary },
@@ -707,7 +717,7 @@ function makeStyles(c: ColorScheme) {
     // Emergency button
     emergencyBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-      backgroundColor: c.danger + '15', borderRadius: 14, paddingVertical: 13, marginBottom: 16,
+      backgroundColor: c.danger + '15', borderRadius: 14, paddingVertical: 13, marginBottom: 20,
       borderWidth: 1, borderColor: c.danger + '50',
     },
     emergencyBtnText: { color: c.danger, fontSize: 13, fontWeight: '800', letterSpacing: 1 },

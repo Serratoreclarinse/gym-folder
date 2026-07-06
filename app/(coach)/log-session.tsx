@@ -1030,8 +1030,8 @@ export default function LogSessionScreen() {
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-  kav: { flex: 1 },
-  scroll: { flex: 1 },
+  kav: { flex: 1, backgroundColor: c.bg },
+  scroll: { flex: 1, backgroundColor: c.bg },
   content: { padding: 20, paddingBottom: 60 },
   modeToggle: { flexDirection: 'row', backgroundColor: c.surface, borderRadius: 12, padding: 4, marginBottom: 24, borderWidth: 1, borderColor: c.border },
   modeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 9 },
