@@ -1278,5 +1278,5 @@ function makeStyles(c: ColorScheme) {
     marginTop: 10,
   },
   startWorkoutBtnText: { color: c.accent, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
-});\r
+});
 }

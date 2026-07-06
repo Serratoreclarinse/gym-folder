@@ -1030,5 +1030,5 @@ function makeRpStyles(colors: ColorScheme) {
     paddingVertical: 13, alignItems: 'center',
   },
   cancelText: { color: colors.textSecondary, fontWeight: '700', fontSize: 15 },
-});\r
+});
 }

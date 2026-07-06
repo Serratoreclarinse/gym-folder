@@ -764,5 +764,5 @@ function makeWmStyles(colors: ColorScheme) {
   },
   sendBtnDim: { backgroundColor: colors.border + '30', borderColor: colors.border },
   sendBtnText: { fontSize: 12, fontWeight: '700', color: '#25D366' },
-});\r
+});
 }

@@ -536,5 +536,5 @@ function makeStyles(c: ColorScheme) {
   pickOptSel: { backgroundColor: c.accent + '18' },
   pickOptTxt: { ...Typography.body, color: c.textPrimary },
   pickOptTxtSel: { color: c.accent, fontWeight: '600' },
-});\r
+});
 }

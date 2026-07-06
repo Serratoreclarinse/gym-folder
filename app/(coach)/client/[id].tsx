@@ -1638,5 +1638,5 @@ function makeStyles(c: ColorScheme) {
   reqPayBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
   payReqSuccess: { alignItems: 'center', paddingVertical: 24, gap: 10 },
   payReqSuccessText: { fontSize: 16, fontWeight: '700', color: '#4CAF50' },
-});\r
+});
 }

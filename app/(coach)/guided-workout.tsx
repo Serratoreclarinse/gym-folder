@@ -737,5 +737,5 @@ function makeStyles(c: ColorScheme) {
   },
   summaryLabel: { ...Typography.body, color: c.textSecondary },
   summaryValue: { ...Typography.body, color: c.textPrimary, fontWeight: '700' },
-});\r
+});
 }
