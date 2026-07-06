@@ -580,14 +580,14 @@ function makeStyles(c: ColorScheme) {
     resumeSub: { color: c.textSecondary, fontSize: 13 },
 
     fixedTop: {
-      paddingHorizontal: HP,
-      paddingTop: HP,
+      paddingBottom: 16,
       borderBottomWidth: 1,
       borderBottomColor: c.border,
+      marginBottom: 4,
     },
     scroll: { flex: 1, backgroundColor: c.bg },
     content: { padding: HP, paddingBottom: rs(40) },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: rs(20) },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: rs(12) },
     greeting: { ...Typography.title, color: c.textPrimary, marginBottom: 4 },
     date: { ...Typography.body, color: c.textSecondary },
     addBtn: {
@@ -623,7 +623,7 @@ function makeStyles(c: ColorScheme) {
     logSessionBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
       backgroundColor: c.accent, borderRadius: 14, paddingVertical: 16,
-      marginTop: 16, marginBottom: 12,
+      marginTop: 12, marginBottom: 12,
     },
     logSessionText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1 },
     sectionTitle: { ...Typography.label, color: c.textSecondary },

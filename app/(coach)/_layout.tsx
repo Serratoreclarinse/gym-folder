@@ -29,7 +29,7 @@ export default function CoachRootLayout() {
       />
       <Stack.Screen
         name="log-session"
-        options={{ title: 'Log Session', presentation: 'modal', animation: 'slide_from_bottom' }}
+        options={{ title: 'Log Session', presentation: 'modal', animation: 'slide_from_bottom', contentStyle: { backgroundColor: colors.bg } }}
       />
       <Stack.Screen
         name="client/[id]"
