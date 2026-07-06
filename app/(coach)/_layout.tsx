@@ -75,6 +75,10 @@ export default function CoachRootLayout() {
         name="chat"
         options={{ title: 'Messages' }}
       />
+      <Stack.Screen
+        name="exercise-library"
+        options={{ title: 'Exercise Library' }}
+      />
     </Stack>
     </View>
   );

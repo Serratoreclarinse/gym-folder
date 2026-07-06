@@ -259,6 +259,9 @@ export default function CoachDashboard() {
           </View>
         </View>
         <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Pressable style={styles.addBtn} onPress={() => router.push('/(coach)/exercise-library' as any)}>
+            <Ionicons name="library-outline" size={20} color={colors.accent} />
+          </Pressable>
           <Pressable style={styles.addBtn} onPress={() => router.push('/(coach)/announcements' as any)}>
             <Ionicons name="megaphone-outline" size={20} color={colors.accent} />
           </Pressable>
