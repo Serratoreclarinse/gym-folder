@@ -18,7 +18,7 @@ export default function AdminRootLayout() {
           headerTintColor: colors.textPrimary,
           headerTitleStyle: { fontWeight: '700', fontSize: 17 },
           headerShadowVisible: false,
-          contentStyle: { backgroundColor: 'transparent' },
+          contentStyle: { backgroundColor: colors.bg },
           animation: 'slide_from_right',
         }}
       >

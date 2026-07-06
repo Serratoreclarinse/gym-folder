@@ -18,7 +18,7 @@ export default function CoachRootLayout() {
           headerTintColor: colors.textPrimary,
           headerTitleStyle: { fontWeight: '700', fontSize: 17 },
           headerShadowVisible: false,
-          contentStyle: { backgroundColor: 'transparent' },
+          contentStyle: { backgroundColor: colors.bg },
           animation: 'slide_from_right',
         }}
       >
@@ -29,7 +29,7 @@ export default function CoachRootLayout() {
       />
       <Stack.Screen
         name="log-session"
-        options={{ title: 'Log Session', presentation: 'modal', animation: 'slide_from_bottom', contentStyle: { backgroundColor: colors.bg } }}
+        options={{ title: 'Log Session', presentation: 'modal', animation: 'slide_from_bottom' }}
       />
       <Stack.Screen
         name="client/[id]"
