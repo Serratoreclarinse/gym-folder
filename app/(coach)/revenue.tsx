@@ -914,13 +914,13 @@ function makeFmStyles(colors: ColorScheme) {
   // Client dropdown
   select: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: c.surfaceRaised, borderRadius: 10,
+    backgroundColor: colors.surfaceRaised, borderRadius: 10,
     borderWidth: 1, borderColor: colors.border,
     paddingHorizontal: 14, paddingVertical: 12,
   },
   selectText: { ...Typography.body, color: colors.textPrimary, flex: 1 },
   dropdown: {
-    backgroundColor: c.surfaceRaised, borderRadius: 10,
+    backgroundColor: colors.surfaceRaised, borderRadius: 10,
     borderWidth: 1, borderColor: colors.border,
     marginTop: 4, maxHeight: 200, overflow: 'hidden',
   },
@@ -934,7 +934,7 @@ function makeFmStyles(colors: ColorScheme) {
 
   // Inputs
   input: {
-    backgroundColor: c.surfaceRaised, borderRadius: 10,
+    backgroundColor: colors.surfaceRaised, borderRadius: 10,
     borderWidth: 1, borderColor: colors.border,
     paddingHorizontal: 14, paddingVertical: 12,
     color: colors.textPrimary, fontSize: 15,
@@ -948,7 +948,7 @@ function makeFmStyles(colors: ColorScheme) {
   segRow: { flexDirection: 'row', gap: 8 },
   seg: {
     flex: 1, paddingVertical: 10, borderRadius: 10,
-    backgroundColor: c.surfaceRaised,
+    backgroundColor: colors.surfaceRaised,
     borderWidth: 1, borderColor: colors.border,
     alignItems: 'center',
   },
@@ -961,7 +961,7 @@ function makeFmStyles(colors: ColorScheme) {
   methodList: { gap: 4 },
   methodOption: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: c.surfaceRaised, borderRadius: 10,
+    backgroundColor: colors.surfaceRaised, borderRadius: 10,
     borderWidth: 1, borderColor: colors.border,
     paddingHorizontal: 14, paddingVertical: 10,
   },
@@ -982,6 +982,7 @@ function makeFmStyles(colors: ColorScheme) {
   },
   saveText: { color: colors.bg, fontWeight: '800', fontSize: 15 },
 });
+}
 
 // Report modal styles
 function makeRpStyles(colors: ColorScheme) {
