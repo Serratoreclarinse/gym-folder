@@ -19,7 +19,7 @@ export default function CoachTabsLayout() {
           tintColor={isDark ? undefined : '#000000'}
         />
         <Tabs
-          sceneContainerStyle={{ backgroundColor: colors.bg }}
+          sceneStyle={{ backgroundColor: colors.bg }}
           screenOptions={{
             tabBarActiveTintColor: colors.accent,
             tabBarInactiveTintColor: colors.textSecondary,
