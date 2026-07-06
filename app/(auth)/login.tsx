@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Image,
   KeyboardAvoidingView,
@@ -13,13 +13,16 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 export default function LoginScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
   const isWeb = Platform.OS === 'web';
   const cardWidth = isWeb ? Math.min(width - 40, 420) : undefined;
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -68,11 +71,6 @@ export default function LoginScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <Image
-        source={require('@/assets/images/logo.png')}
-        style={styles.bgLogo}
-        resizeMode="contain"
-      />
       <View style={[styles.inner, isWeb && styles.innerDesktop]}>
         <View style={[isWeb ? styles.card : undefined, cardWidth !== undefined && { width: cardWidth }]}>
         <View style={styles.logoWrap}>
@@ -93,7 +91,7 @@ export default function LoginScreen() {
           <TextInput
             style={styles.input}
             placeholder="you@example.com"
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={colors.textSecondary}
             autoCapitalize="none"
             keyboardType="email-address"
             autoCorrect={false}
@@ -108,7 +106,7 @@ export default function LoginScreen() {
             <TextInput
               style={styles.passwordInput}
               placeholder="••••••••"
-              placeholderTextColor={Colors.textSecondary}
+              placeholderTextColor={colors.textSecondary}
               secureTextEntry={!showPassword}
               value={password}
               onChangeText={setPassword}
@@ -117,7 +115,7 @@ export default function LoginScreen() {
               <Ionicons
                 name={showPassword ? 'eye-off-outline' : 'eye-outline'}
                 size={20}
-                color={Colors.textSecondary}
+                color={colors.textSecondary}
               />
             </Pressable>
           </View>
@@ -141,7 +139,7 @@ export default function LoginScreen() {
             <TextInput
               style={[styles.input, { marginBottom: 8 }]}
               placeholder="your@email.com"
-              placeholderTextColor={Colors.textSecondary}
+              placeholderTextColor={colors.textSecondary}
               autoCapitalize="none"
               keyboardType="email-address"
               value={forgotEmail}
@@ -176,16 +174,10 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.bg,
-  },
-  bgLogo: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    opacity: 0.06,
   },
   inner: {
     flex: 1,
@@ -199,11 +191,11 @@ const styles = StyleSheet.create({
   },
   card: {
     alignSelf: 'center',
-    backgroundColor: Colors.surface + 'CC',
+    backgroundColor: c.surface + 'CC',
     borderRadius: 20,
     padding: 32,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
   },
   logoWrap: {
     alignItems: 'center',
@@ -215,19 +207,19 @@ const styles = StyleSheet.create({
   },
   heading: {
     ...Typography.hero,
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     marginBottom: 4,
     lineHeight: 36,
     textAlign: 'center',
   },
   sub: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     marginBottom: 24,
     textAlign: 'center',
   },
   error: {
-    color: Colors.danger,
+    color: c.danger,
     fontSize: 13,
     marginBottom: 16,
     textAlign: 'center',
@@ -237,32 +229,32 @@ const styles = StyleSheet.create({
   },
   fieldLabel: {
     ...Typography.label,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     marginBottom: 8,
   },
   input: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     fontSize: 15,
   },
   passwordWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     borderRadius: 12,
   },
   passwordInput: {
     flex: 1,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     fontSize: 15,
   },
   eyeBtn: {
@@ -270,7 +262,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   btn: {
-    backgroundColor: Colors.accent,
+    backgroundColor: c.accent,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
@@ -283,7 +275,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   btnText: {
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '800',
     letterSpacing: 1.5,
@@ -294,14 +286,14 @@ const styles = StyleSheet.create({
   },
   forgotLinkText: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     textDecorationLine: 'underline',
   },
   forgotBox: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     padding: 16,
     marginBottom: 12,
     gap: 10,
@@ -309,7 +301,7 @@ const styles = StyleSheet.create({
   },
   forgotBoxTitle: {
     ...Typography.subtitle,
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     marginBottom: 4,
   },
   forgotSentText: {
@@ -319,8 +311,9 @@ const styles = StyleSheet.create({
   },
   forgotBackText: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     textAlign: 'center',
     textDecorationLine: 'underline',
   },
-});
+  });
+}

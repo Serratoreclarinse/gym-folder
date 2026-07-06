@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Image, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -18,7 +18,8 @@ import { useActiveSessionContext } from '@/context/ActiveSessionContext';
 import { ActiveSessionCard } from '@/components/ActiveSessionCard';
 import { NextSessionCard } from '@/components/NextSessionCard';
 import { ErrorBanner } from '@/components/ErrorBanner';
-import { Colors, Typography } from '@/constants/theme';
+import { Typography, ColorScheme } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 import { HP, rs } from '@/constants/responsive';
 
 Notifications.setNotificationHandler({
@@ -65,7 +66,7 @@ function ClientPickerModal({
               const isActive = pkg?.status === 'active';
               const isExpired = pkg?.status === 'expired';
               const isLow = isActive && (pkg?.sessions_remaining ?? 0) <= 3;
-              const statusColor = isExpired ? Colors.danger : isLow ? '#FF9800' : '#4CAF50';
+              const statusColor = isExpired ? '#E8001D' : isLow ? '#FF9800' : '#4CAF50';
               const statusLabel = isExpired
                 ? 'EXPIRED'
                 : isActive
@@ -101,6 +102,8 @@ function ClientPickerModal({
 
 export default function CoachDashboard() {
   const { profile } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const firstName = profile?.name?.split(' ')[0] ?? 'Coach';
   const { clients, loading: cLoading, error: cError, refetch: refetchClients } = useClients();
   const { sessions, loading: sLoading, error: sError, refetch: refetchSessions } = useSessions();
@@ -236,14 +239,17 @@ export default function CoachDashboard() {
   const weekSessions = sessions.filter((s) => new Date(s.session_date) >= weekAgo).length;
 
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      <Image source={require('@/assets/images/logo.png')} style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.05 }} resizeMode="contain" />
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
+    >
     <View style={styles.fixedTop}>
       {/* Header */}
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
           <Pressable style={styles.addBtn} onPress={() => setShowPicker(true)}>
-            <Ionicons name="menu-outline" size={22} color={Colors.accent} />
+            <Ionicons name="menu-outline" size={22} color={colors.accent} />
           </Pressable>
           <View>
             <Text style={styles.greeting}>Hi Coach, {firstName} 👊</Text>
@@ -254,7 +260,7 @@ export default function CoachDashboard() {
         </View>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Pressable style={styles.addBtn} onPress={() => router.push('/(coach)/announcements' as any)}>
-            <Ionicons name="megaphone-outline" size={20} color={Colors.accent} />
+            <Ionicons name="megaphone-outline" size={20} color={colors.accent} />
           </Pressable>
         </View>
       </View>
@@ -282,17 +288,12 @@ export default function CoachDashboard() {
       </View>
     </View>
 
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}
-    >
       {/* Quick actions */}
       <Pressable
         style={({ pressed }) => [styles.logSessionBtn, pressed && { opacity: 0.85 }]}
         onPress={() => router.push('/(coach)/log-session')}
       >
-        <Ionicons name="add-circle-outline" size={20} color={Colors.bg} />
+        <Ionicons name="add-circle-outline" size={20} color={colors.bg} />
         <Text style={styles.logSessionText}>LOG SESSION</Text>
       </Pressable>
 
@@ -300,7 +301,7 @@ export default function CoachDashboard() {
         style={({ pressed }) => [styles.emergencyBtn, pressed && { opacity: 0.8 }]}
         onPress={() => router.push({ pathname: '/(coach)/announcements', params: { preset: 'emergency' } } as any)}
       >
-        <Ionicons name="warning-outline" size={16} color={Colors.danger} />
+        <Ionicons name="warning-outline" size={16} color={colors.danger} />
         <Text style={styles.emergencyBtnText}>EMERGENCY NOTICE</Text>
       </Pressable>
 
@@ -332,7 +333,7 @@ export default function CoachDashboard() {
               {pausedWorkout.clientName} · Exercise {pausedWorkout.exIdx + 1} of {pausedWorkout.exercises?.length ?? '?'}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
+          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
         </Pressable>
       )}
 
@@ -369,16 +370,16 @@ export default function CoachDashboard() {
           <Ionicons
             name={pinnedAnnouncement.type === 'emergency' ? 'warning-outline' : 'megaphone-outline'}
             size={16}
-            color={pinnedAnnouncement.type === 'emergency' ? Colors.danger : Colors.accent}
+            color={pinnedAnnouncement.type === 'emergency' ? colors.danger : colors.accent}
           />
           <View style={{ flex: 1 }}>
-            <Text style={[styles.pinnedTitle, pinnedAnnouncement.type === 'emergency' && { color: Colors.danger }]}>
+            <Text style={[styles.pinnedTitle, pinnedAnnouncement.type === 'emergency' && { color: colors.danger }]}>
               {pinnedAnnouncement.title}
             </Text>
             <Text style={styles.pinnedMsg} numberOfLines={1}>{pinnedAnnouncement.message}</Text>
           </View>
           <Pressable onPress={() => togglePin(pinnedAnnouncement.id, true)} hitSlop={10}>
-            <Ionicons name="close-circle-outline" size={18} color={Colors.textSecondary} />
+            <Ionicons name="close-circle-outline" size={18} color={colors.textSecondary} />
           </Pressable>
         </View>
       )}
@@ -426,8 +427,8 @@ export default function CoachDashboard() {
         <>
           <View style={styles.strikeSectionHeader}>
             <Text style={styles.sectionTitle}>CLIENT REQUESTS</Text>
-            <View style={[styles.strikeBadge, { backgroundColor: Colors.accent + '20', borderColor: Colors.accent + '50' }]}>
-              <Text style={[styles.strikeBadgeText, { color: Colors.accent }]}>{bookingRequests.length}</Text>
+            <View style={[styles.strikeBadge, { backgroundColor: colors.accent + '20', borderColor: colors.accent + '50' }]}>
+              <Text style={[styles.strikeBadgeText, { color: colors.accent }]}>{bookingRequests.length}</Text>
             </View>
           </View>
           {bookingRequests.map((req) => (
@@ -437,7 +438,7 @@ export default function CoachDashboard() {
                   <Ionicons
                     name={req.type === 'renewal' ? 'refresh-outline' : 'calendar-outline'}
                     size={13}
-                    color={req.type === 'renewal' ? '#4CAF50' : Colors.accent}
+                    color={req.type === 'renewal' ? '#4CAF50' : colors.accent}
                   />
                   <Text style={[styles.reqTypeText, req.type === 'renewal' && { color: '#4CAF50' }]}>
                     {req.type === 'renewal' ? 'Renewal' : 'Booking'}
@@ -475,7 +476,7 @@ export default function CoachDashboard() {
           </View>
           {strikeAlerts.map((alert) => {
             const isMax = alert.strike_count >= MAX_STRIKES;
-            const color = isMax ? Colors.danger : '#FFA500';
+            const color = isMax ? colors.danger : '#FFA500';
             const initials = alert.client_name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
             const latestDate = new Date(alert.latest_strike_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             return (
@@ -493,7 +494,7 @@ export default function CoachDashboard() {
                 </View>
                 <View style={[styles.strikeCountBadge, { backgroundColor: color + '18', borderColor: color + '40' }]}>
                   {Array.from({ length: MAX_STRIKES }).map((_, i) => (
-                    <View key={i} style={[styles.strikePip, { backgroundColor: i < alert.strike_count ? color : Colors.border }]} />
+                    <View key={i} style={[styles.strikePip, { backgroundColor: i < alert.strike_count ? color : colors.border }]} />
                   ))}
                   <Text style={[styles.strikeCountText, { color }]}>{alert.strike_count}/{MAX_STRIKES}</Text>
                 </View>
@@ -515,7 +516,7 @@ export default function CoachDashboard() {
           </View>
           {packageAlertClients.map((c) => {
             const isExpired = c.activePackage!.sessions_remaining === 0;
-            const color = isExpired ? Colors.danger : '#FF9800';
+            const color = isExpired ? colors.danger : '#FF9800';
             const initials = c.name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
             return (
               <Pressable
@@ -547,180 +548,180 @@ export default function CoachDashboard() {
       {/* Waitlist notice */}
       {waitlistCount > 0 && (
         <Pressable style={styles.waitlistNotice} onPress={() => router.push('/(coach)/(tabs)/calendar')}>
-          <Ionicons name="people-outline" size={16} color={Colors.accent} />
+          <Ionicons name="people-outline" size={16} color={colors.accent} />
           <Text style={styles.waitlistNoticeText}>
             {waitlistCount} client{waitlistCount !== 1 ? 's' : ''} on waitlist — check Calendar for open slots
           </Text>
-          <Ionicons name="chevron-forward" size={14} color={Colors.accent} />
+          <Ionicons name="chevron-forward" size={14} color={colors.accent} />
         </Pressable>
       )}
-    </ScrollView>
     <ClientPickerModal
       visible={showPicker}
       clients={clients}
       onClose={() => setShowPicker(false)}
       onSelect={(id) => { setShowPicker(false); router.push(`/(coach)/client/${id}` as any); }}
     />
-    </View>
+    </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  resumeCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#4CAF5015', borderWidth: 1.5, borderColor: '#4CAF5050',
-    borderRadius: 16, padding: 14, marginBottom: 10,
-  },
-  resumeIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  resumeTitle: { color: '#4CAF50', fontWeight: '800', fontSize: 13, letterSpacing: 0.5, marginBottom: 3 },
-  resumeSub: { color: Colors.textSecondary, fontSize: 13 },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    resumeCard: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: '#4CAF5015', borderWidth: 1.5, borderColor: '#4CAF5050',
+      borderRadius: 16, padding: 14, marginBottom: 10,
+    },
+    resumeIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+    resumeTitle: { color: '#4CAF50', fontWeight: '800', fontSize: 13, letterSpacing: 0.5, marginBottom: 3 },
+    resumeSub: { color: c.textSecondary, fontSize: 13 },
 
-  fixedTop: {
-    paddingHorizontal: HP,
-    paddingTop: HP,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  scroll: { flex: 1 },
-  content: { padding: HP, paddingBottom: rs(40) },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: rs(20) },
-  greeting: { ...Typography.title, color: Colors.textPrimary, marginBottom: 4 },
-  date: { ...Typography.body, color: Colors.textSecondary },
-  addBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.accent + '15',
-    borderWidth: 1,
-    borderColor: Colors.accent + '40',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statsStrip: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.surface, borderRadius: 16,
-    borderWidth: 1, borderColor: Colors.border,
-    marginBottom: rs(16), paddingVertical: 16,
-  },
-  statItem: { flex: 1, alignItems: 'center' },
-  statValue: { ...Typography.title, color: Colors.textPrimary, fontSize: 22, fontWeight: '800' },
-  statLabel: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
-  statDiv: { width: 1, height: 32, backgroundColor: Colors.border },
-  logSessionBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: Colors.accent, borderRadius: 14, paddingVertical: 16,
-    marginTop: 4, marginBottom: 10,
-  },
-  logSessionText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1 },
-  sectionTitle: { ...Typography.label, color: Colors.textSecondary },
-  strikeSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  strikeBadge: {
-    backgroundColor: Colors.danger + '20',
-    borderRadius: 10,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderWidth: 1,
-    borderColor: Colors.danger + '50',
-  },
-  strikeBadgeText: { color: Colors.danger, fontSize: 11, fontWeight: '800' },
-  strikeAlertCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 8,
-    borderWidth: 1,
-  },
-  strikeAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    borderWidth: 1.5,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  strikeAvatarText: { fontSize: 14, fontWeight: '800' },
-  strikeAlertInfo: { flex: 1 },
-  strikeAlertName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
-  strikeAlertDate: { ...Typography.caption, color: Colors.textSecondary },
-  strikeCountBadge: {
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderWidth: 1,
-  },
-  strikePip: { width: 7, height: 7, borderRadius: 4 },
-  strikeCountText: { fontSize: 11, fontWeight: '800' },
-  pkgAlertBadge: {
-    borderRadius: 8, paddingHorizontal: 9, paddingVertical: 5,
-    borderWidth: 1, alignItems: 'center', justifyContent: 'center',
-  },
-  pkgAlertBadgeText: { fontSize: 11, fontWeight: '800' },
-  waitlistNotice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: Colors.accent + '12',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: Colors.accent + '35',
-  },
-  waitlistNoticeText: { ...Typography.caption, color: Colors.accent, flex: 1 },
+    fixedTop: {
+      paddingHorizontal: HP,
+      paddingTop: HP,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    scroll: { flex: 1 },
+    content: { padding: HP, paddingBottom: rs(40) },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: rs(20) },
+    greeting: { ...Typography.title, color: c.textPrimary, marginBottom: 4 },
+    date: { ...Typography.body, color: c.textSecondary },
+    addBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: c.accent + '15',
+      borderWidth: 1,
+      borderColor: c.accent + '40',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    statsStrip: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: c.surface, borderRadius: 16,
+      borderWidth: 1, borderColor: c.border,
+      marginBottom: rs(16), paddingVertical: 16,
+    },
+    statItem: { flex: 1, alignItems: 'center' },
+    statValue: { ...Typography.title, color: c.textPrimary, fontSize: 22, fontWeight: '800' },
+    statLabel: { ...Typography.caption, color: c.textSecondary, marginTop: 2 },
+    statDiv: { width: 1, height: 32, backgroundColor: c.border },
+    logSessionBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+      backgroundColor: c.accent, borderRadius: 14, paddingVertical: 16,
+      marginTop: 4, marginBottom: 10,
+    },
+    logSessionText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1 },
+    sectionTitle: { ...Typography.label, color: c.textSecondary },
+    strikeSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+    strikeBadge: {
+      backgroundColor: c.danger + '20',
+      borderRadius: 10,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderWidth: 1,
+      borderColor: c.danger + '50',
+    },
+    strikeBadgeText: { color: c.danger, fontSize: 11, fontWeight: '800' },
+    strikeAlertCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      padding: 14,
+      marginBottom: 8,
+      borderWidth: 1,
+    },
+    strikeAvatar: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      borderWidth: 1.5,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    strikeAvatarText: { fontSize: 14, fontWeight: '800' },
+    strikeAlertInfo: { flex: 1 },
+    strikeAlertName: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
+    strikeAlertDate: { ...Typography.caption, color: c.textSecondary },
+    strikeCountBadge: {
+      alignItems: 'center',
+      gap: 6,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderWidth: 1,
+    },
+    strikePip: { width: 7, height: 7, borderRadius: 4 },
+    strikeCountText: { fontSize: 11, fontWeight: '800' },
+    pkgAlertBadge: {
+      borderRadius: 8, paddingHorizontal: 9, paddingVertical: 5,
+      borderWidth: 1, alignItems: 'center', justifyContent: 'center',
+    },
+    pkgAlertBadgeText: { fontSize: 11, fontWeight: '800' },
+    waitlistNotice: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: c.accent + '12',
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 20,
+      borderWidth: 1,
+      borderColor: c.accent + '35',
+    },
+    waitlistNoticeText: { ...Typography.caption, color: c.accent, flex: 1 },
 
-  // Booking request cards
-  reqCard: {
-    backgroundColor: Colors.surface, borderRadius: 14, padding: 14,
-    marginBottom: 10, borderWidth: 1, borderColor: Colors.border, gap: 8,
-  },
-  reqCardTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  reqTypeBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
-    backgroundColor: Colors.accent + '18', borderWidth: 1, borderColor: Colors.accent + '40',
-  },
-  reqTypeBadgeRenew: { backgroundColor: '#4CAF5018', borderColor: '#4CAF5040' },
-  reqTypeText: { fontSize: 12, fontWeight: '700', color: Colors.accent },
-  reqClientName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700', flex: 1 },
-  reqDateTime: { ...Typography.caption, color: Colors.textSecondary },
-  reqNotes: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic' },
-  reqActions: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  reqDeclineBtn: {
-    flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center',
-    borderWidth: 1, borderColor: Colors.border,
-  },
-  reqDeclineBtnText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
-  reqAcceptBtn: {
-    flex: 2, paddingVertical: 8, borderRadius: 10, alignItems: 'center',
-    backgroundColor: Colors.accent,
-  },
-  reqAcceptBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 13 },
-  // Emergency button
-  emergencyBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-    backgroundColor: Colors.danger + '15', borderRadius: 14, paddingVertical: 13, marginBottom: 16,
-    borderWidth: 1, borderColor: Colors.danger + '50',
-  },
-  emergencyBtnText: { color: Colors.danger, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+    // Booking request cards
+    reqCard: {
+      backgroundColor: c.surface, borderRadius: 14, padding: 14,
+      marginBottom: 10, borderWidth: 1, borderColor: c.border, gap: 8,
+    },
+    reqCardTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    reqTypeBadge: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
+      backgroundColor: c.accent + '18', borderWidth: 1, borderColor: c.accent + '40',
+    },
+    reqTypeBadgeRenew: { backgroundColor: '#4CAF5018', borderColor: '#4CAF5040' },
+    reqTypeText: { fontSize: 12, fontWeight: '700', color: c.accent },
+    reqClientName: { ...Typography.body, color: c.textPrimary, fontWeight: '700', flex: 1 },
+    reqDateTime: { ...Typography.caption, color: c.textSecondary },
+    reqNotes: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic' },
+    reqActions: { flexDirection: 'row', gap: 8, marginTop: 4 },
+    reqDeclineBtn: {
+      flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center',
+      borderWidth: 1, borderColor: c.border,
+    },
+    reqDeclineBtnText: { color: c.textSecondary, fontWeight: '600', fontSize: 13 },
+    reqAcceptBtn: {
+      flex: 2, paddingVertical: 8, borderRadius: 10, alignItems: 'center',
+      backgroundColor: c.accent,
+    },
+    reqAcceptBtnText: { color: c.bg, fontWeight: '800', fontSize: 13 },
+    // Emergency button
+    emergencyBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+      backgroundColor: c.danger + '15', borderRadius: 14, paddingVertical: 13, marginBottom: 16,
+      borderWidth: 1, borderColor: c.danger + '50',
+    },
+    emergencyBtnText: { color: c.danger, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
 
-  // Pinned announcement banner
-  pinnedBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: Colors.accent + '12', borderRadius: 12, padding: 12, marginBottom: 16,
-    borderWidth: 1, borderColor: Colors.accent + '35',
-  },
-  pinnedBannerEmergency: {
-    backgroundColor: Colors.danger + '10', borderColor: Colors.danger + '40',
-  },
-  pinnedTitle: { ...Typography.caption, color: Colors.accent, fontWeight: '700', marginBottom: 1 },
-  pinnedMsg: { ...Typography.caption, color: Colors.textSecondary },
-
-});
+    // Pinned announcement banner
+    pinnedBanner: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      backgroundColor: c.accent + '12', borderRadius: 12, padding: 12, marginBottom: 16,
+      borderWidth: 1, borderColor: c.accent + '35',
+    },
+    pinnedBannerEmergency: {
+      backgroundColor: c.danger + '10', borderColor: c.danger + '40',
+    },
+    pinnedTitle: { ...Typography.caption, color: c.accent, fontWeight: '700', marginBottom: 1 },
+    pinnedMsg: { ...Typography.caption, color: c.textSecondary },
+  });
+}
 
 const ps = StyleSheet.create({
   container: { flex: 1, justifyContent: 'flex-end' },
@@ -742,14 +743,14 @@ const ps = StyleSheet.create({
   },
   sheetTitle: {
     fontSize: 12, fontWeight: '800', letterSpacing: 1.5,
-    color: Colors.textSecondary, flex: 1,
+    color: '#888', flex: 1,
   },
   sheetBadge: {
-    backgroundColor: Colors.accent + '20', borderRadius: 10,
+    backgroundColor: '#E8001D20', borderRadius: 10,
     paddingHorizontal: 8, paddingVertical: 2,
-    borderWidth: 1, borderColor: Colors.accent + '40',
+    borderWidth: 1, borderColor: '#E8001D40',
   },
-  sheetBadgeText: { color: Colors.accent, fontSize: 11, fontWeight: '800' },
+  sheetBadgeText: { color: '#E8001D', fontSize: 11, fontWeight: '800' },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
     paddingHorizontal: 20, paddingVertical: 13,

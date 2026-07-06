@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -24,7 +24,8 @@ import { useSessions } from '@/hooks/useSessions';
 import { useWaitlist, WaitlistEntry } from '@/hooks/useWaitlist';
 import { addStrikeForClient } from '@/hooks/useStrikes';
 import { useAvailability } from '@/hooks/useAvailability';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 const DAY_ABBR = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -67,11 +68,11 @@ function formatTime(time: string | null): string | null {
   return `${hour}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-const STATUS_CONFIG = {
-  confirmed: { label: 'Confirmed', color: Colors.accent },
+const STATUS_CONFIG = (colors: ColorScheme) => ({
+  confirmed: { label: 'Confirmed', color: colors.accent },
   pending:   { label: 'Pending',   color: '#FFA500' },
   absent:    { label: 'Absent',    color: '#FF4D4D' },
-} as const;
+} as const);
 
 function isWithin3Hours(sessionDate: string, scheduledTime: string | null): boolean {
   if (!scheduledTime) return false;
@@ -105,6 +106,8 @@ type ScheduledSession = {
 export default function CalendarScreen() {
   const todayISO = toISO(new Date());
   const { profile } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()));
   const [selectedDate, setSelectedDate] = useState(todayISO);
@@ -457,13 +460,15 @@ export default function CalendarScreen() {
     (c) => c.id !== waitlistSession?.client_id && !existingWLIds.has(c.id)
   );
 
+  const statusConfig = STATUS_CONFIG(colors);
+
   return (
     <View style={styles.root}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={refetch} tintColor={Colors.accent} />
+          <RefreshControl refreshing={loading} onRefresh={refetch} tintColor={colors.accent} />
         }
       >
         {/* ── My Blocked Dates ── */}
@@ -476,7 +481,7 @@ export default function CalendarScreen() {
             setLeaveNotes('');
             setShowLeaveModal(true);
           }}>
-            <Ionicons name="add" size={13} color={Colors.bg} />
+            <Ionicons name="add" size={13} color={colors.bg} />
             <Text style={styles.addLeaveBtnText}>Add</Text>
           </Pressable>
         </View>
@@ -487,9 +492,9 @@ export default function CalendarScreen() {
         ) : (
           <View style={styles.blockedList}>
             {myBlockedDates.map((bd, i) => {
-              const BLK_COLOR: Record<string, string> = { leave: Colors.danger, meeting: '#2196F3', other: Colors.textSecondary };
+              const BLK_COLOR: Record<string, string> = { leave: colors.danger, meeting: '#2196F3', other: colors.textSecondary };
               const BLK_LABEL: Record<string, string> = { leave: 'Leave', meeting: 'Meeting', other: 'Other' };
-              const color = BLK_COLOR[bd.type] ?? Colors.textSecondary;
+              const color = BLK_COLOR[bd.type] ?? colors.textSecondary;
               return (
                 <View key={bd.id} style={[styles.blockedRow, i === myBlockedDates.length - 1 && { borderBottomWidth: 0 }]}>
                   <View style={[styles.blockTypeTag, { backgroundColor: color + '18', borderColor: color + '50' }]}>
@@ -504,7 +509,7 @@ export default function CalendarScreen() {
                     {bd.notes ? <Text style={styles.blockedNotes}>{bd.notes}</Text> : null}
                   </View>
                   <Pressable onPress={() => handleRemoveLeave(bd)}>
-                    <Ionicons name="close-circle-outline" size={22} color={Colors.danger + '80'} />
+                    <Ionicons name="close-circle-outline" size={22} color={colors.danger + '80'} />
                   </Pressable>
                 </View>
               );
@@ -512,7 +517,7 @@ export default function CalendarScreen() {
           </View>
         )}
 
-        <View style={{ height: 1, backgroundColor: Colors.border, marginVertical: 20 }} />
+        <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 20 }} />
 
         {/* ── Week navigation ─────────────────────────────────── */}
         <View style={styles.weekNav}>
@@ -521,7 +526,7 @@ export default function CalendarScreen() {
             hitSlop={12}
             onPress={() => setWeekStart((w) => addDays(w, -7))}
           >
-            <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />
+            <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
           </Pressable>
           <Text style={styles.weekLabel}>{weekLabel}</Text>
           <Pressable
@@ -529,7 +534,7 @@ export default function CalendarScreen() {
             hitSlop={12}
             onPress={() => setWeekStart((w) => addDays(w, 7))}
           >
-            <Ionicons name="chevron-forward" size={22} color={Colors.textPrimary} />
+            <Ionicons name="chevron-forward" size={22} color={colors.textPrimary} />
           </Pressable>
         </View>
 
@@ -550,14 +555,14 @@ export default function CalendarScreen() {
                   styles.dayNumWrap,
                   isSelected && styles.dayNumWrapSelected,
                   isToday && !isSelected && styles.dayNumWrapToday,
-                  isBlocked && !isSelected && { backgroundColor: Colors.danger + '18' },
+                  isBlocked && !isSelected && { backgroundColor: colors.danger + '18' },
                 ]}>
-                  <Text style={[styles.dayNum, isSelected && styles.dayNumSelected, isBlocked && !isSelected && { color: Colors.danger }]}>
+                  <Text style={[styles.dayNum, isSelected && styles.dayNumSelected, isBlocked && !isSelected && { color: colors.danger }]}>
                     {day.getDate()}
                   </Text>
                 </View>
                 {isBlocked ? (
-                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.danger }} />
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.danger }} />
                 ) : count > 0 ? (
                   <View style={[styles.dot, isSelected && styles.dotSelected]} />
                 ) : (
@@ -585,7 +590,7 @@ export default function CalendarScreen() {
               router.push({ pathname: '/(coach)/schedule-session' as any, params: { date: selectedDate } })
             }
           >
-            <Ionicons name="calendar-outline" size={13} color={Colors.accent} />
+            <Ionicons name="calendar-outline" size={13} color={colors.accent} />
             <Text style={styles.scheduleBtnText}>Schedule</Text>
           </Pressable>
         </View>
@@ -645,7 +650,7 @@ export default function CalendarScreen() {
                     })
                   }
                 >
-                  <Ionicons name="barbell-outline" size={12} color={Colors.bg} />
+                  <Ionicons name="barbell-outline" size={12} color={colors.bg} />
                   <Text style={styles.scheduledActionLogText}>Log Session</Text>
                 </Pressable>
                 {ss.status !== 'reschedule_pending' && (
@@ -653,7 +658,7 @@ export default function CalendarScreen() {
                     style={styles.scheduledActionReschedule}
                     onPress={() => openRescheduleModal(ss)}
                   >
-                    <Ionicons name="calendar-outline" size={12} color={Colors.accent} />
+                    <Ionicons name="calendar-outline" size={12} color={colors.accent} />
                     <Text style={styles.scheduledActionRescheduleText}>Reschedule</Text>
                   </Pressable>
                 )}
@@ -693,13 +698,13 @@ export default function CalendarScreen() {
         {/* ── Session cards ────────────────────────────────────── */}
         {selectedSessions.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="calendar-outline" size={52} color={Colors.border} />
+            <Ionicons name="calendar-outline" size={52} color={colors.border} />
             <Text style={styles.emptyTitle}>No sessions scheduled</Text>
             <Text style={styles.emptySub}>Tap + to log a session for this day</Text>
           </View>
         ) : (
           selectedSessions.map((s) => {
-            const cfg = STATUS_CONFIG[s.status] ?? STATUS_CONFIG.confirmed;
+            const cfg = statusConfig[s.status] ?? statusConfig.confirmed;
             const urgent = s.status === 'pending' && isWithin3Hours(s.session_date, s.scheduled_time);
             const wlCount = countBySession[s.id] ?? 0;
             return (
@@ -734,7 +739,7 @@ export default function CalendarScreen() {
                       style={styles.actionBtnConfirm}
                       onPress={() => handleConfirm(s.id)}
                     >
-                      <Ionicons name="checkmark" size={13} color={Colors.bg} />
+                      <Ionicons name="checkmark" size={13} color={colors.bg} />
                       <Text style={styles.actionBtnConfirmText}>Confirm</Text>
                     </Pressable>
                     <Pressable
@@ -748,8 +753,8 @@ export default function CalendarScreen() {
                       style={[styles.actionBtnWhatsapp, urgent && styles.actionBtnWhatsappUrgent]}
                       onPress={() => handleWhatsApp(s.client_phone, s.client_name, s.session_date, s.scheduled_time)}
                     >
-                      <Ionicons name="logo-whatsapp" size={13} color={urgent ? Colors.bg : '#25D366'} />
-                      <Text style={[styles.actionBtnWhatsappText, urgent && { color: Colors.bg }]}>
+                      <Ionicons name="logo-whatsapp" size={13} color={urgent ? colors.bg : '#25D366'} />
+                      <Text style={[styles.actionBtnWhatsappText, urgent && { color: colors.bg }]}>
                         {urgent ? 'Remind NOW' : 'Remind'}
                       </Text>
                     </Pressable>
@@ -769,9 +774,9 @@ export default function CalendarScreen() {
                   <Ionicons
                     name="people-outline"
                     size={13}
-                    color={wlCount > 0 ? Colors.accent : Colors.textSecondary}
+                    color={wlCount > 0 ? colors.accent : colors.textSecondary}
                   />
-                  <Text style={[styles.waitlistRowText, wlCount > 0 && { color: Colors.accent }]}>
+                  <Text style={[styles.waitlistRowText, wlCount > 0 && { color: colors.accent }]}>
                     {wlCount > 0 ? `Waitlist · ${wlCount} waiting` : 'Waitlist · none'}
                   </Text>
                   {wlCount > 0 && (
@@ -779,7 +784,7 @@ export default function CalendarScreen() {
                       <Text style={styles.wlCountPillText}>{wlCount}</Text>
                     </View>
                   )}
-                  <Ionicons name="chevron-forward" size={12} color={Colors.textSecondary} />
+                  <Ionicons name="chevron-forward" size={12} color={colors.textSecondary} />
                 </Pressable>
               </View>
             );
@@ -799,7 +804,7 @@ export default function CalendarScreen() {
           })
         }
       >
-        <Ionicons name="add" size={28} color={Colors.bg} />
+        <Ionicons name="add" size={28} color={colors.bg} />
       </Pressable>
 
       {/* ── Waitlist Modal ── */}
@@ -830,16 +835,16 @@ export default function CalendarScreen() {
                     )}
                   </View>
                   <Pressable style={styles.addToWLBtn} onPress={() => setWlModalMode('add')}>
-                    <Ionicons name="person-add-outline" size={14} color={Colors.bg} />
+                    <Ionicons name="person-add-outline" size={14} color={colors.bg} />
                     <Text style={styles.addToWLBtnText}>Add</Text>
                   </Pressable>
                 </View>
 
                 {wlLoading ? (
-                  <ActivityIndicator color={Colors.accent} style={{ padding: 32 }} />
+                  <ActivityIndicator color={colors.accent} style={{ padding: 32 }} />
                 ) : sessionWaitlist.length === 0 ? (
                   <View style={styles.wlEmpty}>
-                    <Ionicons name="people-outline" size={40} color={Colors.border} />
+                    <Ionicons name="people-outline" size={40} color={colors.border} />
                     <Text style={styles.wlEmptyText}>No one on the waitlist</Text>
                     <Text style={styles.wlEmptySub}>Tap Add to put a client on standby</Text>
                   </View>
@@ -885,7 +890,7 @@ export default function CalendarScreen() {
                               )
                             }
                           >
-                            <Ionicons name="close" size={14} color={Colors.textSecondary} />
+                            <Ionicons name="close" size={14} color={colors.textSecondary} />
                           </Pressable>
                         </View>
                       </View>
@@ -900,7 +905,7 @@ export default function CalendarScreen() {
             {wlModalMode === 'add' && (
               <>
                 <Pressable style={styles.backBtn} onPress={() => setWlModalMode('view')}>
-                  <Ionicons name="chevron-back" size={16} color={Colors.textSecondary} />
+                  <Ionicons name="chevron-back" size={16} color={colors.textSecondary} />
                   <Text style={styles.backBtnText}>Back to Waitlist</Text>
                 </Pressable>
                 <Text style={styles.modalTitle}>ADD TO WAITLIST</Text>
@@ -942,7 +947,7 @@ export default function CalendarScreen() {
                             </Text>
                           )}
                         </View>
-                        <Ionicons name="add-circle-outline" size={22} color={Colors.accent} />
+                        <Ionicons name="add-circle-outline" size={22} color={colors.accent} />
                       </Pressable>
                     )}
                   />
@@ -978,7 +983,7 @@ export default function CalendarScreen() {
               value={rescheduleDate}
               onChangeText={setRescheduleDate}
               placeholder="e.g. 2025-08-10"
-              placeholderTextColor={Colors.textSecondary + '60'}
+              placeholderTextColor={colors.textSecondary + '60'}
               keyboardType="numbers-and-punctuation"
               autoCorrect={false}
             />
@@ -989,7 +994,7 @@ export default function CalendarScreen() {
               value={rescheduleTime}
               onChangeText={setRescheduleTime}
               placeholder="e.g. 9:00 AM or 14:30"
-              placeholderTextColor={Colors.textSecondary + '60'}
+              placeholderTextColor={colors.textSecondary + '60'}
               autoCorrect={false}
             />
 
@@ -999,7 +1004,7 @@ export default function CalendarScreen() {
               value={rescheduleReason}
               onChangeText={setRescheduleReason}
               placeholder="e.g. Coach unavailable due to personal reason"
-              placeholderTextColor={Colors.textSecondary + '60'}
+              placeholderTextColor={colors.textSecondary + '60'}
               multiline
               autoCorrect={false}
             />
@@ -1009,7 +1014,7 @@ export default function CalendarScreen() {
               onPress={handleReschedule}
               disabled={rescheduling}
             >
-              <Ionicons name="calendar-outline" size={16} color={Colors.bg} />
+              <Ionicons name="calendar-outline" size={16} color={colors.bg} />
               <Text style={styles.rsSubmitText}>
                 {rescheduling ? 'SENDING…' : 'PROPOSE RESCHEDULE'}
               </Text>
@@ -1040,7 +1045,7 @@ export default function CalendarScreen() {
               value={leaveDate}
               onChangeText={setLeaveDate}
               placeholder="e.g. 2026-07-20"
-              placeholderTextColor={Colors.textSecondary + '60'}
+              placeholderTextColor={colors.textSecondary + '60'}
               keyboardType="numbers-and-punctuation"
               autoCorrect={false}
               autoFocus
@@ -1053,11 +1058,11 @@ export default function CalendarScreen() {
                   key={t}
                   style={[
                     styles.leaveTypeBtn,
-                    leaveType === t && { backgroundColor: Colors.accent, borderColor: Colors.accent },
+                    leaveType === t && { backgroundColor: colors.accent, borderColor: colors.accent },
                   ]}
                   onPress={() => setLeaveType(t)}
                 >
-                  <Text style={[styles.leaveTypeBtnText, leaveType === t && { color: Colors.bg }]}>
+                  <Text style={[styles.leaveTypeBtnText, leaveType === t && { color: colors.bg }]}>
                     {t === 'leave' ? 'Leave' : t === 'meeting' ? 'Meeting' : 'Other'}
                   </Text>
                 </Pressable>
@@ -1070,7 +1075,7 @@ export default function CalendarScreen() {
               value={leaveNotes}
               onChangeText={setLeaveNotes}
               placeholder="e.g. Out of town, Staff meeting 10am…"
-              placeholderTextColor={Colors.textSecondary + '60'}
+              placeholderTextColor={colors.textSecondary + '60'}
               multiline
             />
 
@@ -1079,7 +1084,7 @@ export default function CalendarScreen() {
               onPress={handleAddLeave}
               disabled={addingLeave}
             >
-              <Ionicons name="calendar-outline" size={16} color={Colors.bg} />
+              <Ionicons name="calendar-outline" size={16} color={colors.bg} />
               <Text style={styles.rsSubmitText}>{addingLeave ? 'SAVING…' : 'BLOCK DATE'}</Text>
             </Pressable>
             <Pressable style={styles.rsCancelBtn} onPress={() => setShowLeaveModal(false)}>
@@ -1094,323 +1099,325 @@ export default function CalendarScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.bg },
-  scroll: { flex: 1 },
-  content: { padding: 16, paddingBottom: 24 },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    root: { flex: 1 },
+    scroll: { flex: 1 },
+    content: { padding: 16, paddingBottom: 24 },
 
-  // Week navigation
-  weekNav: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', marginBottom: 16,
-  },
-  navBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  weekLabel: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
+    // Week navigation
+    weekNav: {
+      flexDirection: 'row', alignItems: 'center',
+      justifyContent: 'space-between', marginBottom: 16,
+    },
+    navBtn: {
+      width: 36, height: 36, borderRadius: 18,
+      backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
+      justifyContent: 'center', alignItems: 'center',
+    },
+    weekLabel: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
 
-  // Day strip
-  dayStrip: {
-    flexDirection: 'row', backgroundColor: Colors.surface,
-    borderRadius: 16, borderWidth: 1, borderColor: Colors.border,
-    padding: 10, marginBottom: 24,
-  },
-  dayCol: { flex: 1, alignItems: 'center', gap: 4 },
-  dayAbbr: { fontSize: 10, fontWeight: '700', color: Colors.textSecondary, letterSpacing: 0.5 },
-  dayAbbrActive: { color: Colors.accent },
-  dayNumWrap: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  dayNumWrapSelected: { backgroundColor: Colors.accent },
-  dayNumWrapToday: { borderWidth: 1.5, borderColor: Colors.accent },
-  dayNum: { fontSize: 13, fontWeight: '700', color: Colors.textPrimary },
-  dayNumSelected: { color: Colors.bg },
-  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: Colors.textSecondary },
-  dotSelected: { backgroundColor: Colors.accent },
-  dotPlaceholder: { width: 5, height: 5 },
+    // Day strip
+    dayStrip: {
+      flexDirection: 'row', backgroundColor: c.surface,
+      borderRadius: 16, borderWidth: 1, borderColor: c.border,
+      padding: 10, marginBottom: 24,
+    },
+    dayCol: { flex: 1, alignItems: 'center', gap: 4 },
+    dayAbbr: { fontSize: 10, fontWeight: '700', color: c.textSecondary, letterSpacing: 0.5 },
+    dayAbbrActive: { color: c.accent },
+    dayNumWrap: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+    dayNumWrapSelected: { backgroundColor: c.accent },
+    dayNumWrapToday: { borderWidth: 1.5, borderColor: c.accent },
+    dayNum: { fontSize: 13, fontWeight: '700', color: c.textPrimary },
+    dayNumSelected: { color: c.bg },
+    dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: c.textSecondary },
+    dotSelected: { backgroundColor: c.accent },
+    dotPlaceholder: { width: 5, height: 5 },
 
-  // Day header
-  dayHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 14,
-  },
-  dayHeaderText: { ...Typography.subtitle, color: Colors.textPrimary },
-  sessionCount: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
+    // Day header
+    dayHeader: {
+      flexDirection: 'row', justifyContent: 'space-between',
+      alignItems: 'center', marginBottom: 14,
+    },
+    dayHeaderText: { ...Typography.subtitle, color: c.textPrimary },
+    sessionCount: { ...Typography.caption, color: c.textSecondary, marginTop: 2 },
 
-  // Schedule button
-  scheduleBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: Colors.accent + '18', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 6,
-    borderWidth: 1, borderColor: Colors.accent + '40',
-  },
-  scheduleBtnText: { fontSize: 12, fontWeight: '700', color: Colors.accent },
+    // Schedule button
+    scheduleBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      backgroundColor: c.accent + '18', borderRadius: 8,
+      paddingHorizontal: 10, paddingVertical: 6,
+      borderWidth: 1, borderColor: c.accent + '40',
+    },
+    scheduleBtnText: { fontSize: 12, fontWeight: '700', color: c.accent },
 
-  // Scheduled session card
-  scheduledCard: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    marginBottom: 10, borderWidth: 1, borderColor: '#4CAF5030', overflow: 'hidden',
-  },
-  scheduledCardMain: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
-  },
-  clientConfirmedBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#4CAF5015', borderRadius: 8,
-    paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#4CAF5040',
-  },
-  clientConfirmedText: { fontSize: 10, fontWeight: '700', color: '#4CAF50' },
-  awaitingBadge: {
-    backgroundColor: '#FFA50015', borderRadius: 8,
-    paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#FFA50040',
-  },
-  awaitingText: { fontSize: 10, fontWeight: '700', color: '#FFA500' },
-  scheduledActions: {
-    flexDirection: 'row', gap: 8,
-    paddingHorizontal: 14, paddingBottom: 12,
-  },
-  scheduledActionLog: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    backgroundColor: Colors.accent, borderRadius: 8, paddingVertical: 7,
-  },
-  scheduledActionLogText: { color: Colors.bg, fontSize: 12, fontWeight: '700' },
-  scheduledActionCancel: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    backgroundColor: '#FF4D4D15', borderRadius: 8, paddingVertical: 7,
-    borderWidth: 1, borderColor: '#FF4D4D40',
-  },
-  scheduledActionCancelText: { color: '#FF4D4D', fontSize: 12, fontWeight: '700' },
-  scheduledActionReschedule: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    backgroundColor: Colors.accent + '15', borderRadius: 8, paddingVertical: 7,
-    borderWidth: 1, borderColor: Colors.accent + '40',
-  },
-  scheduledActionRescheduleText: { color: Colors.accent, fontSize: 12, fontWeight: '700' },
-  awaitingRescheduleBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#FFA50015', borderRadius: 8,
-    paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#FFA50050',
-  },
-  awaitingRescheduleText: { fontSize: 10, fontWeight: '700', color: '#FFA500' },
-  rescheduledToRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 14, paddingBottom: 6,
-  },
-  rescheduledToText: { fontSize: 12, color: '#FFA500', fontWeight: '600' },
+    // Scheduled session card
+    scheduledCard: {
+      backgroundColor: c.surface, borderRadius: 14,
+      marginBottom: 10, borderWidth: 1, borderColor: '#4CAF5030', overflow: 'hidden',
+    },
+    scheduledCardMain: {
+      flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
+    },
+    clientConfirmedBadge: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      backgroundColor: '#4CAF5015', borderRadius: 8,
+      paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#4CAF5040',
+    },
+    clientConfirmedText: { fontSize: 10, fontWeight: '700', color: '#4CAF50' },
+    awaitingBadge: {
+      backgroundColor: '#FFA50015', borderRadius: 8,
+      paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#FFA50040',
+    },
+    awaitingText: { fontSize: 10, fontWeight: '700', color: '#FFA500' },
+    scheduledActions: {
+      flexDirection: 'row', gap: 8,
+      paddingHorizontal: 14, paddingBottom: 12,
+    },
+    scheduledActionLog: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+      backgroundColor: c.accent, borderRadius: 8, paddingVertical: 7,
+    },
+    scheduledActionLogText: { color: c.bg, fontSize: 12, fontWeight: '700' },
+    scheduledActionCancel: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+      backgroundColor: '#FF4D4D15', borderRadius: 8, paddingVertical: 7,
+      borderWidth: 1, borderColor: '#FF4D4D40',
+    },
+    scheduledActionCancelText: { color: '#FF4D4D', fontSize: 12, fontWeight: '700' },
+    scheduledActionReschedule: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+      backgroundColor: c.accent + '15', borderRadius: 8, paddingVertical: 7,
+      borderWidth: 1, borderColor: c.accent + '40',
+    },
+    scheduledActionRescheduleText: { color: c.accent, fontSize: 12, fontWeight: '700' },
+    awaitingRescheduleBadge: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      backgroundColor: '#FFA50015', borderRadius: 8,
+      paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#FFA50050',
+    },
+    awaitingRescheduleText: { fontSize: 10, fontWeight: '700', color: '#FFA500' },
+    rescheduledToRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      paddingHorizontal: 14, paddingBottom: 6,
+    },
+    rescheduledToText: { fontSize: 12, color: '#FFA500', fontWeight: '600' },
 
-  // Reschedule modal inputs
-  rsLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: 6, marginTop: 14 },
-  rsInput: {
-    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11,
-    color: Colors.textPrimary, fontSize: 14,
-  },
-  rsSubmitBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: Colors.accent, borderRadius: 12, paddingVertical: 14, marginTop: 20,
-  },
-  rsSubmitText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 0.8 },
-  rsCancelBtn: { alignItems: 'center', paddingVertical: 14 },
-  rsCancelText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '600' },
+    // Reschedule modal inputs
+    rsLabel: { ...Typography.label, color: c.textSecondary, marginBottom: 6, marginTop: 14 },
+    rsInput: {
+      backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
+      borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11,
+      color: c.textPrimary, fontSize: 14,
+    },
+    rsSubmitBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+      backgroundColor: c.accent, borderRadius: 12, paddingVertical: 14, marginTop: 20,
+    },
+    rsSubmitText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 0.8 },
+    rsCancelBtn: { alignItems: 'center', paddingVertical: 14 },
+    rsCancelText: { color: c.textSecondary, fontSize: 14, fontWeight: '600' },
 
-  // Open slot banner
-  openSlotBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#FFA50015', borderRadius: 10, padding: 12,
-    marginBottom: 14, borderWidth: 1, borderColor: '#FFA50040',
-  },
-  openSlotText: { ...Typography.caption, color: '#FFA500', flex: 1 },
+    // Open slot banner
+    openSlotBanner: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      backgroundColor: '#FFA50015', borderRadius: 10, padding: 12,
+      marginBottom: 14, borderWidth: 1, borderColor: '#FFA50040',
+    },
+    openSlotText: { ...Typography.caption, color: '#FFA500', flex: 1 },
 
-  // Session card
-  sessionCard: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    marginBottom: 10, borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
-  },
-  sessionCardUrgent: { borderColor: '#FFA50060' },
-  sessionCardMain: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
-  },
-  avatar: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: Colors.accent + '18', borderWidth: 1.5, borderColor: Colors.accent + '40',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  avatarText: { fontSize: 14, fontWeight: '800', color: Colors.accent },
-  sessionInfo: { flex: 1 },
-  clientName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
-  sessionMeta: { ...Typography.caption, color: Colors.textSecondary },
-  statusBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5, borderWidth: 1,
-  },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusText: { fontSize: 11, fontWeight: '700' },
+    // Session card
+    sessionCard: {
+      backgroundColor: c.surface, borderRadius: 14,
+      marginBottom: 10, borderWidth: 1, borderColor: c.border, overflow: 'hidden',
+    },
+    sessionCardUrgent: { borderColor: '#FFA50060' },
+    sessionCardMain: {
+      flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
+    },
+    avatar: {
+      width: 44, height: 44, borderRadius: 22,
+      backgroundColor: c.accent + '18', borderWidth: 1.5, borderColor: c.accent + '40',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    avatarText: { fontSize: 14, fontWeight: '800', color: c.accent },
+    sessionInfo: { flex: 1 },
+    clientName: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
+    sessionMeta: { ...Typography.caption, color: c.textSecondary },
+    statusBadge: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5, borderWidth: 1,
+    },
+    statusDot: { width: 6, height: 6, borderRadius: 3 },
+    statusText: { fontSize: 11, fontWeight: '700' },
 
-  // Action row
-  actionRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingBottom: 12 },
-  actionBtnConfirm: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    backgroundColor: Colors.accent, borderRadius: 8, paddingVertical: 7,
-  },
-  actionBtnConfirmText: { color: Colors.bg, fontSize: 12, fontWeight: '700' },
-  actionBtnAbsent: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    backgroundColor: '#FF4D4D15', borderRadius: 8, paddingVertical: 7,
-    borderWidth: 1, borderColor: '#FF4D4D40',
-  },
-  actionBtnAbsentText: { color: '#FF4D4D', fontSize: 12, fontWeight: '700' },
-  actionBtnWhatsapp: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    backgroundColor: '#25D36615', borderRadius: 8, paddingVertical: 7,
-    borderWidth: 1, borderColor: '#25D36640',
-  },
-  actionBtnWhatsappUrgent: { backgroundColor: '#25D366', borderColor: '#25D366' },
-  actionBtnWhatsappText: { color: '#25D366', fontSize: 12, fontWeight: '700' },
-  openSlotRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 14, paddingBottom: 8,
-  },
-  openSlotRowText: { ...Typography.caption, color: '#FFA500' },
+    // Action row
+    actionRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingBottom: 12 },
+    actionBtnConfirm: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+      backgroundColor: c.accent, borderRadius: 8, paddingVertical: 7,
+    },
+    actionBtnConfirmText: { color: c.bg, fontSize: 12, fontWeight: '700' },
+    actionBtnAbsent: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+      backgroundColor: '#FF4D4D15', borderRadius: 8, paddingVertical: 7,
+      borderWidth: 1, borderColor: '#FF4D4D40',
+    },
+    actionBtnAbsentText: { color: '#FF4D4D', fontSize: 12, fontWeight: '700' },
+    actionBtnWhatsapp: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+      backgroundColor: '#25D36615', borderRadius: 8, paddingVertical: 7,
+      borderWidth: 1, borderColor: '#25D36640',
+    },
+    actionBtnWhatsappUrgent: { backgroundColor: '#25D366', borderColor: '#25D366' },
+    actionBtnWhatsappText: { color: '#25D366', fontSize: 12, fontWeight: '700' },
+    openSlotRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      paddingHorizontal: 14, paddingBottom: 8,
+    },
+    openSlotRowText: { ...Typography.caption, color: '#FFA500' },
 
-  // Waitlist row on each card
-  waitlistRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 14, paddingVertical: 9,
-    borderTopWidth: 1, borderTopColor: Colors.border,
-  },
-  waitlistRowText: { ...Typography.caption, color: Colors.textSecondary, flex: 1 },
-  wlCountPill: {
-    backgroundColor: Colors.accent + '22', borderRadius: 8,
-    paddingHorizontal: 6, paddingVertical: 2,
-    borderWidth: 1, borderColor: Colors.accent + '50',
-  },
-  wlCountPillText: { color: Colors.accent, fontSize: 10, fontWeight: '800' },
+    // Waitlist row on each card
+    waitlistRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      paddingHorizontal: 14, paddingVertical: 9,
+      borderTopWidth: 1, borderTopColor: c.border,
+    },
+    waitlistRowText: { ...Typography.caption, color: c.textSecondary, flex: 1 },
+    wlCountPill: {
+      backgroundColor: c.accent + '22', borderRadius: 8,
+      paddingHorizontal: 6, paddingVertical: 2,
+      borderWidth: 1, borderColor: c.accent + '50',
+    },
+    wlCountPillText: { color: c.accent, fontSize: 10, fontWeight: '800' },
 
-  // Empty state
-  emptyState: { alignItems: 'center', paddingTop: 60, gap: 8 },
-  emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 12 },
-  emptySub: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center' },
+    // Empty state
+    emptyState: { alignItems: 'center', paddingTop: 60, gap: 8 },
+    emptyTitle: { ...Typography.subtitle, color: c.textPrimary, marginTop: 12 },
+    emptySub: { ...Typography.body, color: c.textSecondary, textAlign: 'center' },
 
-  // FAB
-  fab: {
-    position: 'absolute', bottom: 24, right: 20,
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: Colors.accent,
-    justifyContent: 'center', alignItems: 'center',
-    shadowColor: Colors.accent, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
-  },
+    // FAB
+    fab: {
+      position: 'absolute', bottom: 24, right: 20,
+      width: 56, height: 56, borderRadius: 28,
+      backgroundColor: c.accent,
+      justifyContent: 'center', alignItems: 'center',
+      shadowColor: c.accent, shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
+    },
 
-  // Modal
-  modalRoot: { flex: 1, justifyContent: 'flex-end' },
-  modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
-  modalSheet: {
-    backgroundColor: Colors.surface,
-    borderTopLeftRadius: 22, borderTopRightRadius: 22,
-    borderWidth: 1, borderBottomWidth: 0, borderColor: Colors.border,
-    paddingHorizontal: 20, paddingTop: 12,
-    maxHeight: '72%',
-  },
-  modalHandle: {
-    width: 36, height: 4, borderRadius: 2,
-    backgroundColor: Colors.border, alignSelf: 'center', marginBottom: 18,
-  },
-  modalHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'flex-start', marginBottom: 16,
-  },
-  modalTitle: { ...Typography.label, color: Colors.textPrimary, fontWeight: '800', letterSpacing: 1.5 },
-  modalSub: { ...Typography.caption, color: Colors.textSecondary, marginTop: 3 },
-  addToWLBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: Colors.accent, borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 7,
-  },
-  addToWLBtnText: { color: Colors.bg, fontSize: 12, fontWeight: '700' },
+    // Modal
+    modalRoot: { flex: 1, justifyContent: 'flex-end' },
+    modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
+    modalSheet: {
+      backgroundColor: c.surface,
+      borderTopLeftRadius: 22, borderTopRightRadius: 22,
+      borderWidth: 1, borderBottomWidth: 0, borderColor: c.border,
+      paddingHorizontal: 20, paddingTop: 12,
+      maxHeight: '72%',
+    },
+    modalHandle: {
+      width: 36, height: 4, borderRadius: 2,
+      backgroundColor: c.border, alignSelf: 'center', marginBottom: 18,
+    },
+    modalHeader: {
+      flexDirection: 'row', justifyContent: 'space-between',
+      alignItems: 'flex-start', marginBottom: 16,
+    },
+    modalTitle: { ...Typography.label, color: c.textPrimary, fontWeight: '800', letterSpacing: 1.5 },
+    modalSub: { ...Typography.caption, color: c.textSecondary, marginTop: 3 },
+    addToWLBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      backgroundColor: c.accent, borderRadius: 10,
+      paddingHorizontal: 12, paddingVertical: 7,
+    },
+    addToWLBtnText: { color: c.bg, fontSize: 12, fontWeight: '700' },
 
-  // Waitlist entries
-  wlList: { maxHeight: 320 },
-  wlEmpty: { alignItems: 'center', paddingVertical: 36, gap: 8 },
-  wlEmptyText: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
-  wlEmptySub: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center' },
-  wlEntry: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.border, gap: 12,
-  },
-  wlPosition: {
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: Colors.accent + '20', borderWidth: 1, borderColor: Colors.accent + '40',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  wlPositionText: { color: Colors.accent, fontSize: 12, fontWeight: '800' },
-  wlEntryInfo: { flex: 1 },
-  wlEntryName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
-  wlEntryStatus: { ...Typography.caption, color: Colors.textSecondary },
-  wlActions: { flexDirection: 'row', gap: 6 },
-  wlNotifyBtn: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: '#25D36618', borderWidth: 1, borderColor: '#25D36640',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  wlRemoveBtn: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: Colors.surfaceRaised, borderWidth: 1, borderColor: Colors.border,
-    justifyContent: 'center', alignItems: 'center',
-  },
+    // Waitlist entries
+    wlList: { maxHeight: 320 },
+    wlEmpty: { alignItems: 'center', paddingVertical: 36, gap: 8 },
+    wlEmptyText: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    wlEmptySub: { ...Typography.caption, color: c.textSecondary, textAlign: 'center' },
+    wlEntry: {
+      flexDirection: 'row', alignItems: 'center',
+      paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border, gap: 12,
+    },
+    wlPosition: {
+      width: 28, height: 28, borderRadius: 14,
+      backgroundColor: c.accent + '20', borderWidth: 1, borderColor: c.accent + '40',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    wlPositionText: { color: c.accent, fontSize: 12, fontWeight: '800' },
+    wlEntryInfo: { flex: 1 },
+    wlEntryName: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    wlEntryStatus: { ...Typography.caption, color: c.textSecondary },
+    wlActions: { flexDirection: 'row', gap: 6 },
+    wlNotifyBtn: {
+      width: 32, height: 32, borderRadius: 16,
+      backgroundColor: '#25D36618', borderWidth: 1, borderColor: '#25D36640',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    wlRemoveBtn: {
+      width: 32, height: 32, borderRadius: 16,
+      backgroundColor: c.surfaceRaised, borderWidth: 1, borderColor: c.border,
+      justifyContent: 'center', alignItems: 'center',
+    },
 
-  // Client picker (add mode)
-  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 14 },
-  backBtnText: { ...Typography.caption, color: Colors.textSecondary },
-  clientPickRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.border, gap: 12,
-  },
-  clientPickAvatar: {
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: Colors.accent + '18', borderWidth: 1.5, borderColor: Colors.accent + '40',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  clientPickInitials: { fontSize: 13, fontWeight: '800', color: Colors.accent },
-  clientPickInfo: { flex: 1 },
-  clientPickName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
-  clientPickMeta: { ...Typography.caption, color: Colors.textSecondary },
+    // Client picker (add mode)
+    backBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 14 },
+    backBtnText: { ...Typography.caption, color: c.textSecondary },
+    clientPickRow: {
+      flexDirection: 'row', alignItems: 'center',
+      paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border, gap: 12,
+    },
+    clientPickAvatar: {
+      width: 38, height: 38, borderRadius: 19,
+      backgroundColor: c.accent + '18', borderWidth: 1.5, borderColor: c.accent + '40',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    clientPickInitials: { fontSize: 13, fontWeight: '800', color: c.accent },
+    clientPickInfo: { flex: 1 },
+    clientPickName: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    clientPickMeta: { ...Typography.caption, color: c.textSecondary },
 
-  // Blocked dates section
-  blockHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  blockSectionTitle: { ...Typography.label, color: Colors.textSecondary },
-  addLeaveBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: Colors.accent, borderRadius: 8,
-    paddingHorizontal: 12, paddingVertical: 6,
-  },
-  addLeaveBtnText: { color: Colors.bg, fontSize: 12, fontWeight: '800' },
-  emptyBlockedCard: {
-    backgroundColor: Colors.surface, borderRadius: 12,
-    borderWidth: 1, borderColor: Colors.border,
-    padding: 20, alignItems: 'center',
-  },
-  emptyBlockedText: { ...Typography.body, color: Colors.textSecondary },
-  blockedList: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
-  },
-  blockedRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    padding: 14, borderBottomWidth: 1, borderBottomColor: Colors.border + '80',
-  },
-  blockTypeTag: {
-    borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5,
-    flexShrink: 0, minWidth: 60, alignItems: 'center',
-  },
-  blockTypeTagText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
-  blockedInfo: { flex: 1 },
-  blockedDateText: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
-  blockedNotes: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic' },
+    // Blocked dates section
+    blockHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+    blockSectionTitle: { ...Typography.label, color: c.textSecondary },
+    addLeaveBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      backgroundColor: c.accent, borderRadius: 8,
+      paddingHorizontal: 12, paddingVertical: 6,
+    },
+    addLeaveBtnText: { color: c.bg, fontSize: 12, fontWeight: '800' },
+    emptyBlockedCard: {
+      backgroundColor: c.surface, borderRadius: 12,
+      borderWidth: 1, borderColor: c.border,
+      padding: 20, alignItems: 'center',
+    },
+    emptyBlockedText: { ...Typography.body, color: c.textSecondary },
+    blockedList: {
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border, overflow: 'hidden',
+    },
+    blockedRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      padding: 14, borderBottomWidth: 1, borderBottomColor: c.border + '80',
+    },
+    blockTypeTag: {
+      borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5,
+      flexShrink: 0, minWidth: 60, alignItems: 'center',
+    },
+    blockTypeTagText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
+    blockedInfo: { flex: 1 },
+    blockedDateText: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
+    blockedNotes: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic' },
 
-  // Leave type buttons (in modal)
-  leaveTypeBtn: {
-    flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center',
-    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bg,
-  },
-  leaveTypeBtnText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
-});
+    // Leave type buttons (in modal)
+    leaveTypeBtn: {
+      flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center',
+      borderWidth: 1, borderColor: c.border, backgroundColor: c.bg,
+    },
+    leaveTypeBtnText: { fontSize: 13, fontWeight: '700', color: c.textSecondary },
+  });
+}

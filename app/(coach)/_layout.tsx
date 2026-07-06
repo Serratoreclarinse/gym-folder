@@ -1,18 +1,26 @@
+import { Image, View } from 'react-native';
 import { Stack } from 'expo-router';
-import { Colors } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 export default function CoachRootLayout() {
+  const { colors } = useTheme();
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: Colors.bg },
-        headerTintColor: Colors.textPrimary,
-        headerTitleStyle: { fontWeight: '700', fontSize: 17 },
-        headerShadowVisible: false,
-        contentStyle: { backgroundColor: Colors.bg },
-        animation: 'slide_from_right',
-      }}
-    >
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <Image
+        source={require('@/assets/images/logo.png')}
+        style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.05 }}
+        resizeMode="contain"
+      />
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: colors.bg },
+          headerTintColor: colors.textPrimary,
+          headerTitleStyle: { fontWeight: '700', fontSize: 17 },
+          headerShadowVisible: false,
+          contentStyle: { backgroundColor: 'transparent' },
+          animation: 'slide_from_right',
+        }}
+      >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen
         name="add-client"
@@ -67,5 +75,6 @@ export default function CoachRootLayout() {
         options={{ title: 'Messages' }}
       />
     </Stack>
+    </View>
   );
 }

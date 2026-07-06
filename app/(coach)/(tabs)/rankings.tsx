@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, View,
@@ -6,7 +6,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 type RankRow = {
   coachId: string;
@@ -31,6 +32,8 @@ function fmtOMR(n: number) {
 
 export default function CoachRankingsScreen() {
   const { profile } = useAuth();
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const myId = profile?.id ?? '';
 
   const [period, setPeriod] = useState<Period>('month');
@@ -78,11 +81,11 @@ export default function CoachRankingsScreen() {
       </View>
 
       {loading ? (
-        <View style={s.center}><ActivityIndicator size="large" color={Colors.accent} /></View>
+        <View style={s.center}><ActivityIndicator size="large" color={colors.accent} /></View>
       ) : (
         <ScrollView
           contentContainerStyle={s.content}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load(period)} tintColor={Colors.accent} />}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load(period)} tintColor={colors.accent} />}
         >
           {/* My rank banner */}
           {me ? (
@@ -101,7 +104,7 @@ export default function CoachRankingsScreen() {
             </View>
           ) : (
             <View style={s.unranked}>
-              <Ionicons name="podium-outline" size={32} color={Colors.textSecondary} />
+              <Ionicons name="podium-outline" size={32} color={colors.textSecondary} />
               <Text style={s.unrankedText}>
                 {period === 'month' ? 'No sales recorded this month yet.' : 'No sales recorded yet.'}
               </Text>
@@ -112,7 +115,7 @@ export default function CoachRankingsScreen() {
           {rows.length > 0 && (
             <View style={s.card}>
               <View style={s.hint}>
-                <Ionicons name="eye-off-outline" size={13} color={Colors.textSecondary} />
+                <Ionicons name="eye-off-outline" size={13} color={colors.textSecondary} />
                 <Text style={s.hintText}>Other coaches' details are private</Text>
               </View>
               {rows.map((r, i) => (
@@ -136,7 +139,7 @@ export default function CoachRankingsScreen() {
                   {r.isMe ? (
                     <View style={s.nameCell}>
                       <View style={[s.avatar, s.avatarMe]}>
-                        <Text style={[s.avatarText, { color: Colors.accent }]}>
+                        <Text style={[s.avatarText, { color: colors.accent }]}>
                           {(profile?.name ?? 'ME').split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2)}
                         </Text>
                       </View>
@@ -148,7 +151,7 @@ export default function CoachRankingsScreen() {
                   ) : (
                     <View style={s.nameCell}>
                       <View style={s.avatar}>
-                        <Ionicons name="person-outline" size={14} color={Colors.textSecondary} />
+                        <Ionicons name="person-outline" size={14} color={colors.textSecondary} />
                       </View>
                       <Text style={s.maskedName}>Coach #{r.rank}</Text>
                     </View>
@@ -175,78 +178,80 @@ export default function CoachRankingsScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.bg },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    root: { flex: 1 },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  toolbar: { borderBottomWidth: 1, borderBottomColor: Colors.border, padding: 12, alignItems: 'flex-start' },
-  segmented: {
-    flexDirection: 'row', backgroundColor: Colors.surface,
-    borderRadius: 10, borderWidth: 1, borderColor: Colors.border, padding: 3, gap: 2,
-  },
-  seg: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 8 },
-  segActive: { backgroundColor: Colors.accent },
-  segText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
-  segTextActive: { color: Colors.bg },
+    toolbar: { borderBottomWidth: 1, borderBottomColor: c.border, padding: 12, alignItems: 'flex-start' },
+    segmented: {
+      flexDirection: 'row', backgroundColor: c.surface,
+      borderRadius: 10, borderWidth: 1, borderColor: c.border, padding: 3, gap: 2,
+    },
+    seg: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 8 },
+    segActive: { backgroundColor: c.accent },
+    segText: { fontSize: 13, fontWeight: '600', color: c.textSecondary },
+    segTextActive: { color: c.bg },
 
-  content: { padding: 14, paddingBottom: 48, gap: 14 },
+    content: { padding: 14, paddingBottom: 48, gap: 14 },
 
-  myBanner: {
-    backgroundColor: Colors.accent + '10', borderRadius: 16,
-    borderWidth: 1.5, borderColor: Colors.accent + '40',
-    padding: 16, flexDirection: 'row', alignItems: 'center',
-  },
-  myBannerLeft: { flex: 1, gap: 4 },
-  myBannerLabel: { fontSize: 12, color: Colors.accent, fontWeight: '600' },
-  myBannerRank: { fontSize: 28, fontWeight: '800', color: Colors.textPrimary },
-  myBannerRight: { alignItems: 'flex-end', gap: 2 },
-  myBannerRevLabel: { fontSize: 11, color: Colors.textSecondary },
-  myBannerRev: { fontSize: 15, fontWeight: '800', color: Colors.accent },
-  myBannerCount: { fontSize: 11, color: Colors.textSecondary },
+    myBanner: {
+      backgroundColor: c.accent + '10', borderRadius: 16,
+      borderWidth: 1.5, borderColor: c.accent + '40',
+      padding: 16, flexDirection: 'row', alignItems: 'center',
+    },
+    myBannerLeft: { flex: 1, gap: 4 },
+    myBannerLabel: { fontSize: 12, color: c.accent, fontWeight: '600' },
+    myBannerRank: { fontSize: 28, fontWeight: '800', color: c.textPrimary },
+    myBannerRight: { alignItems: 'flex-end', gap: 2 },
+    myBannerRevLabel: { fontSize: 11, color: c.textSecondary },
+    myBannerRev: { fontSize: 15, fontWeight: '800', color: c.accent },
+    myBannerCount: { fontSize: 11, color: c.textSecondary },
 
-  unranked: {
-    alignItems: 'center', gap: 10, paddingVertical: 32,
-    backgroundColor: Colors.surface, borderRadius: 16,
-    borderWidth: 1, borderColor: Colors.border,
-  },
-  unrankedText: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center' },
+    unranked: {
+      alignItems: 'center', gap: 10, paddingVertical: 32,
+      backgroundColor: c.surface, borderRadius: 16,
+      borderWidth: 1, borderColor: c.border,
+    },
+    unrankedText: { ...Typography.body, color: c.textSecondary, textAlign: 'center' },
 
-  card: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
-  },
-  hint: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    padding: 10, borderBottomWidth: 1, borderBottomColor: Colors.border,
-    backgroundColor: Colors.bg,
-  },
-  hintText: { fontSize: 11, color: Colors.textSecondary },
+    card: {
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border, overflow: 'hidden',
+    },
+    hint: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      padding: 10, borderBottomWidth: 1, borderBottomColor: c.border,
+      backgroundColor: c.bg,
+    },
+    hintText: { fontSize: 11, color: c.textSecondary },
 
-  row: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14,
-    paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: Colors.border + '80',
-    gap: 10,
-  },
-  rowMe: { backgroundColor: Colors.accent + '08' },
+    row: {
+      flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14,
+      paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: c.border + '80',
+      gap: 10,
+    },
+    rowMe: { backgroundColor: c.accent + '08' },
 
-  rankCell: { width: 32, alignItems: 'center' },
-  rankMedal: { fontSize: 20 },
-  rankNum: { fontSize: 14, fontWeight: '700', color: Colors.textSecondary },
+    rankCell: { width: 32, alignItems: 'center' },
+    rankMedal: { fontSize: 20 },
+    rankNum: { fontSize: 14, fontWeight: '700', color: c.textSecondary },
 
-  nameCell: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  avatar: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: Colors.border + '40',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  avatarMe: { backgroundColor: Colors.accent + '18', borderWidth: 1, borderColor: Colors.accent + '40' },
-  avatarText: { fontSize: 11, fontWeight: '800' },
-  myName: { fontSize: 14, fontWeight: '700', color: Colors.textPrimary },
-  youBadge: { fontSize: 10, color: Colors.accent, fontWeight: '700' },
-  maskedName: { fontSize: 14, color: Colors.textSecondary, fontStyle: 'italic' },
+    nameCell: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+    avatar: {
+      width: 32, height: 32, borderRadius: 16,
+      backgroundColor: c.border + '40',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    avatarMe: { backgroundColor: c.accent + '18', borderWidth: 1, borderColor: c.accent + '40' },
+    avatarText: { fontSize: 11, fontWeight: '800' },
+    myName: { fontSize: 14, fontWeight: '700', color: c.textPrimary },
+    youBadge: { fontSize: 10, color: c.accent, fontWeight: '700' },
+    maskedName: { fontSize: 14, color: c.textSecondary, fontStyle: 'italic' },
 
-  revenueCell: { alignItems: 'flex-end', minWidth: 90 },
-  myRevenue: { fontSize: 13, fontWeight: '700', color: Colors.accent },
-  myCount: { fontSize: 11, color: Colors.textSecondary },
-  hidden: { fontSize: 14, color: Colors.border, letterSpacing: 2 },
-});
+    revenueCell: { alignItems: 'flex-end', minWidth: 90 },
+    myRevenue: { fontSize: 13, fontWeight: '700', color: c.accent },
+    myCount: { fontSize: 11, color: c.textSecondary },
+    hidden: { fontSize: 14, color: c.border, letterSpacing: 2 },
+  });
+}

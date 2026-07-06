@@ -28,14 +28,8 @@ CREATE POLICY "client_files_admin_select"
   FOR SELECT
   USING ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 
--- ── 4. Fix body_measurements admin policy ───────────────────
-DROP POLICY IF EXISTS "body_measurements_admin_select" ON public.body_measurements;
-CREATE POLICY "body_measurements_admin_select"
-  ON public.body_measurements
-  FOR SELECT
-  USING ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
-
--- ── 5. Fix profiles admin policy ────────────────────────────
+-- ── 4. Fix profiles admin policy ────────────────────────────
+-- (body_measurements table was removed from the schema; step skipped)
 DROP POLICY IF EXISTS "profiles: admin read all" ON public.profiles;
 CREATE POLICY "profiles: admin read all"
   ON public.profiles

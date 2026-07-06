@@ -1,5 +1,5 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+﻿import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ExercisePickerModal } from '@/components/ExercisePickerModal';
 import { QRScanModal } from '@/components/QRScanModal';
 import * as Notifications from 'expo-notifications';
@@ -23,7 +23,8 @@ import { useClients } from '@/hooks/useClients';
 import { useExerciseHistory, RecentExercise } from '@/hooks/useExerciseHistory';
 import { useClientLastWeights } from '@/hooks/useClientLastWeights';
 import { useTemplates } from '@/hooks/useTemplates';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 import { sendPushNotification } from '@/lib/pushNotifications';
 
 type Exercise = {
@@ -151,12 +152,13 @@ function ExerciseCard({
   onToggleSuperset: (id: string) => void;
   onOpenPicker: (id: string) => void;
 }) {
+  const { colors } = useTheme();
   return (
     <View style={styles.exCard}>
       <View style={styles.exCardHeader}>
         <Text style={styles.exCardTitle}>EXERCISE {index + 1}</Text>
         <Pressable onPress={() => onRemove(exercise.id)} hitSlop={8}>
-          <Ionicons name="trash-outline" size={18} color={Colors.danger} />
+          <Ionicons name="trash-outline" size={18} color={colors.danger} />
         </Pressable>
       </View>
 
@@ -165,11 +167,11 @@ function ExerciseCard({
         style={[styles.exInput, styles.exNameBtn]}
         onPress={() => onOpenPicker(exercise.id)}
       >
-        <Text style={[styles.exNameBtnText, !exercise.exercise_name && { color: Colors.textSecondary }]}
+        <Text style={[styles.exNameBtnText, !exercise.exercise_name && { color: colors.textSecondary }]}
           numberOfLines={1}>
           {exercise.exercise_name || 'Tap to select exercise…'}
         </Text>
-        <Ionicons name="search-outline" size={16} color={Colors.textSecondary} />
+        <Ionicons name="search-outline" size={16} color={colors.textSecondary} />
       </Pressable>
 
       <View style={styles.exRow}>
@@ -178,7 +180,7 @@ function ExerciseCard({
           <TextInput
             style={styles.exSmallInput}
             placeholder="4"
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={colors.textSecondary}
             keyboardType="number-pad"
             value={exercise.sets}
             onChangeText={(v) => onChange(exercise.id, 'sets', v)}
@@ -189,7 +191,7 @@ function ExerciseCard({
           <TextInput
             style={styles.exSmallInput}
             placeholder="10"
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={colors.textSecondary}
             keyboardType="number-pad"
             value={exercise.reps}
             onChangeText={(v) => onChange(exercise.id, 'reps', v)}
@@ -200,7 +202,7 @@ function ExerciseCard({
           <TextInput
             style={styles.exSmallInput}
             placeholder="30s"
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={colors.textSecondary}
             value={exercise.duration}
             onChangeText={(v) => onChange(exercise.id, 'duration', v)}
           />
@@ -214,7 +216,7 @@ function ExerciseCard({
           <TextInput
             style={styles.exSmallInput}
             placeholder="80kg / Body Weight"
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={colors.textSecondary}
             value={exercise.weight}
             onChangeText={(v) => onChange(exercise.id, 'weight', v)}
           />
@@ -236,7 +238,7 @@ function ExerciseCard({
       <TextInput
         style={[styles.exInput, styles.exNotes]}
         placeholder="Notes (optional)"
-        placeholderTextColor={Colors.textSecondary}
+        placeholderTextColor={colors.textSecondary}
         value={exercise.notes}
         onChangeText={(v) => onChange(exercise.id, 'notes', v)}
         multiline
@@ -251,7 +253,7 @@ function ExerciseCard({
           <Ionicons
             name="swap-horizontal-outline"
             size={13}
-            color={exercise.isSuperset ? Colors.bg : Colors.textSecondary}
+            color={exercise.isSuperset ? colors.bg : colors.textSecondary}
           />
           <Text style={[styles.supersetToggleText, exercise.isSuperset && styles.supersetToggleTextActive]}>
             {exercise.isSuperset ? 'SUPERSET WITH NEXT ✓' : 'SUPERSET WITH NEXT'}
@@ -263,6 +265,8 @@ function ExerciseCard({
 }
 
 function CalendarPicker({ value, onChange }: { value: string; onChange: (iso: string) => void }) {
+  const { colors } = useTheme();
+  const calStyles = useMemo(() => makeCalStyles(colors), [colors]);
   const sel = new Date(value + 'T00:00:00');
   const [vy, setVy] = useState(sel.getFullYear());
   const [vm, setVm] = useState(sel.getMonth());
@@ -283,11 +287,11 @@ function CalendarPicker({ value, onChange }: { value: string; onChange: (iso: st
     <View style={calStyles.container}>
       <View style={calStyles.header}>
         <Pressable onPress={prevMonth} hitSlop={12} style={calStyles.navBtn}>
-          <Ionicons name="chevron-back" size={20} color={Colors.textPrimary} />
+          <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
         </Pressable>
         <Text style={calStyles.monthLabel}>{monthLabel}</Text>
         <Pressable onPress={nextMonth} hitSlop={12} style={calStyles.navBtn}>
-          <Ionicons name="chevron-forward" size={20} color={Colors.textPrimary} />
+          <Ionicons name="chevron-forward" size={20} color={colors.textPrimary} />
         </Pressable>
       </View>
       <View style={calStyles.dayNames}>
@@ -318,26 +322,30 @@ function CalendarPicker({ value, onChange }: { value: string; onChange: (iso: st
   );
 }
 
-const calStyles = StyleSheet.create({
+function makeCalStyles(colors: ColorScheme) {
+  return StyleSheet.create({
   container: {
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
     borderRadius: 14, padding: 12, marginTop: 8,
   },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   navBtn: { padding: 4 },
-  monthLabel: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700' },
+  monthLabel: { ...Typography.body, color: colors.textPrimary, fontWeight: '700' },
   dayNames: { flexDirection: 'row', marginBottom: 4 },
-  dayName: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '600', color: Colors.textSecondary },
+  dayName: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '600', color: colors.textSecondary },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: '14.285%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
-  cellSelected: { backgroundColor: Colors.accent, borderRadius: 100 },
-  cellToday: { borderWidth: 1, borderColor: Colors.accent, borderRadius: 100 },
-  cellText: { fontSize: 14, color: Colors.textPrimary },
-  cellTextSelected: { color: Colors.bg, fontWeight: '700' },
-  cellTextToday: { color: Colors.accent, fontWeight: '700' },
+  cellSelected: { backgroundColor: colors.accent, borderRadius: 100 },
+  cellToday: { borderWidth: 1, borderColor: colors.accent, borderRadius: 100 },
+  cellText: { fontSize: 14, color: colors.textPrimary },
+  cellTextSelected: { color: colors.bg, fontWeight: '700' },
+  cellTextToday: { color: colors.accent, fontWeight: '700' },
 });
+}
 
 export default function LogSessionScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { profile } = useAuth();
   const params = useLocalSearchParams<{ clientId?: string; date?: string; mode?: string }>();
   const { clients } = useClients();
@@ -599,14 +607,14 @@ export default function LogSessionScreen() {
             style={[styles.modeBtn, mode === 'full' && styles.modeBtnActive]}
             onPress={() => setMode('full')}
           >
-            <Ionicons name="list-outline" size={15} color={mode === 'full' ? Colors.bg : Colors.textSecondary} />
+            <Ionicons name="list-outline" size={15} color={mode === 'full' ? colors.bg : colors.textSecondary} />
             <Text style={[styles.modeBtnText, mode === 'full' && styles.modeBtnTextActive]}>FULL LOG</Text>
           </Pressable>
           <Pressable
             style={[styles.modeBtn, mode === 'quick' && styles.modeBtnActive]}
             onPress={() => setMode('quick')}
           >
-            <Ionicons name="flash" size={15} color={mode === 'quick' ? Colors.bg : Colors.textSecondary} />
+            <Ionicons name="flash" size={15} color={mode === 'quick' ? colors.bg : colors.textSecondary} />
             <Text style={[styles.modeBtnText, mode === 'quick' && styles.modeBtnTextActive]}>QUICK</Text>
           </Pressable>
         </View>
@@ -614,13 +622,13 @@ export default function LogSessionScreen() {
         {/* Client picker */}
         <Text style={styles.sectionTitle}>CLIENT</Text>
         <Pressable style={styles.pickerBtn} onPress={() => setShowClientPicker((v) => !v)}>
-          <Text style={[styles.pickerBtnText, !selectedClient && { color: Colors.textSecondary }]}>
+          <Text style={[styles.pickerBtnText, !selectedClient && { color: colors.textSecondary }]}>
             {selectedClient ? selectedClient.name : 'Select a client…'}
           </Text>
           <Ionicons
             name={showClientPicker ? 'chevron-up' : 'chevron-down'}
             size={18}
-            color={Colors.textSecondary}
+            color={colors.textSecondary}
           />
         </Pressable>
 
@@ -631,11 +639,11 @@ export default function LogSessionScreen() {
             ) : (
               activeClients.map((c) => (
                 <Pressable
-                  key={c.id}
+                  key={colors.id}
                   style={[styles.dropdownItem, c.id === selectedClientId && styles.dropdownItemActive]}
                   onPress={() => { setSelectedClientId(c.id); setShowClientPicker(false); }}
                 >
-                  <Text style={[styles.dropdownItemText, c.id === selectedClientId && { color: Colors.accent }]}>
+                  <Text style={[styles.dropdownItemText, c.id === selectedClientId && { color: colors.accent }]}>
                     {c.name}
                   </Text>
                   <Text style={styles.dropdownItemSub}>
@@ -658,8 +666,8 @@ export default function LogSessionScreen() {
         )}
         {selectedClient && pkg && pkg.sessions_remaining === 0 && (
           <View style={[styles.warningBanner, styles.errorBanner]}>
-            <Ionicons name="close-circle-outline" size={16} color={Colors.danger} />
-            <Text style={[styles.warningText, { color: Colors.danger }]}>
+            <Ionicons name="close-circle-outline" size={16} color={colors.danger} />
+            <Text style={[styles.warningText, { color: colors.danger }]}>
               This client has no sessions remaining
             </Text>
           </View>
@@ -698,7 +706,7 @@ export default function LogSessionScreen() {
                     <Ionicons
                       name={t === 'gym' ? 'barbell-outline' : 'home-outline'}
                       size={16}
-                      color={sessionType === t ? Colors.bg : Colors.textSecondary}
+                      color={sessionType === t ? colors.bg : colors.textSecondary}
                     />
                     <Text style={[styles.typeBtnText, sessionType === t && styles.typeBtnTextActive]}>
                       {t === 'gym' ? 'Gym' : 'Home'}
@@ -713,11 +721,11 @@ export default function LogSessionScreen() {
             <View style={styles.field}>
               <Text style={styles.label}>DATE</Text>
               <Pressable style={styles.dateTrigger} onPress={() => setShowCalendar(v => !v)}>
-                <Ionicons name="calendar-outline" size={16} color={Colors.accent} />
+                <Ionicons name="calendar-outline" size={16} color={colors.accent} />
                 <Text style={styles.dateTriggerText}>
                   {new Date(sessionDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
                 </Text>
-                <Ionicons name={showCalendar ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.textSecondary} />
+                <Ionicons name={showCalendar ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSecondary} />
               </Pressable>
               {showCalendar && (
                 <CalendarPicker
@@ -734,7 +742,7 @@ export default function LogSessionScreen() {
                 onChangeText={(v) => setDuration(v.replace(/[^0-9]/g, ''))}
                 keyboardType="number-pad"
                 placeholder="60"
-                placeholderTextColor={Colors.textSecondary}
+                placeholderTextColor={colors.textSecondary}
               />
             </View>
             <View style={styles.field}>
@@ -749,7 +757,7 @@ export default function LogSessionScreen() {
                     <Ionicons
                       name={t === 'gym' ? 'barbell-outline' : 'home-outline'}
                       size={16}
-                      color={sessionType === t ? Colors.bg : Colors.textSecondary}
+                      color={sessionType === t ? colors.bg : colors.textSecondary}
                     />
                     <Text style={[styles.typeBtnText, sessionType === t && styles.typeBtnTextActive]}>
                       {t === 'gym' ? 'Gym' : 'Home'}
@@ -764,13 +772,13 @@ export default function LogSessionScreen() {
                 style={styles.pickerBtn}
                 onPress={() => setShowTimePicker((v) => !v)}
               >
-                <Text style={[styles.pickerBtnText, !sessionTime && { color: Colors.textSecondary }]}>
+                <Text style={[styles.pickerBtnText, !sessionTime && { color: colors.textSecondary }]}>
                   {sessionTime || '9:00 AM'}
                 </Text>
                 <Ionicons
                   name={showTimePicker ? 'chevron-up' : 'chevron-down'}
                   size={18}
-                  color={Colors.textSecondary}
+                  color={colors.textSecondary}
                 />
               </Pressable>
               {showTimePicker && (
@@ -784,7 +792,7 @@ export default function LogSessionScreen() {
                           style={[styles.dropdownItem, active && styles.dropdownItemActive]}
                           onPress={() => { setSessionTime(slot); setShowTimePicker(false); }}
                         >
-                          <Text style={[styles.dropdownItemText, active && { color: Colors.accent }]}>
+                          <Text style={[styles.dropdownItemText, active && { color: colors.accent }]}>
                             {slot}
                           </Text>
                         </Pressable>
@@ -798,7 +806,7 @@ export default function LogSessionScreen() {
                 value={sessionTime}
                 onChangeText={(v) => { setSessionTime(v); setShowTimePicker(false); }}
                 placeholder="9:00 AM"
-                placeholderTextColor={Colors.textSecondary}
+                placeholderTextColor={colors.textSecondary}
                 returnKeyType="done"
               />
               <Text style={styles.timeFormatHint}>Type manually: 9:00 AM  or  14:30</Text>
@@ -812,18 +820,18 @@ export default function LogSessionScreen() {
           <View style={styles.exHeaderBtns}>
             {templates.length > 0 && (
               <Pressable style={styles.historyBtn} onPress={() => setShowTemplateModal(true)}>
-                <Ionicons name="copy-outline" size={14} color={Colors.accent} />
+                <Ionicons name="copy-outline" size={14} color={colors.accent} />
                 <Text style={styles.historyBtnText}>TEMPLATE</Text>
               </Pressable>
             )}
             {exerciseHistory.length > 0 && (
               <Pressable style={styles.historyBtn} onPress={() => setShowHistoryModal(true)}>
-                <Ionicons name="time-outline" size={14} color={Colors.accent} />
+                <Ionicons name="time-outline" size={14} color={colors.accent} />
                 <Text style={styles.historyBtnText}>HISTORY</Text>
               </Pressable>
             )}
             <Pressable style={styles.addExBtn} onPress={addExercise}>
-              <Ionicons name="add" size={16} color={Colors.bg} />
+              <Ionicons name="add" size={16} color={colors.bg} />
               <Text style={styles.addExBtnText}>ADD</Text>
             </Pressable>
           </View>
@@ -848,7 +856,7 @@ export default function LogSessionScreen() {
         <TextInput
           style={[styles.input, styles.notesInput]}
           placeholder="Overall notes for this session…"
-          placeholderTextColor={Colors.textSecondary}
+          placeholderTextColor={colors.textSecondary}
           multiline
           numberOfLines={3}
           value={sessionNotes}
@@ -878,7 +886,7 @@ export default function LogSessionScreen() {
               }}
               disabled={!canSave || loading}
             >
-              <Ionicons name="play-circle-outline" size={20} color={Colors.accent} />
+              <Ionicons name="play-circle-outline" size={20} color={colors.accent} />
               <Text style={styles.startWorkoutBtnText}>START WORKOUT</Text>
             </Pressable>
           </>
@@ -898,7 +906,7 @@ export default function LogSessionScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>LOAD TEMPLATE</Text>
               <Pressable onPress={() => setShowTemplateModal(false)} hitSlop={12}>
-                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
               </Pressable>
             </View>
             <Text style={styles.modalSub}>Select a template to auto-fill exercises</Text>
@@ -972,7 +980,7 @@ export default function LogSessionScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>PAST EXERCISES</Text>
               <Pressable onPress={() => setShowHistoryModal(false)} hitSlop={12}>
-                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
               </Pressable>
             </View>
             <Text style={styles.modalSub}>Tap to add pre-filled to your session</Text>
@@ -1020,41 +1028,42 @@ export default function LogSessionScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  kav: { flex: 1, backgroundColor: Colors.bg },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+  kav: { flex: 1 },
   scroll: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
-  modeToggle: { flexDirection: 'row', backgroundColor: Colors.surface, borderRadius: 12, padding: 4, marginBottom: 24, borderWidth: 1, borderColor: Colors.border },
+  modeToggle: { flexDirection: 'row', backgroundColor: c.surface, borderRadius: 12, padding: 4, marginBottom: 24, borderWidth: 1, borderColor: c.border },
   modeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 9 },
-  modeBtnActive: { backgroundColor: Colors.accent },
-  modeBtnText: { color: Colors.textSecondary, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
-  modeBtnTextActive: { color: Colors.bg },
-  sectionTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 12 },
+  modeBtnActive: { backgroundColor: c.accent },
+  modeBtnText: { color: c.textSecondary, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
+  modeBtnTextActive: { color: c.bg },
+  sectionTitle: { ...Typography.label, color: c.textSecondary, marginBottom: 12 },
   pickerBtn: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     marginBottom: 4,
   },
-  pickerBtnText: { ...Typography.body, color: Colors.textPrimary },
+  pickerBtnText: { ...Typography.body, color: c.textPrimary },
   dropdown: {
-    backgroundColor: Colors.surfaceRaised,
+    backgroundColor: c.surfaceRaised,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     overflow: 'hidden',
     marginBottom: 4,
   },
-  dropdownEmpty: { ...Typography.body, color: Colors.textSecondary, padding: 16, textAlign: 'center' },
-  dropdownItem: { padding: 14, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  dropdownItemActive: { backgroundColor: Colors.accent + '12' },
-  dropdownItemText: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
-  dropdownItemSub: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
+  dropdownEmpty: { ...Typography.body, color: c.textSecondary, padding: 16, textAlign: 'center' },
+  dropdownItem: { padding: 14, borderBottomWidth: 1, borderBottomColor: c.border },
+  dropdownItemActive: { backgroundColor: c.accent + '12' },
+  dropdownItemText: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+  dropdownItemSub: { ...Typography.caption, color: c.textSecondary, marginTop: 2 },
   warningBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1066,36 +1075,36 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#FFA50040',
   },
-  errorBanner: { backgroundColor: Colors.danger + '15', borderColor: Colors.danger + '40' },
+  errorBanner: { backgroundColor: c.danger + '15', borderColor: c.danger + '40' },
   warningText: { ...Typography.caption, color: '#FFA500', flex: 1 },
   row: { flexDirection: 'row', gap: 12 },
   field: { marginBottom: 16 },
-  label: { ...Typography.label, color: Colors.textSecondary, marginBottom: 8 },
+  label: { ...Typography.label, color: c.textSecondary, marginBottom: 8 },
   typeRow: { flexDirection: 'row', gap: 10 },
   typeBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
     paddingVertical: 12, borderRadius: 12, borderWidth: 1.5,
-    borderColor: Colors.border, backgroundColor: Colors.surface,
+    borderColor: c.border, backgroundColor: c.surface,
   },
-  typeBtnActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  typeBtnText: { fontSize: 14, fontWeight: '700', color: Colors.textSecondary },
-  typeBtnTextActive: { color: Colors.bg },
+  typeBtnActive: { backgroundColor: c.accent, borderColor: c.accent },
+  typeBtnText: { fontSize: 14, fontWeight: '700', color: c.textSecondary },
+  typeBtnTextActive: { color: c.bg },
   input: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 13,
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     fontSize: 15,
   },
   dateTrigger: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
     borderRadius: 12, paddingVertical: 13, paddingHorizontal: 14,
   },
-  dateTriggerText: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', flex: 1 },
+  dateTriggerText: { ...Typography.body, color: c.textPrimary, fontWeight: '600', flex: 1 },
   notesInput: { minHeight: 80, textAlignVertical: 'top', paddingTop: 12 },
   exHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   exHeaderBtns: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -1104,29 +1113,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     borderWidth: 1,
-    borderColor: Colors.accent,
+    borderColor: c.accent,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 7,
   },
-  historyBtnText: { color: Colors.accent, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
+  historyBtnText: { color: c.accent, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
   addExBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: Colors.accent,
+    backgroundColor: c.accent,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
-  addExBtnText: { color: Colors.bg, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
+  addExBtnText: { color: c.bg, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.65)',
     justifyContent: 'flex-end',
   },
   modalSheet: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 20,
@@ -1137,7 +1146,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: Colors.border,
+    backgroundColor: c.border,
     alignSelf: 'center',
     marginTop: 12,
     marginBottom: 16,
@@ -1148,8 +1157,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
   },
-  modalTitle: { ...Typography.label, color: Colors.textPrimary, fontSize: 14 },
-  modalSub: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 16 },
+  modalTitle: { ...Typography.label, color: c.textPrimary, fontSize: 14 },
+  modalSub: { ...Typography.caption, color: c.textSecondary, marginBottom: 16 },
   historyList: { flexGrow: 0 },
   historyItem: {
     flexDirection: 'row',
@@ -1157,38 +1166,38 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: c.border,
   },
   historyItemLeft: { flex: 1, marginRight: 12 },
-  historyItemName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700' },
-  historyItemSub: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
+  historyItemName: { ...Typography.body, color: c.textPrimary, fontWeight: '700' },
+  historyItemSub: { ...Typography.caption, color: c.textSecondary, marginTop: 2 },
   historyCountBadge: {
-    backgroundColor: Colors.accent + '20',
+    backgroundColor: c.accent + '20',
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderWidth: 1,
-    borderColor: Colors.accent + '50',
+    borderColor: c.accent + '50',
   },
-  historyCountText: { color: Colors.accent, fontSize: 11, fontWeight: '800' },
+  historyCountText: { color: c.accent, fontSize: 11, fontWeight: '800' },
   exCard: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
   },
   exCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  exCardTitle: { ...Typography.label, color: Colors.textSecondary, fontSize: 11 },
+  exCardTitle: { ...Typography.label, color: c.textSecondary, fontSize: 11 },
   exInput: {
-    backgroundColor: Colors.bg,
+    backgroundColor: c.bg,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     fontSize: 14,
     marginBottom: 8,
   },
@@ -1197,7 +1206,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: 12,
   },
-  exNameBtnText: { color: Colors.textPrimary, fontSize: 14, flex: 1, marginRight: 8 },
+  exNameBtnText: { color: c.textPrimary, fontSize: 14, flex: 1, marginRight: 8 },
   exRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   exSmallField: { flex: 1 },
   bwBtnWrap: { justifyContent: 'flex-end', paddingBottom: 0 },
@@ -1206,53 +1215,53 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.bg,
+    borderColor: c.border,
+    backgroundColor: c.bg,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  bwBtnActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  bwBtnText: { fontSize: 12, fontWeight: '800', color: Colors.textSecondary },
-  bwBtnTextActive: { color: Colors.bg },
-  exLabel: { ...Typography.label, color: Colors.textSecondary, fontSize: 10, marginBottom: 6 },
+  bwBtnActive: { backgroundColor: c.accent, borderColor: c.accent },
+  bwBtnText: { fontSize: 12, fontWeight: '800', color: c.textSecondary },
+  bwBtnTextActive: { color: c.bg },
+  exLabel: { ...Typography.label, color: c.textSecondary, fontSize: 10, marginBottom: 6 },
   supersetToggle: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
     marginTop: 10, paddingVertical: 8, borderRadius: 8,
-    borderWidth: 1, borderColor: Colors.border,
-    backgroundColor: Colors.bg,
+    borderWidth: 1, borderColor: c.border,
+    backgroundColor: c.bg,
   },
-  supersetToggleActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  supersetToggleText: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
-  supersetToggleTextActive: { color: Colors.bg },
+  supersetToggleActive: { backgroundColor: c.accent, borderColor: c.accent },
+  supersetToggleText: { color: c.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  supersetToggleTextActive: { color: c.bg },
   exSmallInput: {
-    backgroundColor: Colors.bg,
+    backgroundColor: c.bg,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 9,
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     fontSize: 14,
     textAlign: 'center',
   },
   saveBtn: {
-    backgroundColor: Colors.accent,
+    backgroundColor: c.accent,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 8,
   },
   saveBtnDisabled: { opacity: 0.35 },
-  saveBtnText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
+  saveBtnText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
   timeFormatHint: {
     fontSize: 11,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     marginTop: 5,
     letterSpacing: 0.2,
   },
   lastWeightHint: {
     fontSize: 11,
-    color: Colors.accent,
+    color: c.accent,
     fontWeight: '600',
     marginTop: 4,
     letterSpacing: 0.2,
@@ -1263,10 +1272,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     borderWidth: 2,
-    borderColor: Colors.accent,
+    borderColor: c.accent,
     borderRadius: 14,
     paddingVertical: 15,
     marginTop: 10,
   },
-  startWorkoutBtnText: { color: Colors.accent, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
-});
+  startWorkoutBtnText: { color: c.accent, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
+});\r
+}

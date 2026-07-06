@@ -1,11 +1,12 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { Colors, Typography } from '@/constants/theme';
+import { Typography, ColorScheme } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 type Payment = {
   id: string;
@@ -26,7 +27,7 @@ const METHOD_LABEL: Record<string, string> = {
 const METHOD_COLOR: Record<string, string> = {
   cash: '#4CAF50', bank_muscat: '#2196F3', nbo: '#FF9800', oab: '#9C27B0',
   bank_dhofar: '#00BCD4', ahli_bank: '#FF5722', sohar: '#8BC34A',
-  hsbc: '#E91E63', bank_nizwa: '#3F51B5', other: Colors.textSecondary,
+  hsbc: '#E91E63', bank_nizwa: '#3F51B5', other: '#888888',
 };
 
 function monthStart(): string {
@@ -41,6 +42,9 @@ function initials(name: string) {
 }
 
 export default function AdminPaymentsScreen() {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -87,14 +91,14 @@ export default function AdminPaymentsScreen() {
   const monthName = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   if (loading) {
-    return <View style={s.center}><ActivityIndicator size="large" color={Colors.accent} /></View>;
+    return <View style={s.center}><ActivityIndicator size="large" color={colors.accent} /></View>;
   }
 
   return (
     <ScrollView
       style={s.scroll}
       contentContainerStyle={s.content}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={Colors.accent} />}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />}
     >
       {/* Revenue summary */}
       <Text style={s.sectionTitle}>REVENUE SUMMARY</Text>
@@ -127,7 +131,7 @@ export default function AdminPaymentsScreen() {
                   key={method}
                   style={[s.methodRow, i < arr.length - 1 && s.methodRowBorder]}
                 >
-                  <View style={[s.methodDot, { backgroundColor: METHOD_COLOR[method] ?? Colors.textSecondary }]} />
+                  <View style={[s.methodDot, { backgroundColor: METHOD_COLOR[method] ?? colors.textSecondary }]} />
                   <Text style={s.methodName}>{METHOD_LABEL[method] ?? method}</Text>
                   <Text style={s.methodTotal}>
                     OMR {total.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
@@ -144,13 +148,13 @@ export default function AdminPaymentsScreen() {
       </Text>
       {payments.length === 0 ? (
         <View style={s.emptyCard}>
-          <Ionicons name="cash-outline" size={44} color={Colors.border} />
+          <Ionicons name="cash-outline" size={44} color={colors.border} />
           <Text style={s.emptyTitle}>No payments recorded</Text>
           <Text style={s.emptySub}>Coaches record payments from the client detail page</Text>
         </View>
       ) : (
         payments.map((p) => {
-          const color = METHOD_COLOR[p.payment_method] ?? Colors.textSecondary;
+          const color = METHOD_COLOR[p.payment_method] ?? colors.textSecondary;
           const dateStr = new Date(p.paid_at).toLocaleDateString('en-US', {
             month: 'short', day: 'numeric', year: 'numeric',
           });
@@ -181,7 +185,7 @@ export default function AdminPaymentsScreen() {
                   <Text style={s.amountText}>
                     OMR {Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                   </Text>
-                  <Ionicons name="receipt-outline" size={14} color={Colors.textSecondary} style={{ marginTop: 4 }} />
+                  <Ionicons name="receipt-outline" size={14} color={colors.textSecondary} style={{ marginTop: 4 }} />
                 </View>
               </View>
             </Pressable>
@@ -192,59 +196,61 @@ export default function AdminPaymentsScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: Colors.bg },
-  content: { padding: 20, paddingBottom: 48 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.bg },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    scroll: { flex: 1 },
+    content: { padding: 20, paddingBottom: 48 },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  sectionTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 12 },
+    sectionTitle: { ...Typography.label, color: c.textSecondary, marginBottom: 12 },
 
-  summaryRow: { flexDirection: 'row', gap: 12 },
-  summaryCard: {
-    flex: 1, backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border, padding: 16, alignItems: 'center',
-  },
-  summaryLabel: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 6, textAlign: 'center' },
-  summaryValue: { fontSize: 22, fontWeight: '900', color: '#4CAF50', marginBottom: 4 },
-  summaryCount: { ...Typography.caption, color: Colors.textSecondary },
+    summaryRow: { flexDirection: 'row', gap: 12 },
+    summaryCard: {
+      flex: 1, backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border, padding: 16, alignItems: 'center',
+    },
+    summaryLabel: { ...Typography.caption, color: c.textSecondary, marginBottom: 6, textAlign: 'center' },
+    summaryValue: { fontSize: 22, fontWeight: '900', color: '#4CAF50', marginBottom: 4 },
+    summaryCount: { ...Typography.caption, color: c.textSecondary },
 
-  methodsCard: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
-  },
-  methodRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14,
-  },
-  methodRowBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
-  methodDot: { width: 10, height: 10, borderRadius: 5 },
-  methodName: { ...Typography.body, color: Colors.textPrimary, flex: 1 },
-  methodTotal: { fontSize: 15, fontWeight: '800', color: Colors.textPrimary },
+    methodsCard: {
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border, overflow: 'hidden',
+    },
+    methodRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14,
+    },
+    methodRowBorder: { borderBottomWidth: 1, borderBottomColor: c.border },
+    methodDot: { width: 10, height: 10, borderRadius: 5 },
+    methodName: { ...Typography.body, color: c.textPrimary, flex: 1 },
+    methodTotal: { fontSize: 15, fontWeight: '800', color: c.textPrimary },
 
-  paymentCard: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border, padding: 14, marginBottom: 8,
-  },
-  paymentTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  clientAvatar: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: Colors.accent + '18', borderWidth: 1, borderColor: Colors.accent + '40',
-    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
-  },
-  clientAvatarText: { fontSize: 13, fontWeight: '800', color: Colors.accent },
-  paymentInfo: { flex: 1 },
-  clientName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700', marginBottom: 2 },
-  coachName: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 4 },
-  paymentMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  methodPill: {
-    borderRadius: 5, paddingHorizontal: 7, paddingVertical: 2, borderWidth: 1,
-  },
-  methodPillText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
-  dateText: { ...Typography.caption, color: Colors.textSecondary },
-  notesText: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic' },
-  amountRight: { alignItems: 'flex-end', flexShrink: 0 },
-  amountText: { fontSize: 16, fontWeight: '900', color: '#4CAF50' },
+    paymentCard: {
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border, padding: 14, marginBottom: 8,
+    },
+    paymentTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+    clientAvatar: {
+      width: 40, height: 40, borderRadius: 20,
+      backgroundColor: c.accent + '18', borderWidth: 1, borderColor: c.accent + '40',
+      justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+    },
+    clientAvatarText: { fontSize: 13, fontWeight: '800', color: c.accent },
+    paymentInfo: { flex: 1 },
+    clientName: { ...Typography.body, color: c.textPrimary, fontWeight: '700', marginBottom: 2 },
+    coachName: { ...Typography.caption, color: c.textSecondary, marginBottom: 4 },
+    paymentMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+    methodPill: {
+      borderRadius: 5, paddingHorizontal: 7, paddingVertical: 2, borderWidth: 1,
+    },
+    methodPillText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
+    dateText: { ...Typography.caption, color: c.textSecondary },
+    notesText: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic' },
+    amountRight: { alignItems: 'flex-end', flexShrink: 0 },
+    amountText: { fontSize: 16, fontWeight: '900', color: '#4CAF50' },
 
-  emptyCard: { alignItems: 'center', paddingVertical: 60, gap: 10 },
-  emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 8 },
-  emptySub: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center' },
-});
+    emptyCard: { alignItems: 'center', paddingVertical: 60, gap: 10 },
+    emptyTitle: { ...Typography.subtitle, color: c.textPrimary, marginTop: 8 },
+    emptySub: { ...Typography.body, color: c.textSecondary, textAlign: 'center' },
+  });
+}

@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Image, Pressable, RefreshControl,
+  ActivityIndicator, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, useWindowDimensions, View,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 type Stats = {
   coachCount: number;
@@ -47,6 +48,8 @@ function daysUntil(dateStr: string): number {
 export default function AdminDashboardScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
   const [stats, setStats]   = useState<Stats | null>(null);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
@@ -196,26 +199,24 @@ export default function AdminDashboardScreen() {
   if (loading && !stats) {
     return (
       <View style={s.center}>
-        <ActivityIndicator size="large" color={Colors.accent} />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
   const monthName = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const statCards = [
-    { icon: 'people-outline',  label: 'Coaches',                    value: stats?.coachCount ?? 0,        color: Colors.accent, route: '/(admin)/(tabs)/coaches' },
+    { icon: 'people-outline',  label: 'Coaches',                    value: stats?.coachCount ?? 0,        color: colors.accent, route: '/(admin)/(tabs)/coaches' },
     { icon: 'person-outline',  label: 'Clients',                    value: stats?.clientCount ?? 0,       color: '#4CAF50',     route: '/(admin)/(tabs)/clients' },
     { icon: 'cube-outline',    label: 'Active Packages',            value: stats?.activePackages ?? 0,    color: '#FF9800',     route: null },
     { icon: 'barbell-outline', label: `Sessions · ${monthName}`,   value: stats?.sessionsThisMonth ?? 0, color: '#9C27B0',     route: null },
   ] as const;
 
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      <Image source={require('@/assets/images/logo.png')} style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.05 }} resizeMode="contain" />
     <ScrollView
       style={s.scroll}
       contentContainerStyle={[s.content, isDesktop && s.contentDesktop]}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={Colors.accent} />}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />}
     >
       <View style={[s.inner, isDesktop && s.innerDesktop]}>
         <View style={s.header}>
@@ -251,10 +252,10 @@ export default function AdminDashboardScreen() {
                       <Ionicons name={a.icon as any} size={18} color={color} />
                     </View>
                     <View style={s.alertText}>
-                      <Text style={[s.alertTitle, { color: Colors.textPrimary }]}>{a.title}</Text>
+                      <Text style={[s.alertTitle, { color: colors.textPrimary }]}>{a.title}</Text>
                       <Text style={s.alertSub}>{a.subtitle}</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
+                    <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
                   </Pressable>
                 );
               })}
@@ -309,52 +310,52 @@ export default function AdminDashboardScreen() {
         </View>
       </View>
     </ScrollView>
-    </View>
   );
 }
 
-const s = StyleSheet.create({
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
   scroll: { flex: 1 },
   content: { padding: 20, paddingBottom: 48 },
   contentDesktop: { padding: 40, paddingTop: 32 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.bg },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   inner: { width: '100%' },
   innerDesktop: { maxWidth: 960, alignSelf: 'center' },
 
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 },
-  brand: { fontSize: 18, fontWeight: '800', color: Colors.textPrimary, letterSpacing: 2 },
+  brand: { fontSize: 18, fontWeight: '800', color: c.textPrimary, letterSpacing: 2 },
   brandDesktop: { fontSize: 22 },
   adminPill: {
-    backgroundColor: Colors.accent + '18', borderRadius: 8,
+    backgroundColor: c.accent + '18', borderRadius: 8,
     paddingHorizontal: 10, paddingVertical: 4,
-    borderWidth: 1, borderColor: Colors.accent + '50',
+    borderWidth: 1, borderColor: c.accent + '50',
   },
-  adminPillText: { color: Colors.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  adminPillText: { color: c.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
 
-  sectionTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 16 },
+  sectionTitle: { ...Typography.label, color: c.textSecondary, marginBottom: 16 },
 
   // Alerts
   alertsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
   alertBadge: {
-    backgroundColor: Colors.accent, borderRadius: 10,
+    backgroundColor: c.accent, borderRadius: 10,
     minWidth: 20, height: 20, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6,
   },
   alertBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   alertsList: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: c.surface, borderRadius: 14,
+    borderWidth: 1, borderColor: c.border,
     overflow: 'hidden', marginBottom: 4,
   },
   alertRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     padding: 14, borderLeftWidth: 3,
   },
-  alertRowBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
+  alertRowBorder: { borderBottomWidth: 1, borderBottomColor: c.border },
   alertIconWrap: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
   alertText: { flex: 1 },
   alertTitle: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
-  alertSub: { ...Typography.caption, color: Colors.textSecondary },
+  alertSub: { ...Typography.caption, color: c.textSecondary },
   noAlerts: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: '#4CAF5010', borderRadius: 12,
@@ -366,17 +367,18 @@ const s = StyleSheet.create({
   // Stats
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   statsGridDesktop: { flexWrap: 'nowrap' },
-  statCard: { width: '47%', backgroundColor: Colors.surface, borderRadius: 14, borderWidth: 1, padding: 14, gap: 6 },
+  statCard: { width: '47%', backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, padding: 14, gap: 6 },
   statCardDesktop: { flex: 1, width: 'auto', padding: 18, gap: 8 },
   statIcon: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   statValue: { fontSize: 24, fontWeight: '800', lineHeight: 28 },
   statValueDesktop: { fontSize: 30, lineHeight: 34 },
-  statLabel: { ...Typography.caption, color: Colors.textSecondary, lineHeight: 15, fontSize: 11 },
+  statLabel: { ...Typography.caption, color: c.textSecondary, lineHeight: 15, fontSize: 11 },
 
   // Revenue
-  revenueCard: { flexDirection: 'row', backgroundColor: Colors.surface, borderRadius: 14, borderWidth: 1, borderColor: '#4CAF5030', overflow: 'hidden' },
+  revenueCard: { flexDirection: 'row', backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: '#4CAF5030', overflow: 'hidden' },
   revenueItem: { flex: 1, alignItems: 'center', paddingVertical: 20 },
-  revenueDivider: { width: 1, backgroundColor: Colors.border },
-  revenueLabel: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 6 },
+  revenueDivider: { width: 1, backgroundColor: c.border },
+  revenueLabel: { ...Typography.caption, color: c.textSecondary, marginBottom: 6 },
   revenueValue: { fontSize: 22, fontWeight: '900', color: '#4CAF50' },
-});
+  });
+}

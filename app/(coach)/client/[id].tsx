@@ -1,5 +1,5 @@
-import { router, useLocalSearchParams, useNavigation } from 'expo-router';
-import { useEffect, useState } from 'react';
+﻿import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { formatBirthday } from '@/hooks/useBirthdays';
 import {
@@ -28,7 +28,8 @@ import { ClientFilesTab } from '@/components/ClientFilesTab';
 import { ClientGoalsTab } from '@/components/ClientGoalsTab';
 import { ClientPhotosTab } from '@/components/ClientPhotosTab';
 import { ClientMeasurementsTab } from '@/components/ClientMeasurementsTab';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 import { sendPushNotification } from '@/lib/pushNotifications';
 
 const PACKAGE_LABEL: Record<string, string> = {
@@ -77,6 +78,8 @@ function StrikeInputForm({
   onConfirm: (reason: string) => void;
   onCancel: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [reason, setReason] = useState('');
   return (
     <View style={styles.strikeInputCard}>
@@ -86,7 +89,7 @@ function StrikeInputForm({
         value={reason}
         onChangeText={setReason}
         placeholder="e.g. missed session, late payment…"
-        placeholderTextColor={Colors.textSecondary}
+        placeholderTextColor={colors.textSecondary}
         autoFocus
         returnKeyType="done"
         onSubmitEditing={() => onConfirm(reason)}
@@ -114,6 +117,8 @@ function BirthdayEditForm({
   onSave: () => void;
   onCancel: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.bdEditCard}>
       <Text style={styles.bdEditHint}>Format: MM-DD  (e.g. 12-25 for Dec 25)</Text>
@@ -122,7 +127,7 @@ function BirthdayEditForm({
         value={value}
         onChangeText={onChangeText}
         placeholder="MM-DD"
-        placeholderTextColor={Colors.textSecondary}
+        placeholderTextColor={colors.textSecondary}
         keyboardType="numbers-and-punctuation"
         maxLength={5}
         autoFocus
@@ -152,6 +157,8 @@ function RenewForm({
   onConfirm: (type: PackageType, sessions: string, weeks: string) => void;
   onCancel: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [pkgType, setPkgType] = useState<PackageType>(initialType);
   const [sessions, setSessions] = useState('');
   const [weeks, setWeeks] = useState(initialWeeks);
@@ -178,18 +185,18 @@ function RenewForm({
         value={sessions}
         onChangeText={(v) => setSessions(v.replace(/[^0-9]/g, ''))}
         placeholder="e.g. 12"
-        placeholderTextColor={Colors.textSecondary}
+        placeholderTextColor={colors.textSecondary}
         keyboardType="number-pad"
         autoFocus
         returnKeyType="next"
       />
-      <Text style={styles.renewLabel}>Duration (weeks) <Text style={{ color: Colors.textSecondary, fontWeight: '400' }}>— optional</Text></Text>
+      <Text style={styles.renewLabel}>Duration (weeks) <Text style={{ color: colors.textSecondary, fontWeight: '400' }}>— optional</Text></Text>
       <TextInput
         style={styles.renewInput}
         value={weeks}
         onChangeText={(v) => setWeeks(v.replace(/[^0-9]/g, ''))}
         placeholder="e.g. 6"
-        placeholderTextColor={Colors.textSecondary}
+        placeholderTextColor={colors.textSecondary}
         keyboardType="number-pad"
         returnKeyType="done"
         onSubmitEditing={() => isValid && onConfirm(pkgType, sessions, weeks)}
@@ -217,6 +224,8 @@ function ScheduleForm({
   onConfirm: (date: string, time: string, notes: string) => void;
   onCancel: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   const [date, setDate] = useState(tomorrow.toISOString().slice(0, 10));
@@ -231,7 +240,7 @@ function ScheduleForm({
         value={date}
         onChangeText={setDate}
         placeholder="2024-01-15"
-        placeholderTextColor={Colors.textSecondary}
+        placeholderTextColor={colors.textSecondary}
         keyboardType="numbers-and-punctuation"
         maxLength={10}
         autoFocus
@@ -242,7 +251,7 @@ function ScheduleForm({
         value={time}
         onChangeText={setTime}
         placeholder="09:00"
-        placeholderTextColor={Colors.textSecondary}
+        placeholderTextColor={colors.textSecondary}
         keyboardType="numbers-and-punctuation"
         maxLength={5}
       />
@@ -252,7 +261,7 @@ function ScheduleForm({
         value={notes}
         onChangeText={setNotes}
         placeholder="e.g. Chest day, bring towel"
-        placeholderTextColor={Colors.textSecondary}
+        placeholderTextColor={colors.textSecondary}
         returnKeyType="done"
         onSubmitEditing={() => onConfirm(date, time, notes)}
       />
@@ -269,6 +278,8 @@ function ScheduleForm({
 }
 
 export default function ClientDetailScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const params = useLocalSearchParams<{ id: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const navigation = useNavigation();
@@ -532,7 +543,7 @@ export default function ClientDetailScreen() {
           onPress={() => router.push({ pathname: '/(coach)/chat', params: { clientId: id, clientName: client?.name ?? '' } } as any)}
           hitSlop={6}
         >
-          <Ionicons name="chatbubbles-outline" size={22} color={Colors.accent} />
+          <Ionicons name="chatbubbles-outline" size={22} color={colors.accent} />
         </Pressable>
         {client?.phone && (
           <>
@@ -548,7 +559,7 @@ export default function ClientDetailScreen() {
               onPress={() => Linking.openURL(`tel:${client.phone}`)}
               hitSlop={6}
             >
-              <Ionicons name="call-outline" size={22} color={Colors.accent} />
+              <Ionicons name="call-outline" size={22} color={colors.accent} />
             </Pressable>
           </>
         )}
@@ -607,7 +618,7 @@ export default function ClientDetailScreen() {
           })()}
           {pkg.sessions_remaining === 0 && !showRenewForm && (
             <Pressable style={styles.renewInlineBtn} onPress={() => setShowRenewForm(true)}>
-              <Ionicons name="refresh-outline" size={15} color={Colors.bg} />
+              <Ionicons name="refresh-outline" size={15} color={colors.bg} />
               <Text style={styles.renewInlineBtnText}>RENEW PACKAGE</Text>
             </Pressable>
           )}
@@ -617,7 +628,7 @@ export default function ClientDetailScreen() {
           <Text style={styles.emptyText}>No active package</Text>
           {!showRenewForm && (
             <Pressable style={[styles.renewInlineBtn, { marginTop: 12 }]} onPress={() => setShowRenewForm(true)}>
-              <Ionicons name="add-outline" size={15} color={Colors.bg} />
+              <Ionicons name="add-outline" size={15} color={colors.bg} />
               <Text style={styles.renewInlineBtnText}>ADD PACKAGE</Text>
             </Pressable>
           )}
@@ -640,7 +651,7 @@ export default function ClientDetailScreen() {
           style={styles.logBtn}
           onPress={() => router.push({ pathname: '/(coach)/log-session', params: { clientId: id } })}
         >
-          <Ionicons name="add-circle-outline" size={20} color={Colors.bg} />
+          <Ionicons name="add-circle-outline" size={20} color={colors.bg} />
           <Text style={styles.logBtnText}>LOG A SESSION</Text>
         </Pressable>
       )}
@@ -658,7 +669,7 @@ export default function ClientDetailScreen() {
         <Text style={styles.sectionTitle}>UPCOMING SESSIONS</Text>
         {!showScheduleForm && (
           <Pressable style={styles.scheduleAddBtn} onPress={() => setShowScheduleForm(true)}>
-            <Ionicons name="add" size={14} color={Colors.bg} />
+            <Ionicons name="add" size={14} color={colors.bg} />
             <Text style={styles.scheduleAddBtnText}>SCHEDULE</Text>
           </Pressable>
         )}
@@ -695,7 +706,7 @@ export default function ClientDetailScreen() {
               }
             >
               <View style={styles.scheduledIconWrap}>
-                <Ionicons name="calendar-outline" size={18} color={Colors.accent} />
+                <Ionicons name="calendar-outline" size={18} color={colors.accent} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.scheduledDate}>{dateStr} · {timeStr}</Text>
@@ -715,7 +726,7 @@ export default function ClientDetailScreen() {
             onPress={() => { setBdInput(client?.birthday ?? ''); setShowBirthdayEdit(true); }}
             hitSlop={8}
           >
-            <Ionicons name="pencil-outline" size={16} color={Colors.accent} />
+            <Ionicons name="pencil-outline" size={16} color={colors.accent} />
           </Pressable>
         )}
       </View>
@@ -749,7 +760,7 @@ export default function ClientDetailScreen() {
         <Text style={styles.sectionTitle}>STRIKES</Text>
         {!showStrikeInput && (
           <Pressable style={styles.addStrikeBtn} onPress={handleAddStrike}>
-            <Ionicons name="add" size={14} color={Colors.bg} />
+            <Ionicons name="add" size={14} color={colors.bg} />
             <Text style={styles.addStrikeBtnText}>ADD</Text>
           </Pressable>
         )}
@@ -815,7 +826,7 @@ export default function ClientDetailScreen() {
             <Text style={styles.reqPayBtnText}>Request</Text>
           </Pressable>
           <Pressable style={styles.addStrikeBtn} onPress={() => setShowPaymentModal(true)}>
-            <Ionicons name="add" size={14} color={Colors.bg} />
+            <Ionicons name="add" size={14} color={colors.bg} />
             <Text style={styles.addStrikeBtnText}>Record</Text>
           </Pressable>
         </View>
@@ -857,9 +868,9 @@ export default function ClientDetailScreen() {
             <Text style={styles.sectionTitle}>DANGER ZONE</Text>
           </View>
           <Pressable style={styles.transferBtn} onPress={openTransferModal}>
-            <Ionicons name="swap-horizontal-outline" size={16} color={Colors.danger} />
+            <Ionicons name="swap-horizontal-outline" size={16} color={colors.danger} />
             <Text style={styles.transferBtnText}>Transfer Client to Another Coach</Text>
-            <Ionicons name="chevron-forward" size={14} color={Colors.danger} />
+            <Ionicons name="chevron-forward" size={14} color={colors.danger} />
           </Pressable>
         </>
       )}
@@ -891,14 +902,14 @@ export default function ClientDetailScreen() {
                     <Ionicons
                       name={s.session_type === 'home' ? 'home-outline' : 'barbell-outline'}
                       size={11}
-                      color={s.session_type === 'home' ? '#2196F3' : Colors.accent}
+                      color={s.session_type === 'home' ? '#2196F3' : colors.accent}
                     />
                     <Text style={[styles.sessionTypeText, s.session_type === 'home' && { color: '#2196F3' }]}>
                       {s.session_type === 'home' ? 'Home' : 'Gym'}
                     </Text>
                   </View>
                   <View style={styles.durationChip}>
-                    <Ionicons name="time-outline" size={12} color={Colors.accent} />
+                    <Ionicons name="time-outline" size={12} color={colors.accent} />
                     <Text style={styles.durationText}>{s.duration_minutes} min</Text>
                   </View>
                 </View>
@@ -926,7 +937,7 @@ export default function ClientDetailScreen() {
                       key={star}
                       name={star <= s.rating! ? 'star' : 'star-outline'}
                       size={14}
-                      color={star <= s.rating! ? '#FFD700' : Colors.border}
+                      color={star <= s.rating! ? '#FFD700' : colors.border}
                     />
                   ))}
                   <Text style={styles.ratingLabel}>Client rating</Text>
@@ -955,7 +966,7 @@ export default function ClientDetailScreen() {
           <View style={styles.transferHead}>
             <Text style={styles.transferTitle}>RECORD PAYMENT</Text>
             <Pressable onPress={() => setShowPaymentModal(false)}>
-              <Ionicons name="close" size={20} color={Colors.textSecondary} />
+              <Ionicons name="close" size={20} color={colors.textSecondary} />
             </Pressable>
           </View>
           <Text style={styles.transferSub}>
@@ -968,7 +979,7 @@ export default function ClientDetailScreen() {
             value={payAmount}
             onChangeText={(v) => setPayAmount(v.replace(/[^0-9.]/g, ''))}
             placeholder="e.g. 3000"
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={colors.textSecondary}
             keyboardType="decimal-pad"
             autoFocus
           />
@@ -996,7 +1007,7 @@ export default function ClientDetailScreen() {
                 value={payTransactionRef}
                 onChangeText={setPayTransactionRef}
                 placeholder="e.g. 617903789219"
-                placeholderTextColor={Colors.textSecondary}
+                placeholderTextColor={colors.textSecondary}
                 keyboardType="default"
                 autoCapitalize="none"
               />
@@ -1009,7 +1020,7 @@ export default function ClientDetailScreen() {
             value={payNotes}
             onChangeText={setPayNotes}
             placeholder="e.g. monthly payment for July…"
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={colors.textSecondary}
             multiline
             numberOfLines={2}
           />
@@ -1018,7 +1029,7 @@ export default function ClientDetailScreen() {
             onPress={handleRecordPayment}
             disabled={!payAmount || savingPayment}
           >
-            <Ionicons name="cash-outline" size={16} color={Colors.bg} />
+            <Ionicons name="cash-outline" size={16} color={colors.bg} />
             <Text style={styles.transferSubmitText}>{savingPayment ? 'Saving…' : 'Record Payment'}</Text>
           </Pressable>
         </View>
@@ -1033,7 +1044,7 @@ export default function ClientDetailScreen() {
           <View style={styles.transferHead}>
             <Text style={styles.transferTitle}>REQUEST PAYMENT</Text>
             <Pressable onPress={() => setShowPayReqModal(false)}>
-              <Ionicons name="close" size={20} color={Colors.textSecondary} />
+              <Ionicons name="close" size={20} color={colors.textSecondary} />
             </Pressable>
           </View>
           <Text style={styles.transferSub}>Send a payment reminder to {client?.name}.</Text>
@@ -1051,7 +1062,7 @@ export default function ClientDetailScreen() {
                 value={payReqAmount}
                 onChangeText={(v) => setPayReqAmount(v.replace(/[^0-9.]/g, ''))}
                 placeholder="e.g. 545.00"
-                placeholderTextColor={Colors.textSecondary}
+                placeholderTextColor={colors.textSecondary}
                 keyboardType="decimal-pad"
                 autoFocus
               />
@@ -1061,7 +1072,7 @@ export default function ClientDetailScreen() {
                 value={payReqNotes}
                 onChangeText={setPayReqNotes}
                 placeholder="e.g. Monthly renewal due"
-                placeholderTextColor={Colors.textSecondary}
+                placeholderTextColor={colors.textSecondary}
                 multiline
                 numberOfLines={2}
               />
@@ -1070,7 +1081,7 @@ export default function ClientDetailScreen() {
                 onPress={handleSendPaymentRequest}
                 disabled={sendingPayReq}
               >
-                <Ionicons name="send-outline" size={16} color={Colors.bg} />
+                <Ionicons name="send-outline" size={16} color={colors.bg} />
                 <Text style={styles.transferSubmitText}>{sendingPayReq ? 'Sending…' : 'Send Request'}</Text>
               </Pressable>
             </>
@@ -1092,7 +1103,7 @@ export default function ClientDetailScreen() {
           <View style={styles.transferHead}>
             <Text style={styles.transferTitle}>TRANSFER CLIENT</Text>
             <Pressable onPress={() => setShowTransferModal(false)}>
-              <Ionicons name="close" size={22} color={Colors.textSecondary} />
+              <Ionicons name="close" size={22} color={colors.textSecondary} />
             </Pressable>
           </View>
           <Text style={styles.transferSub}>
@@ -1115,7 +1126,7 @@ export default function ClientDetailScreen() {
                   </View>
                   <Text style={styles.transferCoachName}>{coach.name}</Text>
                   {selectedTransferCoachId === coach.id && (
-                    <Ionicons name="checkmark-circle" size={20} color={Colors.accent} />
+                    <Ionicons name="checkmark-circle" size={20} color={colors.accent} />
                   )}
                 </Pressable>
               ))
@@ -1127,7 +1138,7 @@ export default function ClientDetailScreen() {
             value={transferNotes}
             onChangeText={setTransferNotes}
             placeholder="Reason for transfer…"
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={colors.textSecondary}
             multiline
             numberOfLines={2}
           />
@@ -1136,7 +1147,7 @@ export default function ClientDetailScreen() {
             onPress={handleInitiateTransfer}
             disabled={!selectedTransferCoachId || transferring}
           >
-            <Ionicons name="swap-horizontal-outline" size={16} color={Colors.bg} />
+            <Ionicons name="swap-horizontal-outline" size={16} color={colors.bg} />
             <Text style={styles.transferSubmitText}>{transferring ? 'Submitting…' : 'Initiate Transfer'}</Text>
           </Pressable>
         </View>
@@ -1185,7 +1196,7 @@ export default function ClientDetailScreen() {
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
     >
       {(clientsError || sessionsError) && (
         <ErrorBanner message={clientsError ?? sessionsError!} onRetry={onRefresh} />
@@ -1234,8 +1245,9 @@ export default function ClientDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: Colors.bg },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+  scroll: { flex: 1 },
   content: { padding: 20, paddingBottom: 48 },
 
   // Client header
@@ -1243,56 +1255,56 @@ const styles = StyleSheet.create({
   contactBtns: { flexDirection: 'row', gap: 8, marginLeft: 'auto' as any },
   contactBtn: {
     width: 40, height: 40, borderRadius: 20,
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
     justifyContent: 'center', alignItems: 'center',
   },
   avatar: {
     width: 58, height: 58, borderRadius: 29,
-    backgroundColor: Colors.accent + '18', borderWidth: 2, borderColor: Colors.accent + '50',
+    backgroundColor: c.accent + '18', borderWidth: 2, borderColor: c.accent + '50',
     justifyContent: 'center', alignItems: 'center',
   },
-  avatarText: { fontSize: 20, fontWeight: '800', color: Colors.accent },
+  avatarText: { fontSize: 20, fontWeight: '800', color: c.accent },
   clientMeta: { flex: 1 },
-  clientName: { ...Typography.subtitle, color: Colors.textPrimary, marginBottom: 2 },
-  clientEmail: { ...Typography.caption, color: Colors.textSecondary },
-  clientPhone: { ...Typography.caption, color: Colors.textSecondary },
+  clientName: { ...Typography.subtitle, color: c.textPrimary, marginBottom: 2 },
+  clientEmail: { ...Typography.caption, color: c.textSecondary },
+  clientPhone: { ...Typography.caption, color: c.textSecondary },
 
   // Tab bar
   tabBar: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 12,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
   },
   tabBarContent: { flexDirection: 'row', padding: 4 },
   tabBtn: { paddingVertical: 9, paddingHorizontal: 14, borderRadius: 9, alignItems: 'center' },
-  tabBtnActive: { backgroundColor: Colors.accent },
-  tabLabel: { fontSize: 12, fontWeight: '700', color: Colors.textSecondary },
-  tabLabelActive: { color: Colors.bg },
+  tabBtnActive: { backgroundColor: c.accent },
+  tabLabel: { fontSize: 12, fontWeight: '700', color: c.textSecondary },
+  tabLabelActive: { color: c.bg },
 
   // Package card
   packageCard: {
-    backgroundColor: Colors.surface, borderRadius: 18, padding: 18,
-    borderWidth: 1, borderColor: Colors.accent + '30', marginBottom: 14,
+    backgroundColor: c.surface, borderRadius: 18, padding: 18,
+    borderWidth: 1, borderColor: c.accent + '30', marginBottom: 14,
   },
   packageTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
-  packageLabel: { ...Typography.label, color: Colors.accent, marginBottom: 4 },
-  packageType: { ...Typography.subtitle, color: Colors.textPrimary },
+  packageLabel: { ...Typography.label, color: c.accent, marginBottom: 4 },
+  packageType: { ...Typography.subtitle, color: c.textPrimary },
   statusBadge: {
-    backgroundColor: Colors.accent + '18', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: Colors.accent + '40',
+    backgroundColor: c.accent + '18', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: c.accent + '40',
   },
   statusWarning: { backgroundColor: '#FFA50018', borderColor: '#FFA50050' },
-  statusExpired: { backgroundColor: Colors.border + '80', borderColor: Colors.border },
-  statusText: { fontSize: 12, fontWeight: '700', color: Colors.accent },
+  statusExpired: { backgroundColor: c.border + '80', borderColor: c.border },
+  statusText: { fontSize: 12, fontWeight: '700', color: c.accent },
   statusTextWarning: { color: '#FFA500' },
-  statusTextExpired: { color: Colors.textSecondary },
-  progressTrack: { height: 6, backgroundColor: Colors.border, borderRadius: 3, overflow: 'hidden', marginBottom: 8 },
-  progressFill: { height: '100%', backgroundColor: Colors.accent, borderRadius: 3 },
-  progressLabel: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 10 },
+  statusTextExpired: { color: c.textSecondary },
+  progressTrack: { height: 6, backgroundColor: c.border, borderRadius: 3, overflow: 'hidden', marginBottom: 8 },
+  progressFill: { height: '100%', backgroundColor: c.accent, borderRadius: 3 },
+  progressLabel: { ...Typography.caption, color: c.textSecondary, marginBottom: 10 },
   durationRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
-  durationInfo: { ...Typography.caption, color: Colors.textSecondary, flex: 1 },
+  durationInfo: { ...Typography.caption, color: c.textSecondary, flex: 1 },
   trackBadge: {
     backgroundColor: '#4CAF5018', borderRadius: 7,
     paddingHorizontal: 8, paddingVertical: 3,
@@ -1305,9 +1317,9 @@ const styles = StyleSheet.create({
   // Log button
   logBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: Colors.accent, borderRadius: 13, paddingVertical: 14, marginBottom: 28,
+    backgroundColor: c.accent, borderRadius: 13, paddingVertical: 14, marginBottom: 28,
   },
-  logBtnText: { color: Colors.bg, fontSize: 13, fontWeight: '800', letterSpacing: 1.1 },
+  logBtnText: { color: c.bg, fontSize: 13, fontWeight: '800', letterSpacing: 1.1 },
 
   freeSessionBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
@@ -1319,27 +1331,27 @@ const styles = StyleSheet.create({
 
   // Section
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { ...Typography.label, color: Colors.textSecondary },
+  sectionTitle: { ...Typography.label, color: c.textSecondary },
   addStrikeBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: '#FF4D4D', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
   },
-  addStrikeBtnText: { color: Colors.bg, fontSize: 11, fontWeight: '800' },
+  addStrikeBtnText: { color: c.bg, fontSize: 11, fontWeight: '800' },
 
   // Strikes
   strikesCard: {
-    backgroundColor: Colors.surface, borderRadius: 16, padding: 16,
-    borderWidth: 1, borderColor: Colors.border, marginBottom: 8,
+    backgroundColor: c.surface, borderRadius: 16, padding: 16,
+    borderWidth: 1, borderColor: c.border, marginBottom: 8,
   },
   strikeDots: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
   strikeDot: {
     width: 18, height: 18, borderRadius: 9,
-    borderWidth: 2, borderColor: Colors.border, backgroundColor: 'transparent',
+    borderWidth: 2, borderColor: c.border, backgroundColor: 'transparent',
   },
   strikeDotFilled: { backgroundColor: '#FF4D4D', borderColor: '#FF4D4D' },
-  strikeCount: { ...Typography.caption, color: Colors.textSecondary, marginLeft: 4 },
+  strikeCount: { ...Typography.caption, color: c.textSecondary, marginLeft: 4 },
   strikeCountMax: { color: '#FF4D4D', fontWeight: '700' },
-  noStrikesText: { ...Typography.body, color: Colors.textSecondary, fontStyle: 'italic' },
+  noStrikesText: { ...Typography.body, color: c.textSecondary, fontStyle: 'italic' },
   strikeRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 10 },
   strikeIcon: {
     width: 32, height: 32, borderRadius: 16,
@@ -1348,64 +1360,64 @@ const styles = StyleSheet.create({
   },
   strikeIconText: { fontSize: 14 },
   strikeInfo: { flex: 1 },
-  strikeLabel: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
-  strikeDate: { ...Typography.caption, color: Colors.textSecondary },
-  strikeReason: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic', marginTop: 2 },
-  strikeTip: { ...Typography.caption, color: Colors.textSecondary, marginTop: 8, textAlign: 'center' },
+  strikeLabel: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+  strikeDate: { ...Typography.caption, color: c.textSecondary },
+  strikeReason: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic', marginTop: 2 },
+  strikeTip: { ...Typography.caption, color: c.textSecondary, marginTop: 8, textAlign: 'center' },
 
   // Sessions
   sessionCard: {
-    backgroundColor: Colors.surface, borderRadius: 14, padding: 14,
-    marginBottom: 10, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: c.surface, borderRadius: 14, padding: 14,
+    marginBottom: 10, borderWidth: 1, borderColor: c.border,
   },
   sessionCardTop: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: 12, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: Colors.border,
+    marginBottom: 12, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: c.border,
   },
-  sessionDate: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
+  sessionDate: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
   durationChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: Colors.accent + '18', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3,
+    backgroundColor: c.accent + '18', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3,
   },
-  durationText: { fontSize: 12, fontWeight: '600', color: Colors.accent },
+  durationText: { fontSize: 12, fontWeight: '600', color: c.accent },
   sessionTypeChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: Colors.accent + '12', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3,
-    borderWidth: 1, borderColor: Colors.accent + '30',
+    backgroundColor: c.accent + '12', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3,
+    borderWidth: 1, borderColor: c.accent + '30',
   },
   sessionTypeChipHome: { backgroundColor: '#2196F312', borderColor: '#2196F330' },
-  sessionTypeText: { fontSize: 11, fontWeight: '700', color: Colors.accent },
+  sessionTypeText: { fontSize: 11, fontWeight: '700', color: c.accent },
   exRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 },
-  exBullet: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.accent, marginTop: 6 },
+  exBullet: { width: 6, height: 6, borderRadius: 3, backgroundColor: c.accent, marginTop: 6 },
   exDetails: { flex: 1 },
-  exName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '500' },
-  exMeta: { ...Typography.caption, color: Colors.textSecondary, marginTop: 1 },
+  exName: { ...Typography.body, color: c.textPrimary, fontWeight: '500' },
+  exMeta: { ...Typography.caption, color: c.textSecondary, marginTop: 1 },
   sessionNotes: {
-    ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic',
-    marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: Colors.border,
+    ...Typography.caption, color: c.textSecondary, fontStyle: 'italic',
+    marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: c.border,
   },
   ratingRow: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
-    marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: Colors.border,
+    marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: c.border,
   },
-  ratingLabel: { ...Typography.caption, color: Colors.textSecondary, marginLeft: 6 },
+  ratingLabel: { ...Typography.caption, color: c.textSecondary, marginLeft: 6 },
 
   // Strike inline input
   strikeInputCard: {
-    backgroundColor: Colors.surface, borderRadius: 14, padding: 14,
+    backgroundColor: c.surface, borderRadius: 14, padding: 14,
     borderWidth: 1, borderColor: '#FF4D4D50', marginBottom: 12,
   },
-  strikeInputLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: 8 },
+  strikeInputLabel: { ...Typography.label, color: c.textSecondary, marginBottom: 8 },
   strikeInputField: {
-    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 10, padding: 10, color: Colors.textPrimary, fontSize: 14, marginBottom: 10,
+    backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
+    borderRadius: 10, padding: 10, color: c.textPrimary, fontSize: 14, marginBottom: 10,
   },
   strikeInputBtns: { flexDirection: 'row', gap: 8 },
   strikeInputCancel: {
     flex: 1, paddingVertical: 10, borderRadius: 10,
-    borderWidth: 1, borderColor: Colors.border, alignItems: 'center',
+    borderWidth: 1, borderColor: c.border, alignItems: 'center',
   },
-  strikeInputCancelText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
+  strikeInputCancelText: { color: c.textSecondary, fontWeight: '600', fontSize: 13 },
   strikeInputConfirm: {
     flex: 1, paddingVertical: 10, borderRadius: 10,
     backgroundColor: '#FF4D4D', alignItems: 'center',
@@ -1414,210 +1426,210 @@ const styles = StyleSheet.create({
 
   // Shared
   emptyCard: {
-    backgroundColor: Colors.surface, borderRadius: 14, padding: 24,
-    alignItems: 'center', marginBottom: 14, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: c.surface, borderRadius: 14, padding: 24,
+    alignItems: 'center', marginBottom: 14, borderWidth: 1, borderColor: c.border,
   },
-  emptyText: { ...Typography.body, color: Colors.textSecondary },
+  emptyText: { ...Typography.body, color: c.textSecondary },
 
   // Renew form
   renewInlineBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: Colors.accent, borderRadius: 10, paddingVertical: 10, marginTop: 14,
+    backgroundColor: c.accent, borderRadius: 10, paddingVertical: 10, marginTop: 14,
   },
-  renewInlineBtnText: { color: Colors.bg, fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
+  renewInlineBtnText: { color: c.bg, fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
   renewCard: {
-    backgroundColor: Colors.surface, borderRadius: 14, padding: 16,
-    borderWidth: 1, borderColor: Colors.accent + '50', marginBottom: 14,
+    backgroundColor: c.surface, borderRadius: 14, padding: 16,
+    borderWidth: 1, borderColor: c.accent + '50', marginBottom: 14,
   },
-  renewTitle: { ...Typography.label, color: Colors.accent, marginBottom: 12 },
+  renewTitle: { ...Typography.label, color: c.accent, marginBottom: 12 },
   renewSegmented: {
-    flexDirection: 'row', backgroundColor: Colors.bg, borderRadius: 10,
-    borderWidth: 1, borderColor: Colors.border, padding: 3, marginBottom: 14, gap: 3,
+    flexDirection: 'row', backgroundColor: c.bg, borderRadius: 10,
+    borderWidth: 1, borderColor: c.border, padding: 3, marginBottom: 14, gap: 3,
   },
   renewSegment: { flex: 1, paddingVertical: 9, borderRadius: 8, alignItems: 'center' },
-  renewSegmentActive: { backgroundColor: Colors.accent },
-  renewSegmentText: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary },
-  renewSegmentTextActive: { color: Colors.bg },
-  renewLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: 8 },
+  renewSegmentActive: { backgroundColor: c.accent },
+  renewSegmentText: { fontSize: 12, fontWeight: '600', color: c.textSecondary },
+  renewSegmentTextActive: { color: c.bg },
+  renewLabel: { ...Typography.label, color: c.textSecondary, marginBottom: 8 },
   renewInput: {
-    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 10, padding: 11, color: Colors.textPrimary, fontSize: 15, marginBottom: 12,
+    backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
+    borderRadius: 10, padding: 11, color: c.textPrimary, fontSize: 15, marginBottom: 12,
   },
   renewBtns: { flexDirection: 'row', gap: 8 },
   renewCancel: {
     flex: 1, paddingVertical: 11, borderRadius: 10,
-    borderWidth: 1, borderColor: Colors.border, alignItems: 'center',
+    borderWidth: 1, borderColor: c.border, alignItems: 'center',
   },
-  renewCancelText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
+  renewCancelText: { color: c.textSecondary, fontWeight: '600', fontSize: 13 },
   renewConfirm: {
     flex: 1, paddingVertical: 11, borderRadius: 10,
-    backgroundColor: Colors.accent, alignItems: 'center',
+    backgroundColor: c.accent, alignItems: 'center',
   },
-  renewConfirmText: { color: Colors.bg, fontWeight: '800', fontSize: 13 },
+  renewConfirmText: { color: c.bg, fontWeight: '800', fontSize: 13 },
 
   // Schedule add button
   scheduleAddBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: Colors.accent, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
+    backgroundColor: c.accent, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
   },
-  scheduleAddBtnText: { color: Colors.bg, fontSize: 11, fontWeight: '800' },
+  scheduleAddBtnText: { color: c.bg, fontSize: 11, fontWeight: '800' },
 
   // Schedule form
   scheduleCard: {
-    backgroundColor: Colors.surface, borderRadius: 14, padding: 16,
-    borderWidth: 1, borderColor: Colors.accent + '50', marginBottom: 14,
+    backgroundColor: c.surface, borderRadius: 14, padding: 16,
+    borderWidth: 1, borderColor: c.accent + '50', marginBottom: 14,
   },
-  scheduleFormTitle: { ...Typography.label, color: Colors.accent, marginBottom: 12 },
-  scheduleFormLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: 6 },
+  scheduleFormTitle: { ...Typography.label, color: c.accent, marginBottom: 12 },
+  scheduleFormLabel: { ...Typography.label, color: c.textSecondary, marginBottom: 6 },
   scheduleFormInput: {
-    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 10, padding: 11, color: Colors.textPrimary, fontSize: 15, marginBottom: 12,
+    backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
+    borderRadius: 10, padding: 11, color: c.textPrimary, fontSize: 15, marginBottom: 12,
   },
   scheduleBtns: { flexDirection: 'row', gap: 8 },
   scheduleCancel: {
     flex: 1, paddingVertical: 11, borderRadius: 10,
-    borderWidth: 1, borderColor: Colors.border, alignItems: 'center',
+    borderWidth: 1, borderColor: c.border, alignItems: 'center',
   },
-  scheduleCancelText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
+  scheduleCancelText: { color: c.textSecondary, fontWeight: '600', fontSize: 13 },
   scheduleConfirm: {
     flex: 1, paddingVertical: 11, borderRadius: 10,
-    backgroundColor: Colors.accent, alignItems: 'center',
+    backgroundColor: c.accent, alignItems: 'center',
   },
-  scheduleConfirmText: { color: Colors.bg, fontWeight: '800', fontSize: 13 },
+  scheduleConfirmText: { color: c.bg, fontWeight: '800', fontSize: 13 },
 
   // Scheduled session cards
   scheduledCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: Colors.surface, borderRadius: 12, padding: 12,
-    marginBottom: 8, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: c.surface, borderRadius: 12, padding: 12,
+    marginBottom: 8, borderWidth: 1, borderColor: c.border,
   },
   scheduledIconWrap: {
     width: 36, height: 36, borderRadius: 18,
-    backgroundColor: Colors.accent + '15', borderWidth: 1, borderColor: Colors.accent + '40',
+    backgroundColor: c.accent + '15', borderWidth: 1, borderColor: c.accent + '40',
     justifyContent: 'center', alignItems: 'center',
   },
-  scheduledDate: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
-  scheduledNotes: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
-  scheduledHold: { ...Typography.caption, color: Colors.textSecondary, fontSize: 10 },
+  scheduledDate: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+  scheduledNotes: { ...Typography.caption, color: c.textSecondary, marginTop: 2 },
+  scheduledHold: { ...Typography.caption, color: c.textSecondary, fontSize: 10 },
 
   // Birthday
   bdDisplay: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: Colors.surface, borderRadius: 12, padding: 14,
-    borderWidth: 1, borderColor: Colors.border, marginBottom: 8,
+    backgroundColor: c.surface, borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: c.border, marginBottom: 8,
   },
-  bdText: { ...Typography.body, color: Colors.textPrimary },
-  bdEmpty: { ...Typography.body, color: Colors.textSecondary, fontStyle: 'italic' },
+  bdText: { ...Typography.body, color: c.textPrimary },
+  bdEmpty: { ...Typography.body, color: c.textSecondary, fontStyle: 'italic' },
   bdEditCard: {
-    backgroundColor: Colors.surface, borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: Colors.accent + '50', marginBottom: 8,
+    backgroundColor: c.surface, borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: c.accent + '50', marginBottom: 8,
   },
-  bdEditHint: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 8 },
+  bdEditHint: { ...Typography.caption, color: c.textSecondary, marginBottom: 8 },
   bdEditInput: {
-    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 10, padding: 10, color: Colors.textPrimary, fontSize: 15, marginBottom: 10,
+    backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
+    borderRadius: 10, padding: 10, color: c.textPrimary, fontSize: 15, marginBottom: 10,
   },
   bdEditBtns: { flexDirection: 'row', gap: 8 },
   bdEditCancel: {
     flex: 1, paddingVertical: 10, borderRadius: 10,
-    borderWidth: 1, borderColor: Colors.border, alignItems: 'center',
+    borderWidth: 1, borderColor: c.border, alignItems: 'center',
   },
-  bdEditCancelText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
+  bdEditCancelText: { color: c.textSecondary, fontWeight: '600', fontSize: 13 },
   bdEditSave: {
     flex: 1, paddingVertical: 10, borderRadius: 10,
-    backgroundColor: Colors.accent, alignItems: 'center',
+    backgroundColor: c.accent, alignItems: 'center',
   },
-  bdEditSaveText: { color: Colors.bg, fontWeight: '700', fontSize: 13 },
+  bdEditSaveText: { color: c.bg, fontWeight: '700', fontSize: 13 },
 
   // Transfer client
   transferBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    borderWidth: 1, borderColor: Colors.danger + '50',
-    backgroundColor: Colors.danger + '0D',
+    borderWidth: 1, borderColor: c.danger + '50',
+    backgroundColor: c.danger + '0D',
     borderRadius: 12, padding: 14,
   },
-  transferBtnText: { color: Colors.danger, fontSize: 14, fontWeight: '600', flex: 1 },
+  transferBtnText: { color: c.danger, fontSize: 14, fontWeight: '600', flex: 1 },
 
   // Transfer modal
   transferOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
   transferSheet: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderTopLeftRadius: 22, borderTopRightRadius: 22,
     padding: 20, paddingBottom: 36,
-    borderWidth: 1, borderColor: Colors.border,
+    borderWidth: 1, borderColor: c.border,
   },
   transferHandle: {
     width: 38, height: 4, borderRadius: 2,
-    backgroundColor: Colors.border, alignSelf: 'center', marginBottom: 16,
+    backgroundColor: c.border, alignSelf: 'center', marginBottom: 16,
   },
   transferHead: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6,
   },
-  transferTitle: { ...Typography.label, color: Colors.textPrimary, fontSize: 13 },
-  transferSub: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 12 },
-  transferEmpty: { ...Typography.body, color: Colors.textSecondary, paddingVertical: 12, textAlign: 'center' },
+  transferTitle: { ...Typography.label, color: c.textPrimary, fontSize: 13 },
+  transferSub: { ...Typography.caption, color: c.textSecondary, marginBottom: 12 },
+  transferEmpty: { ...Typography.body, color: c.textSecondary, paddingVertical: 12, textAlign: 'center' },
   transferCoachRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     padding: 12, borderRadius: 10, borderWidth: 1, borderColor: 'transparent', marginBottom: 4,
   },
-  transferCoachRowSel: { backgroundColor: Colors.accent + '12', borderColor: Colors.accent + '40' },
+  transferCoachRowSel: { backgroundColor: c.accent + '12', borderColor: c.accent + '40' },
   transferCoachAvatar: {
     width: 36, height: 36, borderRadius: 18,
-    backgroundColor: Colors.accent + '18', justifyContent: 'center', alignItems: 'center',
+    backgroundColor: c.accent + '18', justifyContent: 'center', alignItems: 'center',
   },
-  transferCoachAvatarText: { fontSize: 12, fontWeight: '800', color: Colors.accent },
-  transferCoachName: { ...Typography.body, color: Colors.textPrimary, flex: 1 },
-  transferNotesLabel: { ...Typography.label, color: Colors.textSecondary, marginTop: 14, marginBottom: 6 },
+  transferCoachAvatarText: { fontSize: 12, fontWeight: '800', color: c.accent },
+  transferCoachName: { ...Typography.body, color: c.textPrimary, flex: 1 },
+  transferNotesLabel: { ...Typography.label, color: c.textSecondary, marginTop: 14, marginBottom: 6 },
   transferNotesInput: {
-    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
     borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10,
-    color: Colors.textPrimary, fontSize: 14, minHeight: 60,
+    color: c.textPrimary, fontSize: 14, minHeight: 60,
     textAlignVertical: 'top', marginBottom: 14,
   },
   transferSubmitBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: Colors.accent, borderRadius: 12, padding: 15,
+    backgroundColor: c.accent, borderRadius: 12, padding: 15,
   },
-  transferSubmitText: { color: Colors.bg, fontWeight: '800', fontSize: 14 },
+  transferSubmitText: { color: c.bg, fontWeight: '800', fontSize: 14 },
 
   // Payments
   paymentsCard: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border, marginBottom: 8, overflow: 'hidden',
+    backgroundColor: c.surface, borderRadius: 14,
+    borderWidth: 1, borderColor: c.border, marginBottom: 8, overflow: 'hidden',
   },
   paymentRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', padding: 12 },
-  paymentRowBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
+  paymentRowBorder: { borderBottomWidth: 1, borderBottomColor: c.border },
   paymentLeft: { flex: 1, marginRight: 12 },
-  paymentMethodText: { fontSize: 13, fontWeight: '700', color: Colors.textPrimary, marginBottom: 2 },
-  paymentDate: { fontSize: 12, color: Colors.textSecondary },
-  paymentNotes: { fontSize: 12, color: Colors.textSecondary, fontStyle: 'italic', marginTop: 2 },
+  paymentMethodText: { fontSize: 13, fontWeight: '700', color: c.textPrimary, marginBottom: 2 },
+  paymentDate: { fontSize: 12, color: c.textSecondary },
+  paymentNotes: { fontSize: 12, color: c.textSecondary, fontStyle: 'italic', marginTop: 2 },
   paymentAmount: { fontSize: 15, fontWeight: '800', color: '#4CAF50' },
-  paymentMore: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center', paddingVertical: 10 },
+  paymentMore: { ...Typography.caption, color: c.textSecondary, textAlign: 'center', paddingVertical: 10 },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   payDetailSheet: {
-    backgroundColor: Colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    backgroundColor: c.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20,
     padding: 24, paddingBottom: 36,
   },
-  payDetailTitle: { fontSize: 17, fontWeight: '700', color: Colors.textPrimary, marginBottom: 20, textAlign: 'center' },
+  payDetailTitle: { fontSize: 17, fontWeight: '700', color: c.textPrimary, marginBottom: 20, textAlign: 'center' },
   payDetailRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.border,
+    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border,
   },
-  payDetailLabel: { fontSize: 13, color: Colors.textSecondary, fontWeight: '600' },
-  payDetailValue: { fontSize: 14, color: Colors.textPrimary, fontWeight: '600', marginLeft: 16 },
+  payDetailLabel: { fontSize: 13, color: c.textSecondary, fontWeight: '600' },
+  payDetailValue: { fontSize: 14, color: c.textPrimary, fontWeight: '600', marginLeft: 16 },
   payDetailClose: {
-    marginTop: 20, backgroundColor: Colors.surface, borderRadius: 12,
-    borderWidth: 1, borderColor: Colors.border, paddingVertical: 13, alignItems: 'center',
+    marginTop: 20, backgroundColor: c.surface, borderRadius: 12,
+    borderWidth: 1, borderColor: c.border, paddingVertical: 13, alignItems: 'center',
   },
-  payDetailCloseText: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary },
+  payDetailCloseText: { fontSize: 15, fontWeight: '700', color: c.textPrimary },
   methodChip: {
     paddingHorizontal: 12, paddingVertical: 7,
-    borderRadius: 8, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bg,
+    borderRadius: 8, borderWidth: 1, borderColor: c.border, backgroundColor: c.bg,
   },
-  methodChipActive: { backgroundColor: Colors.accent + '15', borderColor: Colors.accent },
-  methodChipText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
-  methodChipTextActive: { color: Colors.accent, fontWeight: '700' },
+  methodChipActive: { backgroundColor: c.accent + '15', borderColor: c.accent },
+  methodChipText: { fontSize: 13, fontWeight: '600', color: c.textSecondary },
+  methodChipTextActive: { color: c.accent, fontWeight: '700' },
   reqPayBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: '#1a6b2a', borderRadius: 8,
@@ -1626,4 +1638,5 @@ const styles = StyleSheet.create({
   reqPayBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
   payReqSuccess: { alignItems: 'center', paddingVertical: 24, gap: 10 },
   payReqSuccessText: { fontSize: 16, fontWeight: '700', color: '#4CAF50' },
-});
+});\r
+}

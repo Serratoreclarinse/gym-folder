@@ -1,12 +1,13 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+﻿import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, Vibration, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 const WORKOUT_KEY = '@elevat3/paused_workout';
 
@@ -43,6 +44,8 @@ function buildGroups(exs: Exercise[]): number[][] {
 }
 
 export default function GuidedWorkoutScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     exercises: string;
@@ -252,7 +255,7 @@ export default function GuidedWorkoutScreen() {
       {phase !== 'saving' && (
         <View style={styles.wHeader}>
           <Pressable style={styles.exitBtn} onPress={handleExit} hitSlop={12}>
-            <Ionicons name="close-outline" size={22} color={Colors.textSecondary} />
+            <Ionicons name="close-outline" size={22} color={colors.textSecondary} />
             <Text style={styles.exitBtnText}>EXIT</Text>
           </Pressable>
 
@@ -300,7 +303,7 @@ export default function GuidedWorkoutScreen() {
           ) : null}
 
           <Pressable style={styles.primaryBtn} onPress={handleSetDone}>
-            <Ionicons name="checkmark-circle" size={26} color={Colors.bg} />
+            <Ionicons name="checkmark-circle" size={26} color={colors.bg} />
             <Text style={styles.primaryBtnText}>SET DONE</Text>
           </Pressable>
 
@@ -323,9 +326,9 @@ export default function GuidedWorkoutScreen() {
                 <Ionicons
                   name={i < exIdx ? 'checkmark-circle' : i === exIdx ? 'ellipse' : 'ellipse-outline'}
                   size={14}
-                  color={i < exIdx ? Colors.accent : i === exIdx ? Colors.accent : Colors.border}
+                  color={i < exIdx ? colors.accent : i === exIdx ? colors.accent : colors.border}
                 />
-                <Text style={[styles.exerciseListName, i === exIdx && { color: Colors.textPrimary }]}>
+                <Text style={[styles.exerciseListName, i === exIdx && { color: colors.textPrimary }]}>
                   {ex.exercise_name}
                 </Text>
               </View>
@@ -339,7 +342,7 @@ export default function GuidedWorkoutScreen() {
         <View style={styles.phase}>
           <Text style={styles.progressLabel}>REST</Text>
 
-          <Text style={[styles.timerDisplay, restRemaining === 0 && { color: Colors.accent }]}>
+          <Text style={[styles.timerDisplay, restRemaining === 0 && { color: colors.accent }]}>
             {pad(Math.floor(restRemaining / 60))}:{pad(restRemaining % 60)}
           </Text>
           {restRemaining === 0 && <Text style={styles.timerDoneLabel}>REST DONE!</Text>}
@@ -363,7 +366,7 @@ export default function GuidedWorkoutScreen() {
                 <Ionicons
                   name={restRunning ? 'pause' : 'play'}
                   size={20}
-                  color={Colors.textPrimary}
+                  color={colors.textPrimary}
                 />
                 <Text style={styles.secondaryBtnText}>
                   {restRunning ? 'PAUSE' : 'RESUME'}
@@ -371,7 +374,7 @@ export default function GuidedWorkoutScreen() {
               </Pressable>
 
               <Pressable style={styles.secondaryBtn} onPress={handleSkipRest}>
-                <Ionicons name="play-skip-forward" size={20} color={Colors.textPrimary} />
+                <Ionicons name="play-skip-forward" size={20} color={colors.textPrimary} />
                 <Text style={styles.secondaryBtnText}>SKIP</Text>
               </Pressable>
             </View>
@@ -395,7 +398,7 @@ export default function GuidedWorkoutScreen() {
       {phase === 'between' && (
         <View style={styles.phase}>
           <View style={styles.bigIcon}>
-            <Ionicons name="checkmark-circle" size={80} color={Colors.accent} />
+            <Ionicons name="checkmark-circle" size={80} color={colors.accent} />
           </View>
           <Text style={styles.exName}>
             {isSupersetGroup
@@ -434,14 +437,14 @@ export default function GuidedWorkoutScreen() {
       {phase === 'done' && (
         <View style={styles.phase}>
           <View style={styles.bigIcon}>
-            <Ionicons name="trophy" size={80} color={Colors.accent} />
+            <Ionicons name="trophy" size={80} color={colors.accent} />
           </View>
           <Text style={styles.exName}>Workout Complete!</Text>
           <Text style={styles.progressLabel}>
             {totalExercises} exercises · {Math.round((Date.now() - startTime) / 60000)} min
           </Text>
           <Pressable style={styles.primaryBtn} onPress={handleFinish}>
-            <Ionicons name={sessionAlreadySaved ? 'checkmark-circle-outline' : 'save-outline'} size={22} color={Colors.bg} />
+            <Ionicons name={sessionAlreadySaved ? 'checkmark-circle-outline' : 'save-outline'} size={22} color={colors.bg} />
             <Text style={styles.primaryBtnText}>{sessionAlreadySaved ? 'DONE' : 'FINISH & SAVE'}</Text>
           </Pressable>
         </View>
@@ -458,7 +461,7 @@ export default function GuidedWorkoutScreen() {
       {phase === 'summary' && (
         <View style={styles.phase}>
           <View style={styles.bigIcon}>
-            <Ionicons name="checkmark-done-circle" size={84} color={Colors.accent} />
+            <Ionicons name="checkmark-done-circle" size={84} color={colors.accent} />
           </View>
           <Text style={styles.exName}>Session Saved!</Text>
           <Text style={styles.progressLabel}>{params.clientName}'s session is logged</Text>
@@ -475,7 +478,7 @@ export default function GuidedWorkoutScreen() {
           </View>
 
           <Pressable style={styles.primaryBtn} onPress={() => router.replace('/(coach)')}>
-            <Ionicons name="home-outline" size={20} color={Colors.bg} />
+            <Ionicons name="home-outline" size={20} color={colors.bg} />
             <Text style={styles.primaryBtnText}>BACK TO DASHBOARD</Text>
           </Pressable>
         </View>
@@ -485,10 +488,10 @@ export default function GuidedWorkoutScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: Colors.bg,
   },
 
   // ── Persistent header ────────────────────────────────────────
@@ -499,7 +502,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: c.border,
   },
   exitBtn: {
     flexDirection: 'row',
@@ -510,25 +513,25 @@ const styles = StyleSheet.create({
     minWidth: 60,
   },
   exitBtnText: {
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     fontSize: 13,
     fontWeight: '700',
   },
   wHeaderCenter: { alignItems: 'center', flex: 1 },
   wClientName: {
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     fontSize: 14,
     fontWeight: '800',
     marginBottom: 2,
   },
   wElapsed: {
-    color: Colors.accent,
+    color: c.accent,
     fontSize: 12,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
   wProgress: {
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     fontSize: 13,
     fontWeight: '600',
     minWidth: 60,
@@ -546,42 +549,42 @@ const styles = StyleSheet.create({
 
   progressLabel: {
     ...Typography.label,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     marginBottom: 12,
     textAlign: 'center',
   },
   exName: {
     fontSize: 30,
     fontWeight: '800',
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     textAlign: 'center',
     marginBottom: 18,
     letterSpacing: -0.5,
   },
   setChip: {
-    backgroundColor: Colors.accent + '18',
+    backgroundColor: c.accent + '18',
     borderWidth: 1,
-    borderColor: Colors.accent + '50',
+    borderColor: c.accent + '50',
     borderRadius: 20,
     paddingHorizontal: 20,
     paddingVertical: 8,
     marginBottom: 16,
   },
   setChipText: {
-    color: Colors.accent,
+    color: c.accent,
     fontSize: 14,
     fontWeight: '800',
     letterSpacing: 1.2,
   },
   targetText: {
     ...Typography.subtitle,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     textAlign: 'center',
     marginBottom: 8,
   },
   notesText: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     fontStyle: 'italic',
     textAlign: 'center',
     marginBottom: 16,
@@ -591,7 +594,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    backgroundColor: Colors.accent,
+    backgroundColor: c.accent,
     borderRadius: 18,
     paddingVertical: 18,
     paddingHorizontal: 32,
@@ -599,7 +602,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   primaryBtnText: {
-    color: Colors.bg,
+    color: c.bg,
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: 1.2,
@@ -609,16 +612,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 24,
     flex: 1,
   },
   secondaryBtnText: {
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.8,
@@ -633,18 +636,18 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     borderWidth: 1.5,
-    borderColor: Colors.border,
+    borderColor: c.border,
     backgroundColor: 'transparent',
   },
-  dotDone: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  dotCurrent: { borderColor: Colors.accent },
+  dotDone: { backgroundColor: c.accent, borderColor: c.accent },
+  dotCurrent: { borderColor: c.accent },
   exerciseList: {
     marginTop: 28,
     alignSelf: 'stretch',
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     padding: 12,
     gap: 8,
   },
@@ -655,19 +658,19 @@ const styles = StyleSheet.create({
   },
   exerciseListName: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
   },
   timerDisplay: {
     fontSize: 88,
     fontWeight: '800',
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     letterSpacing: -2,
     lineHeight: 96,
     marginBottom: 8,
   },
   timerDoneLabel: {
     ...Typography.label,
-    color: Colors.accent,
+    color: c.accent,
     letterSpacing: 3,
     marginBottom: 8,
   },
@@ -679,15 +682,15 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   adjustBtn: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     borderRadius: 10,
     paddingHorizontal: 18,
     paddingVertical: 10,
   },
-  adjustBtnText: { color: Colors.textPrimary, fontSize: 14, fontWeight: '700' },
-  adjustDefault: { ...Typography.body, color: Colors.textSecondary, minWidth: 44, textAlign: 'center' },
+  adjustBtnText: { color: c.textPrimary, fontSize: 14, fontWeight: '700' },
+  adjustDefault: { ...Typography.body, color: c.textSecondary, minWidth: 44, textAlign: 'center' },
   restBtns: {
     flexDirection: 'row',
     gap: 10,
@@ -696,31 +699,31 @@ const styles = StyleSheet.create({
   },
   upNextLabel: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     textAlign: 'center',
     marginTop: 28,
   },
   bigIcon: { marginBottom: 16 },
   upNextCard: {
     alignSelf: 'stretch',
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: Colors.accent + '30',
+    borderColor: c.accent + '30',
     padding: 18,
     marginTop: 24,
     alignItems: 'center',
     gap: 4,
   },
-  upNextCardLabel: { ...Typography.label, color: Colors.accent },
-  upNextCardName: { ...Typography.subtitle, color: Colors.textPrimary, textAlign: 'center' },
-  upNextCardMeta: { ...Typography.caption, color: Colors.textSecondary },
+  upNextCardLabel: { ...Typography.label, color: c.accent },
+  upNextCardName: { ...Typography.subtitle, color: c.textPrimary, textAlign: 'center' },
+  upNextCardMeta: { ...Typography.caption, color: c.textSecondary },
   summaryCard: {
     alignSelf: 'stretch',
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     marginTop: 28,
     overflow: 'hidden',
   },
@@ -730,8 +733,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: c.border,
   },
-  summaryLabel: { ...Typography.body, color: Colors.textSecondary },
-  summaryValue: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700' },
-});
+  summaryLabel: { ...Typography.body, color: c.textSecondary },
+  summaryValue: { ...Typography.body, color: c.textPrimary, fontWeight: '700' },
+});\r
+}

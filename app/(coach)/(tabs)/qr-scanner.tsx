@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -19,7 +19,8 @@ import { useAuth } from '@/context/AuthContext';
 import { useClients } from '@/hooks/useClients';
 import { saveInBodyLink } from '@/hooks/useClientFiles';
 import { sendPushNotification } from '@/lib/pushNotifications';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 const SCAN_SIZE = 260;
 const CORNER_SIZE = 30;
@@ -66,7 +67,7 @@ function formatDateTime(date: Date): string {
 }
 
 // ── Corner bracket overlay ────────────────────────────────────
-function ScanOverlay({ processing }: { processing: boolean }) {
+function ScanOverlay({ processing, styles, accentColor }: { processing: boolean; styles: ReturnType<typeof makeStyles>; accentColor: string }) {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {/* Top */}
@@ -82,7 +83,7 @@ function ScanOverlay({ processing }: { processing: boolean }) {
           <View style={[styles.corner, styles.cornerBR]} />
           {processing && (
             <View style={styles.processingOverlay}>
-              <ActivityIndicator size="large" color={Colors.accent} />
+              <ActivityIndicator size="large" color={accentColor} />
             </View>
           )}
         </View>
@@ -97,6 +98,8 @@ function ScanOverlay({ processing }: { processing: boolean }) {
 export default function QRScannerScreen() {
   const { profile } = useAuth();
   const { clients } = useClients();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -278,7 +281,7 @@ export default function QRScannerScreen() {
   if (!permission) {
     return (
       <View style={styles.centerScreen}>
-        <ActivityIndicator size="large" color={Colors.accent} />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -287,7 +290,7 @@ export default function QRScannerScreen() {
   if (!permission.granted) {
     return (
       <View style={styles.centerScreen}>
-        <Ionicons name="camera-outline" size={60} color={Colors.border} />
+        <Ionicons name="camera-outline" size={60} color={colors.border} />
         <Text style={styles.permTitle}>Camera Access Required</Text>
         <Text style={styles.permSub}>
           Allow camera access so you can scan client QR codes.
@@ -315,7 +318,7 @@ export default function QRScannerScreen() {
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
       />
 
-      <ScanOverlay processing={processing} />
+      <ScanOverlay processing={processing} styles={styles} accentColor={colors.accent} />
 
       {/* Labels */}
       <View style={styles.labelTop} pointerEvents="none">
@@ -335,7 +338,7 @@ export default function QRScannerScreen() {
                   <Ionicons
                     name={wasLast ? 'warning-outline' : 'checkmark-circle-outline'}
                     size={28}
-                    color={wasLast ? '#FFA500' : Colors.accent}
+                    color={wasLast ? '#FFA500' : colors.accent}
                   />
                   <Text style={[styles.modalHeaderText, wasLast && { color: '#FFA500' }]}>
                     {wasLast ? 'Last Session Used!' : 'Check-In Successful'}
@@ -400,15 +403,15 @@ export default function QRScannerScreen() {
           <View style={styles.modalBg}>
             <View style={styles.modalCard}>
               <View style={[styles.modalHeader, styles.modalHeaderDanger]}>
-                <Ionicons name="close-circle-outline" size={28} color={Colors.danger} />
-                <Text style={[styles.modalHeaderText, { color: Colors.danger }]}>
+                <Ionicons name="close-circle-outline" size={28} color={colors.danger} />
+                <Text style={[styles.modalHeaderText, { color: colors.danger }]}>
                   No Sessions Remaining
                 </Text>
               </View>
 
               <View style={styles.clientRow}>
                 <View style={[styles.avatar, styles.avatarDanger]}>
-                  <Text style={[styles.avatarText, { color: Colors.danger }]}>
+                  <Text style={[styles.avatarText, { color: colors.danger }]}>
                     {initials(modalState.client.name)}
                   </Text>
                 </View>
@@ -432,7 +435,7 @@ export default function QRScannerScreen() {
                 >
                   <Text style={styles.secondaryModalBtnText}>View Client</Text>
                 </Pressable>
-                <Pressable style={[styles.primaryModalBtn, { backgroundColor: Colors.danger }]} onPress={closeModal}>
+                <Pressable style={[styles.primaryModalBtn, { backgroundColor: colors.danger }]} onPress={closeModal}>
                   <Text style={styles.primaryModalBtnText}>CLOSE</Text>
                 </Pressable>
               </View>
@@ -446,8 +449,8 @@ export default function QRScannerScreen() {
         <View style={styles.modalBg}>
           <View style={styles.modalCard}>
             <View style={[styles.modalHeader, styles.modalHeaderDanger]}>
-              <Ionicons name="person-remove-outline" size={28} color={Colors.danger} />
-              <Text style={[styles.modalHeaderText, { color: Colors.danger }]}>
+              <Ionicons name="person-remove-outline" size={28} color={colors.danger} />
+              <Text style={[styles.modalHeaderText, { color: colors.danger }]}>
                 Not Your Client
               </Text>
             </View>
@@ -457,7 +460,7 @@ export default function QRScannerScreen() {
             </Text>
             <View style={styles.modalBtns}>
               <Pressable
-                style={[styles.primaryModalBtn, { backgroundColor: Colors.danger }]}
+                style={[styles.primaryModalBtn, { backgroundColor: colors.danger }]}
                 onPress={closeModal}
               >
                 <Text style={styles.primaryModalBtnText}>TRY AGAIN</Text>
@@ -473,8 +476,8 @@ export default function QRScannerScreen() {
           <View style={styles.modalBg}>
             <View style={styles.modalCard}>
               <View style={[styles.modalHeader, styles.modalHeaderDanger]}>
-                <Ionicons name="alert-circle-outline" size={28} color={Colors.danger} />
-                <Text style={[styles.modalHeaderText, { color: Colors.danger }]}>
+                <Ionicons name="alert-circle-outline" size={28} color={colors.danger} />
+                <Text style={[styles.modalHeaderText, { color: colors.danger }]}>
                   Invalid QR Code
                 </Text>
               </View>
@@ -482,7 +485,7 @@ export default function QRScannerScreen() {
               <Text style={styles.errorNote}>{modalState.message}</Text>
 
               <View style={styles.modalBtns}>
-                <Pressable style={[styles.primaryModalBtn, { backgroundColor: Colors.danger }]} onPress={closeModal}>
+                <Pressable style={[styles.primaryModalBtn, { backgroundColor: colors.danger }]} onPress={closeModal}>
                   <Text style={styles.primaryModalBtnText}>TRY AGAIN</Text>
                 </Pressable>
               </View>
@@ -553,7 +556,7 @@ export default function QRScannerScreen() {
                 </View>
 
                 <Pressable style={{ paddingBottom: 16, alignItems: 'center' }} onPress={closeModal}>
-                  <Text style={{ color: Colors.textSecondary, fontSize: 13 }}>Cancel</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Cancel</Text>
                 </Pressable>
               </View>
             </View>
@@ -566,255 +569,256 @@ export default function QRScannerScreen() {
 
 const OVERLAY_COLOR = 'rgba(0,0,0,0.65)';
 
-const styles = StyleSheet.create({
-  cameraContainer: { flex: 1, backgroundColor: '#000' },
-  centerScreen: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-    gap: 14,
-  },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    cameraContainer: { flex: 1, backgroundColor: '#000' },
+    centerScreen: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 32,
+      gap: 14,
+    },
 
-  // Permission screen
-  permTitle: { ...Typography.subtitle, color: Colors.textPrimary, textAlign: 'center', marginTop: 8 },
-  permSub: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22 },
-  permBtn: {
-    backgroundColor: Colors.accent,
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    marginTop: 8,
-  },
-  permBtnText: { color: Colors.bg, fontSize: 13, fontWeight: '800', letterSpacing: 1.1 },
+    // Permission screen
+    permTitle: { ...Typography.subtitle, color: c.textPrimary, textAlign: 'center', marginTop: 8 },
+    permSub: { ...Typography.body, color: c.textSecondary, textAlign: 'center', lineHeight: 22 },
+    permBtn: {
+      backgroundColor: c.accent,
+      borderRadius: 14,
+      paddingVertical: 14,
+      paddingHorizontal: 32,
+      marginTop: 8,
+    },
+    permBtnText: { color: c.bg, fontSize: 13, fontWeight: '800', letterSpacing: 1.1 },
 
-  // Scan overlay
-  overlayTop: { flex: 1, backgroundColor: OVERLAY_COLOR },
-  overlayMiddle: { flexDirection: 'row', height: SCAN_SIZE },
-  overlaySide: { flex: 1, backgroundColor: OVERLAY_COLOR },
-  overlayBottom: { flex: 1.4, backgroundColor: OVERLAY_COLOR },
-  scanWindow: { width: SCAN_SIZE, height: SCAN_SIZE },
+    // Scan overlay
+    overlayTop: { flex: 1, backgroundColor: OVERLAY_COLOR },
+    overlayMiddle: { flexDirection: 'row', height: SCAN_SIZE },
+    overlaySide: { flex: 1, backgroundColor: OVERLAY_COLOR },
+    overlayBottom: { flex: 1.4, backgroundColor: OVERLAY_COLOR },
+    scanWindow: { width: SCAN_SIZE, height: SCAN_SIZE },
 
-  // Corner brackets
-  corner: {
-    position: 'absolute',
-    width: CORNER_SIZE,
-    height: CORNER_SIZE,
-    borderColor: Colors.accent,
-    borderWidth: CORNER_WIDTH,
-  },
-  cornerTL: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 6 },
-  cornerTR: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 6 },
-  cornerBL: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 6 },
-  cornerBR: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 6 },
+    // Corner brackets
+    corner: {
+      position: 'absolute',
+      width: CORNER_SIZE,
+      height: CORNER_SIZE,
+      borderColor: c.accent,
+      borderWidth: CORNER_WIDTH,
+    },
+    cornerTL: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 6 },
+    cornerTR: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 6 },
+    cornerBL: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 6 },
+    cornerBR: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 6 },
 
-  processingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+    processingOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
 
-  // Labels on camera
-  labelTop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    paddingTop: 56,
-    paddingBottom: 20,
-    backgroundColor: OVERLAY_COLOR,
-  },
-  labelTitle: {
-    ...Typography.label,
-    color: Colors.accent,
-    letterSpacing: 2,
-    marginBottom: 6,
-  },
-  labelSub: {
-    ...Typography.caption,
-    color: 'rgba(255,255,255,0.7)',
-  },
+    // Labels on camera
+    labelTop: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      alignItems: 'center',
+      paddingTop: 56,
+      paddingBottom: 20,
+      backgroundColor: OVERLAY_COLOR,
+    },
+    labelTitle: {
+      ...Typography.label,
+      color: c.accent,
+      letterSpacing: 2,
+      marginBottom: 6,
+    },
+    labelSub: {
+      ...Typography.caption,
+      color: 'rgba(255,255,255,0.7)',
+    },
 
-  // Modal
-  modalBg: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  modalCard: {
-    width: '100%',
-    backgroundColor: Colors.surface,
-    borderRadius: 24,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    padding: 18,
-    backgroundColor: Colors.accent + '12',
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  modalHeaderWarning: { backgroundColor: '#FFA50012' },
-  modalHeaderDanger: { backgroundColor: Colors.danger + '12' },
-  modalHeaderText: { ...Typography.subtitle, color: Colors.accent },
+    // Modal
+    modalBg: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.75)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
+    },
+    modalCard: {
+      width: '100%',
+      backgroundColor: c.surface,
+      borderRadius: 24,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      padding: 18,
+      backgroundColor: c.accent + '12',
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    modalHeaderWarning: { backgroundColor: '#FFA50012' },
+    modalHeaderDanger: { backgroundColor: c.danger + '12' },
+    modalHeaderText: { ...Typography.subtitle, color: c.accent },
 
-  // Client row
-  clientRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    padding: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: Colors.accent + '18',
-    borderWidth: 2,
-    borderColor: Colors.accent + '50',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarDanger: {
-    backgroundColor: Colors.danger + '18',
-    borderColor: Colors.danger + '50',
-  },
-  avatarText: { fontSize: 18, fontWeight: '800', color: Colors.accent },
-  clientName: { ...Typography.subtitle, color: Colors.textPrimary, marginBottom: 2 },
-  scanTimeText: { ...Typography.caption, color: Colors.textSecondary },
+    // Client row
+    clientRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      padding: 18,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    avatar: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      backgroundColor: c.accent + '18',
+      borderWidth: 2,
+      borderColor: c.accent + '50',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    avatarDanger: {
+      backgroundColor: c.danger + '18',
+      borderColor: c.danger + '50',
+    },
+    avatarText: { fontSize: 18, fontWeight: '800', color: c.accent },
+    clientName: { ...Typography.subtitle, color: c.textPrimary, marginBottom: 2 },
+    scanTimeText: { ...Typography.caption, color: c.textSecondary },
 
-  // Sessions badge
-  sessionsBadge: {
-    margin: 18,
-    alignItems: 'center',
-    backgroundColor: Colors.accent + '10',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.accent + '30',
-    paddingVertical: 16,
-  },
-  sessionsBadgeWarning: {
-    backgroundColor: '#FFA50010',
-    borderColor: '#FFA50030',
-  },
-  sessionsCount: {
-    fontSize: 52,
-    fontWeight: '800',
-    color: Colors.accent,
-    lineHeight: 58,
-  },
-  sessionsLabel: {
-    ...Typography.label,
-    color: Colors.accent,
-    letterSpacing: 1.5,
-  },
+    // Sessions badge
+    sessionsBadge: {
+      margin: 18,
+      alignItems: 'center',
+      backgroundColor: c.accent + '10',
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: c.accent + '30',
+      paddingVertical: 16,
+    },
+    sessionsBadgeWarning: {
+      backgroundColor: '#FFA50010',
+      borderColor: '#FFA50030',
+    },
+    sessionsCount: {
+      fontSize: 52,
+      fontWeight: '800',
+      color: c.accent,
+      lineHeight: 58,
+    },
+    sessionsLabel: {
+      ...Typography.label,
+      color: c.accent,
+      letterSpacing: 1.5,
+    },
 
-  renewalNote: {
-    ...Typography.caption,
-    color: '#FFA500',
-    textAlign: 'center',
-    paddingHorizontal: 18,
-    marginBottom: 4,
-    fontStyle: 'italic',
-  },
-  errorNote: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    padding: 18,
-    lineHeight: 22,
-  },
+    renewalNote: {
+      ...Typography.caption,
+      color: '#FFA500',
+      textAlign: 'center',
+      paddingHorizontal: 18,
+      marginBottom: 4,
+      fontStyle: 'italic',
+    },
+    errorNote: {
+      ...Typography.body,
+      color: c.textSecondary,
+      textAlign: 'center',
+      padding: 18,
+      lineHeight: 22,
+    },
 
-  // Modal buttons
-  modalBtns: {
-    flexDirection: 'row',
-    gap: 10,
-    padding: 18,
-    paddingTop: 8,
-  },
-  primaryModalBtn: {
-    flex: 1,
-    backgroundColor: Colors.accent,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  primaryModalBtnText: { color: Colors.bg, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
-  secondaryModalBtn: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  secondaryModalBtnText: { color: Colors.textPrimary, fontSize: 13, fontWeight: '600' },
+    // Modal buttons
+    modalBtns: {
+      flexDirection: 'row',
+      gap: 10,
+      padding: 18,
+      paddingTop: 8,
+    },
+    primaryModalBtn: {
+      flex: 1,
+      backgroundColor: c.accent,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    primaryModalBtnText: { color: c.bg, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+    secondaryModalBtn: {
+      flex: 1,
+      backgroundColor: c.bg,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    secondaryModalBtnText: { color: c.textPrimary, fontSize: 13, fontWeight: '600' },
 
-  // Web-link / InBody modal
-  urlRow: {
-    margin: 16,
-    marginBottom: 8,
-    backgroundColor: Colors.bg,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 12,
-  },
-  urlText: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-    fontFamily: 'monospace',
-  },
-  pickerSection: {
-    marginHorizontal: 16,
-    marginBottom: 4,
-  },
-  pickerLabel: {
-    ...Typography.label,
-    color: Colors.textSecondary,
-    letterSpacing: 1.2,
-    marginBottom: 8,
-  },
-  pickerList: {
-    maxHeight: 220,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 12,
-  },
-  cpRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    borderRadius: 0,
-  },
-  cpAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cpAvatarText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
-  cpName: { flex: 1, ...Typography.body, color: Colors.textPrimary },
-});
+    // Web-link / InBody modal
+    urlRow: {
+      margin: 16,
+      marginBottom: 8,
+      backgroundColor: c.bg,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: c.border,
+      padding: 12,
+    },
+    urlText: {
+      ...Typography.caption,
+      color: c.textSecondary,
+      fontFamily: 'monospace',
+    },
+    pickerSection: {
+      marginHorizontal: 16,
+      marginBottom: 4,
+    },
+    pickerLabel: {
+      ...Typography.label,
+      color: c.textSecondary,
+      letterSpacing: 1.2,
+      marginBottom: 8,
+    },
+    pickerList: {
+      maxHeight: 220,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 12,
+    },
+    cpRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+      borderWidth: 1,
+      borderColor: 'transparent',
+      borderRadius: 0,
+    },
+    cpAvatar: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    cpAvatarText: { fontSize: 13, fontWeight: '700', color: c.textSecondary },
+    cpName: { flex: 1, ...Typography.body, color: c.textPrimary },
+  });
+}

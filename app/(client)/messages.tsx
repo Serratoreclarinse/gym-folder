@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -13,7 +13,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useChat } from '@/hooks/useChat';
 import { useClientData } from '@/hooks/useClientData';
-import { Colors, Typography } from '@/constants/theme';
+import { Typography } from '@/constants/theme';
+import type { ColorScheme } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -32,6 +34,8 @@ export default function ClientMessagesScreen() {
   const { pkg, coachInfo } = useClientData();
   const coachId = pkg?.coach_id ?? '';
   const coachName = coachInfo?.name ?? 'Coach';
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
   const { messages, loading, sendMessage, myId } = useChat(coachId);
 
@@ -71,7 +75,7 @@ export default function ClientMessagesScreen() {
   if (!coachId) {
     return (
       <View style={s.noCoach}>
-        <Ionicons name="chatbubbles-outline" size={48} color={Colors.border} />
+        <Ionicons name="chatbubbles-outline" size={48} color={colors.border} />
         <Text style={s.noCoachText}>No active package found.</Text>
         <Text style={s.noCoachSub}>Chat becomes available once your coach activates your package.</Text>
       </View>
@@ -126,7 +130,7 @@ export default function ClientMessagesScreen() {
                   <Ionicons
                     name={item.msg.read_at ? 'checkmark-done' : 'checkmark'}
                     size={12}
-                    color={item.msg.read_at ? Colors.accent : Colors.textSecondary}
+                    color={item.msg.read_at ? colors.accent : colors.textSecondary}
                   />
                 )}
               </View>
@@ -136,7 +140,7 @@ export default function ClientMessagesScreen() {
         ListEmptyComponent={
           !loading ? (
             <View style={s.empty}>
-              <Ionicons name="chatbubbles-outline" size={48} color={Colors.border} />
+              <Ionicons name="chatbubbles-outline" size={48} color={colors.border} />
               <Text style={s.emptyText}>Send your coach a message!</Text>
             </View>
           ) : null
@@ -150,7 +154,7 @@ export default function ClientMessagesScreen() {
           value={text}
           onChangeText={setText}
           placeholder={`Message ${coachName}…`}
-          placeholderTextColor={Colors.textSecondary}
+          placeholderTextColor={colors.textSecondary}
           multiline
           maxLength={1000}
           returnKeyType="default"
@@ -160,75 +164,77 @@ export default function ClientMessagesScreen() {
           onPress={handleSend}
           disabled={!text.trim()}
         >
-          <Ionicons name="send" size={18} color={text.trim() ? Colors.bg : Colors.textSecondary} />
+          <Ionicons name="send" size={18} color={text.trim() ? colors.bg : colors.textSecondary} />
         </Pressable>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.bg },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    root: { flex: 1 },
 
-  noCoach: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 8 },
-  noCoachText: { ...Typography.subtitle, color: Colors.textPrimary, textAlign: 'center', marginTop: 12 },
-  noCoachSub: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
+    noCoach: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 8 },
+    noCoachText: { ...Typography.subtitle, color: c.textPrimary, textAlign: 'center', marginTop: 12 },
+    noCoachSub: { ...Typography.body, color: c.textSecondary, textAlign: 'center', lineHeight: 20 },
 
-  coachBar: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 16, paddingVertical: 12,
-    backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  avatar: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: Colors.accent + '22', borderWidth: 1, borderColor: Colors.accent + '44',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  avatarText: { fontSize: 14, fontWeight: '800', color: Colors.accent },
-  coachName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700' },
-  coachRole: { ...Typography.caption, color: Colors.textSecondary },
+    coachBar: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      paddingHorizontal: 16, paddingVertical: 12,
+      backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    avatar: {
+      width: 40, height: 40, borderRadius: 20,
+      backgroundColor: c.accent + '22', borderWidth: 1, borderColor: c.accent + '44',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    avatarText: { fontSize: 14, fontWeight: '800', color: c.accent },
+    coachName: { ...Typography.body, color: c.textPrimary, fontWeight: '700' },
+    coachRole: { ...Typography.caption, color: c.textSecondary },
 
-  list: { padding: 16, paddingBottom: 8, flexGrow: 1, justifyContent: 'flex-end' },
+    list: { padding: 16, paddingBottom: 8, flexGrow: 1, justifyContent: 'flex-end' },
 
-  dayRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 12 },
-  dayLine: { flex: 1, height: 1, backgroundColor: Colors.border },
-  dayLabel: { ...Typography.caption, color: Colors.textSecondary },
+    dayRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 12 },
+    dayLine: { flex: 1, height: 1, backgroundColor: c.border },
+    dayLabel: { ...Typography.caption, color: c.textSecondary },
 
-  bubble: {
-    maxWidth: '78%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9,
-    marginBottom: 4,
-  },
-  bubbleMine: {
-    alignSelf: 'flex-end', backgroundColor: Colors.accent,
-    borderBottomRightRadius: 4,
-  },
-  bubbleTheirs: {
-    alignSelf: 'flex-start', backgroundColor: Colors.surface,
-    borderWidth: 1, borderColor: Colors.border, borderBottomLeftRadius: 4,
-  },
-  bubbleText: { fontSize: 15, lineHeight: 21 },
-  bubbleTextMine: { color: Colors.bg },
-  bubbleTextTheirs: { color: Colors.textPrimary },
-  bubbleMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3, justifyContent: 'flex-end' },
-  bubbleTime: { fontSize: 10, color: Colors.textSecondary },
-  bubbleTimeMine: { color: Colors.bg + 'BB' },
+    bubble: {
+      maxWidth: '78%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9,
+      marginBottom: 4,
+    },
+    bubbleMine: {
+      alignSelf: 'flex-end', backgroundColor: c.accent,
+      borderBottomRightRadius: 4,
+    },
+    bubbleTheirs: {
+      alignSelf: 'flex-start', backgroundColor: c.surface,
+      borderWidth: 1, borderColor: c.border, borderBottomLeftRadius: 4,
+    },
+    bubbleText: { fontSize: 15, lineHeight: 21 },
+    bubbleTextMine: { color: c.bg },
+    bubbleTextTheirs: { color: c.textPrimary },
+    bubbleMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3, justifyContent: 'flex-end' },
+    bubbleTime: { fontSize: 10, color: c.textSecondary },
+    bubbleTimeMine: { color: c.bg + 'BB' },
 
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingTop: 80 },
-  emptyText: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center' },
+    empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingTop: 80 },
+    emptyText: { ...Typography.body, color: c.textSecondary, textAlign: 'center' },
 
-  inputRow: {
-    flexDirection: 'row', alignItems: 'flex-end', gap: 10,
-    paddingHorizontal: 16, paddingVertical: 12,
-    backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.border,
-  },
-  input: {
-    flex: 1, backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10,
-    color: Colors.textPrimary, fontSize: 15, maxHeight: 120,
-  },
-  sendBtn: {
-    width: 42, height: 42, borderRadius: 21,
-    backgroundColor: Colors.accent, justifyContent: 'center', alignItems: 'center',
-  },
-  sendBtnDisabled: { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border },
-});
+    inputRow: {
+      flexDirection: 'row', alignItems: 'flex-end', gap: 10,
+      paddingHorizontal: 16, paddingVertical: 12,
+      backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.border,
+    },
+    input: {
+      flex: 1, backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
+      borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10,
+      color: c.textPrimary, fontSize: 15, maxHeight: 120,
+    },
+    sendBtn: {
+      width: 42, height: 42, borderRadius: 21,
+      backgroundColor: c.accent, justifyContent: 'center', alignItems: 'center',
+    },
+    sendBtnDisabled: { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
+  });
+}

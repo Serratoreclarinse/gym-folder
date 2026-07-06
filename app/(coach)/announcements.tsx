@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -23,16 +23,17 @@ import {
   NewAnnouncement,
 } from '@/hooks/useAnnouncements';
 import { useClients } from '@/hooks/useClients';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 import { sendPushNotification } from '@/lib/pushNotifications';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 export const TYPE_CONFIG: Record<AnnouncementType, { label: string; color: string; icon: string }> = {
-  emergency: { label: 'Emergency', color: Colors.danger,        icon: 'warning-outline' },
-  holiday:   { label: 'Holiday',   color: '#FF9800',            icon: 'sunny-outline' },
-  general:   { label: 'General',   color: Colors.textSecondary, icon: 'megaphone-outline' },
-  promo:     { label: 'Promo',     color: '#9C27B0',            icon: 'pricetag-outline' },
+  emergency: { label: 'Emergency', color: '#E53935',  icon: 'warning-outline' },
+  holiday:   { label: 'Holiday',   color: '#FF9800',  icon: 'sunny-outline' },
+  general:   { label: 'General',   color: '#9E9E9E',  icon: 'megaphone-outline' },
+  promo:     { label: 'Promo',     color: '#9C27B0',  icon: 'pricetag-outline' },
 };
 
 const TYPES: AnnouncementType[] = ['emergency', 'holiday', 'general', 'promo'];
@@ -76,6 +77,8 @@ function AnnouncementForm({
   onSave: (form: FormState) => void;
   onCancel: () => void;
 }) {
+  const { colors } = useTheme();
+  const af = useMemo(() => makeAfStyles(colors), [colors]);
   const [title, setTitle]       = useState(initial?.title ?? '');
   const [message, setMessage]   = useState(initial?.message ?? '');
   const [type, setType]         = useState<AnnouncementType>(initial?.type ?? 'general');
@@ -99,7 +102,7 @@ function AnnouncementForm({
       <View style={af.header}>
         <Text style={af.title}>{isEdit ? 'EDIT ANNOUNCEMENT' : 'NEW ANNOUNCEMENT'}</Text>
         <Pressable onPress={onCancel} hitSlop={12}>
-          <Ionicons name="close" size={22} color={Colors.textSecondary} />
+          <Ionicons name="close" size={22} color={colors.textSecondary} />
         </Pressable>
       </View>
 
@@ -123,8 +126,8 @@ function AnnouncementForm({
                     style={[af.typeBtn, { borderColor: tc.color + '50' }, active && { backgroundColor: tc.color + '20', borderColor: tc.color }]}
                     onPress={() => setType(t)}
                   >
-                    <Ionicons name={tc.icon as any} size={12} color={active ? tc.color : Colors.textSecondary} />
-                    <Text style={[af.typeBtnText, { color: active ? tc.color : Colors.textSecondary }]}>{tc.label}</Text>
+                    <Ionicons name={tc.icon as any} size={12} color={active ? tc.color : colors.textSecondary} />
+                    <Text style={[af.typeBtnText, { color: active ? tc.color : colors.textSecondary }]}>{tc.label}</Text>
                   </Pressable>
                 );
               })}
@@ -135,11 +138,11 @@ function AnnouncementForm({
         {/* Title */}
         <Text style={[af.lbl, !isEdit && { marginTop: 16 }]}>TITLE</Text>
         <TextInput
-          style={[af.input, type === 'emergency' && { borderColor: Colors.danger + '60' }]}
+          style={[af.input, type === 'emergency' && { borderColor: colors.danger + '60' }]}
           value={title}
           onChangeText={setTitle}
           placeholder="e.g. No sessions this Saturday"
-          placeholderTextColor={Colors.textSecondary + '80'}
+          placeholderTextColor={colors.textSecondary + '80'}
           autoCapitalize="sentences"
           returnKeyType="next"
         />
@@ -147,11 +150,11 @@ function AnnouncementForm({
         {/* Message */}
         <Text style={[af.lbl, { marginTop: 14 }]}>MESSAGE</Text>
         <TextInput
-          style={[af.input, af.textArea, type === 'emergency' && { borderColor: Colors.danger + '60' }]}
+          style={[af.input, af.textArea, type === 'emergency' && { borderColor: colors.danger + '60' }]}
           value={message}
           onChangeText={setMessage}
           placeholder="Write your announcement here…"
-          placeholderTextColor={Colors.textSecondary + '80'}
+          placeholderTextColor={colors.textSecondary + '80'}
           multiline
           numberOfLines={4}
           textAlignVertical="top"
@@ -184,12 +187,12 @@ function AnnouncementForm({
                     const checked = selectedIds.includes(c.id);
                     return (
                       <Pressable
-                        key={c.id}
+                        key={colors.id}
                         style={[af.clientRow, checked && af.clientRowChecked]}
                         onPress={() => toggleClient(c.id)}
                       >
                         <View style={[af.checkbox, checked && af.checkboxChecked]}>
-                          {checked && <Ionicons name="checkmark" size={12} color={Colors.bg} />}
+                          {checked && <Ionicons name="checkmark" size={12} color={colors.bg} />}
                         </View>
                         <Text style={af.clientRowName}>{c.name}</Text>
                       </Pressable>
@@ -206,9 +209,9 @@ function AnnouncementForm({
           <Ionicons
             name={pinned ? 'pin' : 'pin-outline'}
             size={20}
-            color={pinned ? Colors.accent : Colors.textSecondary}
+            color={pinned ? colors.accent : colors.textSecondary}
           />
-          <Text style={[af.pinLabel, pinned && { color: Colors.accent }]}>
+          <Text style={[af.pinLabel, pinned && { color: colors.accent }]}>
             {pinned ? 'Pinned — shows banner on Dashboard' : 'Pin to Dashboard'}
           </Text>
         </Pressable>
@@ -216,7 +219,7 @@ function AnnouncementForm({
         {/* Emergency warning */}
         {type === 'emergency' && (
           <View style={af.emergencyHint}>
-            <Ionicons name="information-circle-outline" size={14} color={Colors.danger} />
+            <Ionicons name="information-circle-outline" size={14} color={colors.danger} />
             <Text style={af.emergencyHintText}>Emergency notices cannot be edited after 24 hours.</Text>
           </View>
         )}
@@ -247,6 +250,8 @@ function AnnouncementCard({
   ann: Announcement;
   onLongPress: () => void;
 }) {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const cfg = TYPE_CONFIG[ann.type];
   return (
     <Pressable
@@ -266,7 +271,7 @@ function AnnouncementCard({
         </View>
         <View style={s.cardTopRight}>
           {ann.is_pinned && (
-            <Ionicons name="pin" size={13} color={Colors.accent} style={{ marginRight: 6 }} />
+            <Ionicons name="pin" size={13} color={colors.accent} style={{ marginRight: 6 }} />
           )}
           <Text style={s.cardDate}>{fmtDate(ann.created_at)}</Text>
         </View>
@@ -276,7 +281,7 @@ function AnnouncementCard({
       <Text style={s.cardMsg} numberOfLines={2}>{ann.message}</Text>
 
       <View style={s.cardFooter}>
-        <Ionicons name="people-outline" size={12} color={Colors.textSecondary} />
+        <Ionicons name="people-outline" size={12} color={colors.textSecondary} />
         <Text style={s.cardTarget}>
           {ann.target === 'all'
             ? 'All Clients'
@@ -298,6 +303,8 @@ function WhatsAppModal({
   clients: { id: string; name: string; phone: string | null }[];
   onClose: () => void;
 }) {
+  const { colors } = useTheme();
+  const wm = useMemo(() => makeWmStyles(colors), [colors]);
   if (!announcement) return null;
 
   const targets =
@@ -326,7 +333,7 @@ function WhatsAppModal({
       <View style={wm.header}>
         <Text style={wm.title}>NOTIFY VIA WHATSAPP</Text>
         <Pressable onPress={onClose} hitSlop={12}>
-          <Ionicons name="close" size={22} color={Colors.textSecondary} />
+          <Ionicons name="close" size={22} color={colors.textSecondary} />
         </Pressable>
       </View>
 
@@ -348,7 +355,7 @@ function WhatsAppModal({
       <ScrollView style={wm.list} showsVerticalScrollIndicator={false}>
         {targets.map((c) => (
           <Pressable
-            key={c.id}
+            key={colors.id}
             style={({ pressed }) => [wm.clientRow, pressed && { opacity: 0.7 }]}
             onPress={() => sendWA(c.phone, c.name)}
           >
@@ -362,8 +369,8 @@ function WhatsAppModal({
               <Text style={wm.clientPhone}>{c.phone ?? 'No phone'}</Text>
             </View>
             <View style={[wm.sendBtn, !c.phone && wm.sendBtnDim]}>
-              <Ionicons name="logo-whatsapp" size={15} color={c.phone ? '#25D366' : Colors.textSecondary} />
-              <Text style={[wm.sendBtnText, !c.phone && { color: Colors.textSecondary }]}>Send</Text>
+              <Ionicons name="logo-whatsapp" size={15} color={colors.phone ? '#25D366' : colors.textSecondary} />
+              <Text style={[wm.sendBtnText, !c.phone && { color: colors.textSecondary }]}>Send</Text>
             </View>
           </Pressable>
         ))}
@@ -376,6 +383,8 @@ function WhatsAppModal({
 // ── Screen ─────────────────────────────────────────────────────────────────────
 
 export default function AnnouncementsScreen() {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const { preset } = useLocalSearchParams<{ preset?: string }>();
   const {
     announcements, loading, refetch,
@@ -514,12 +523,12 @@ export default function AnnouncementsScreen() {
         style={s.scroll}
         contentContainerStyle={s.content}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={refetch} tintColor={Colors.accent} />
+          <RefreshControl refreshing={loading} onRefresh={refetch} tintColor={colors.accent} />
         }
       >
         {announcements.length === 0 && !loading ? (
           <View style={s.empty}>
-            <Ionicons name="megaphone-outline" size={52} color={Colors.border} />
+            <Ionicons name="megaphone-outline" size={52} color={colors.border} />
             <Text style={s.emptyTitle}>No announcements yet</Text>
             <Text style={s.emptySub}>Tap + to post an update to your clients</Text>
           </View>
@@ -537,7 +546,7 @@ export default function AnnouncementsScreen() {
 
       {/* FAB */}
       <Pressable style={s.fab} onPress={() => openForm(null)}>
-        <Ionicons name="add" size={28} color={Colors.bg} />
+        <Ionicons name="add" size={28} color={colors.bg} />
       </Pressable>
 
       {/* Form modal */}
@@ -585,95 +594,98 @@ export default function AnnouncementsScreen() {
 
 // ── Styles ─────────────────────────────────────────────────────────────────────
 
-const af = StyleSheet.create({
+function makeAfStyles(colors: ColorScheme) {
+  return StyleSheet.create({
   handle: {
     width: 40, height: 4, borderRadius: 2,
-    backgroundColor: Colors.border, alignSelf: 'center',
+    backgroundColor: colors.border, alignSelf: 'center',
     marginTop: 12, marginBottom: 8,
   },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, marginBottom: 4,
   },
-  title: { ...Typography.label, color: Colors.textPrimary, fontSize: 14 },
+  title: { ...Typography.label, color: colors.textPrimary, fontSize: 14 },
   scroll: { flexGrow: 0 },
   content: { padding: 20, paddingTop: 12, paddingBottom: 44 },
-  lbl: { ...Typography.label, color: Colors.textSecondary, marginBottom: 8 },
+  lbl: { ...Typography.label, color: colors.textSecondary, marginBottom: 8 },
   typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   typeBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8,
-    borderColor: Colors.border,
+    borderColor: colors.border,
   },
   typeBtnText: { fontSize: 11, fontWeight: '700' },
   input: {
-    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border,
     borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
-    color: Colors.textPrimary, fontSize: 15, marginBottom: 4,
+    color: colors.textPrimary, fontSize: 15, marginBottom: 4,
   },
   textArea: { minHeight: 110, textAlignVertical: 'top', paddingTop: 12 },
   targetRow: { flexDirection: 'row', gap: 10, marginBottom: 4 },
   targetBtn: {
     flex: 1, alignItems: 'center', paddingVertical: 11,
-    borderRadius: 12, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 12, borderWidth: 1, borderColor: colors.border,
   },
-  targetBtnActive: { backgroundColor: Colors.accent + '18', borderColor: Colors.accent },
-  targetBtnText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
-  targetBtnTextActive: { color: Colors.accent },
+  targetBtnActive: { backgroundColor: colors.accent + '18', borderColor: colors.accent },
+  targetBtnText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
+  targetBtnTextActive: { color: colors.accent },
   clientList: {
-    backgroundColor: Colors.bg, borderRadius: 12, borderWidth: 1,
-    borderColor: Colors.border, overflow: 'hidden', marginTop: 10,
+    backgroundColor: colors.bg, borderRadius: 12, borderWidth: 1,
+    borderColor: colors.border, overflow: 'hidden', marginTop: 10,
   },
-  noClientsText: { ...Typography.body, color: Colors.textSecondary, padding: 16 },
+  noClientsText: { ...Typography.body, color: colors.textSecondary, padding: 16 },
   clientRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 14, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  clientRowChecked: { backgroundColor: Colors.accent + '08' },
+  clientRowChecked: { backgroundColor: colors.accent + '08' },
   checkbox: {
     width: 22, height: 22, borderRadius: 6, borderWidth: 1.5,
-    borderColor: Colors.border, justifyContent: 'center', alignItems: 'center',
+    borderColor: colors.border, justifyContent: 'center', alignItems: 'center',
   },
-  checkboxChecked: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  clientRowName: { ...Typography.body, color: Colors.textPrimary },
+  checkboxChecked: { backgroundColor: colors.accent, borderColor: colors.accent },
+  clientRowName: { ...Typography.body, color: colors.textPrimary },
   pinRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingVertical: 14, borderTopWidth: 1, borderTopColor: Colors.border,
+    paddingVertical: 14, borderTopWidth: 1, borderTopColor: colors.border,
     marginTop: 12, marginBottom: 4,
   },
-  pinLabel: { ...Typography.body, color: Colors.textSecondary },
+  pinLabel: { ...Typography.body, color: colors.textSecondary },
   emergencyHint: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: Colors.danger + '10', borderRadius: 10,
+    backgroundColor: colors.danger + '10', borderRadius: 10,
     padding: 10, marginBottom: 8,
   },
-  emergencyHintText: { ...Typography.caption, color: Colors.danger, flex: 1 },
+  emergencyHintText: { ...Typography.caption, color: colors.danger, flex: 1 },
   saveBtn: {
-    backgroundColor: Colors.accent, borderRadius: 13,
+    backgroundColor: colors.accent, borderRadius: 13,
     paddingVertical: 15, alignItems: 'center', marginTop: 8,
   },
-  saveBtnEmergency: { backgroundColor: Colors.danger },
+  saveBtnEmergency: { backgroundColor: colors.danger },
   saveBtnDisabled: { opacity: 0.35 },
-  saveBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 14, letterSpacing: 1.2 },
+  saveBtnText: { color: colors.bg, fontWeight: '800', fontSize: 14, letterSpacing: 1.2 },
 });
+}
 
-const s = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: Colors.bg },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+  scroll: { flex: 1 },
   content: { padding: 20, paddingBottom: 100 },
 
   empty: { alignItems: 'center', paddingTop: 80, gap: 8 },
-  emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 12 },
-  emptySub: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center' },
+  emptyTitle: { ...Typography.subtitle, color: c.textPrimary, marginTop: 12 },
+  emptySub: { ...Typography.body, color: c.textSecondary, textAlign: 'center' },
 
-  tip: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center', marginTop: 16 },
+  tip: { ...Typography.caption, color: c.textSecondary, textAlign: 'center', marginTop: 16 },
 
   card: {
-    backgroundColor: Colors.surface, borderRadius: 16, padding: 16,
-    marginBottom: 10, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: c.surface, borderRadius: 16, padding: 16,
+    marginBottom: 10, borderWidth: 1, borderColor: c.border,
   },
-  cardEmergency: { borderColor: Colors.danger + '50', backgroundColor: Colors.danger + '08' },
-  cardPinned: { borderColor: Colors.accent + '40' },
+  cardEmergency: { borderColor: c.danger + '50', backgroundColor: c.danger + '08' },
+  cardPinned: { borderColor: c.accent + '40' },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   badge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -681,73 +693,76 @@ const s = StyleSheet.create({
   },
   badgeText: { fontSize: 10, fontWeight: '800' },
   cardTopRight: { flexDirection: 'row', alignItems: 'center' },
-  cardDate: { ...Typography.caption, color: Colors.textSecondary },
-  cardTitle: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700', marginBottom: 4 },
-  cardMsg: { ...Typography.caption, color: Colors.textSecondary, lineHeight: 18, marginBottom: 10 },
-  cardFooter: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingTop: 8, borderTopWidth: 1, borderTopColor: Colors.border },
-  cardTarget: { ...Typography.caption, color: Colors.textSecondary },
+  cardDate: { ...Typography.caption, color: c.textSecondary },
+  cardTitle: { ...Typography.body, color: c.textPrimary, fontWeight: '700', marginBottom: 4 },
+  cardMsg: { ...Typography.caption, color: c.textSecondary, lineHeight: 18, marginBottom: 10 },
+  cardFooter: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingTop: 8, borderTopWidth: 1, borderTopColor: c.border },
+  cardTarget: { ...Typography.caption, color: c.textSecondary },
 
   fab: {
     position: 'absolute', bottom: 32, right: 20,
     width: 58, height: 58, borderRadius: 29,
-    backgroundColor: Colors.accent, justifyContent: 'center', alignItems: 'center',
-    shadowColor: Colors.accent, shadowOffset: { width: 0, height: 4 },
+    backgroundColor: c.accent, justifyContent: 'center', alignItems: 'center',
+    shadowColor: c.accent, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
   },
 
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderTopLeftRadius: 24, borderTopRightRadius: 24,
     maxHeight: '92%', paddingBottom: 16,
   },
   sheetTall: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderTopLeftRadius: 24, borderTopRightRadius: 24,
     maxHeight: '85%',
   },
 });
+}
 
-const wm = StyleSheet.create({
+function makeWmStyles(colors: ColorScheme) {
+  return StyleSheet.create({
   wrap: { flex: 1 },
   handle: {
-    width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.border,
+    width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border,
     alignSelf: 'center', marginTop: 12, marginBottom: 8,
   },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, marginBottom: 12,
   },
-  title: { ...Typography.label, color: Colors.textPrimary, fontSize: 14 },
+  title: { ...Typography.label, color: colors.textPrimary, fontSize: 14 },
   annCard: {
-    marginHorizontal: 20, backgroundColor: Colors.bg, borderRadius: 12,
+    marginHorizontal: 20, backgroundColor: colors.bg, borderRadius: 12,
     padding: 12, borderWidth: 1, marginBottom: 12,
   },
   annBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, alignSelf: 'flex-start', marginBottom: 6 },
   annBadgeText: { fontSize: 10, fontWeight: '800' },
-  annTitle: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700', marginBottom: 4 },
-  annMsg: { ...Typography.caption, color: Colors.textSecondary },
-  sub: { ...Typography.caption, color: Colors.textSecondary, paddingHorizontal: 20, marginBottom: 8 },
+  annTitle: { ...Typography.body, color: colors.textPrimary, fontWeight: '700', marginBottom: 4 },
+  annMsg: { ...Typography.caption, color: colors.textSecondary },
+  sub: { ...Typography.caption, color: colors.textSecondary, paddingHorizontal: 20, marginBottom: 8 },
   list: { flex: 1, paddingHorizontal: 20 },
   clientRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: Colors.bg, borderRadius: 14, padding: 12, marginBottom: 8,
-    borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: colors.bg, borderRadius: 14, padding: 12, marginBottom: 8,
+    borderWidth: 1, borderColor: colors.border,
   },
   avatar: {
     width: 40, height: 40, borderRadius: 20,
-    backgroundColor: Colors.accent + '18', borderWidth: 1, borderColor: Colors.accent + '40',
+    backgroundColor: colors.accent + '18', borderWidth: 1, borderColor: colors.accent + '40',
     justifyContent: 'center', alignItems: 'center',
   },
-  avatarText: { fontSize: 13, fontWeight: '800', color: Colors.accent },
+  avatarText: { fontSize: 13, fontWeight: '800', color: colors.accent },
   clientInfo: { flex: 1 },
-  clientName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 1 },
-  clientPhone: { ...Typography.caption, color: Colors.textSecondary },
+  clientName: { ...Typography.body, color: colors.textPrimary, fontWeight: '600', marginBottom: 1 },
+  clientPhone: { ...Typography.caption, color: colors.textSecondary },
   sendBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: '#25D36618', borderRadius: 10,
     paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1, borderColor: '#25D36640',
   },
-  sendBtnDim: { backgroundColor: Colors.border + '30', borderColor: Colors.border },
+  sendBtnDim: { backgroundColor: colors.border + '30', borderColor: colors.border },
   sendBtnText: { fontSize: 12, fontWeight: '700', color: '#25D366' },
-});
+});\r
+}

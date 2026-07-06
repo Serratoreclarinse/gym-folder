@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Alert, Modal, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
@@ -7,7 +7,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { sendPushNotification } from '@/lib/pushNotifications';
-import { Colors, Typography } from '@/constants/theme';
+import { Typography, ColorScheme } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 type ClientProfile = {
   id: string;
@@ -69,6 +70,8 @@ function fmtDate(dateStr: string) {
 }
 
 export default function ClientDetailScreen() {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const { id } = useLocalSearchParams<{ id: string }>();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
@@ -301,7 +304,7 @@ export default function ClientDetailScreen() {
   };
 
   if (loading) {
-    return <View style={s.center}><ActivityIndicator size="large" color={Colors.accent} /></View>;
+    return <View style={s.center}><ActivityIndicator size="large" color={colors.accent} /></View>;
   }
   if (!client) {
     return <View style={s.center}><Text style={s.grayText}>Client not found.</Text></View>;
@@ -318,7 +321,7 @@ export default function ClientDetailScreen() {
       <ScrollView
         style={s.scroll}
         contentContainerStyle={[s.content, isDesktop && s.contentDesktop]}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={Colors.accent} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />}
       >
         <View style={[s.inner, isDesktop && s.innerDesktop]}>
 
@@ -335,7 +338,7 @@ export default function ClientDetailScreen() {
                     value={editName}
                     onChangeText={setEditName}
                     placeholder="Full name"
-                    placeholderTextColor={Colors.textSecondary}
+                    placeholderTextColor={colors.textSecondary}
                     autoCapitalize="words"
                   />
                   <TextInput
@@ -343,7 +346,7 @@ export default function ClientDetailScreen() {
                     value={editPhone}
                     onChangeText={setEditPhone}
                     placeholder="Phone (optional)"
-                    placeholderTextColor={Colors.textSecondary}
+                    placeholderTextColor={colors.textSecondary}
                     keyboardType="phone-pad"
                   />
                   <View style={s.editActions}>
@@ -365,7 +368,7 @@ export default function ClientDetailScreen() {
                   {client.phone && <Text style={s.clientPhone}>{client.phone}</Text>}
                   {activePkg && (
                     <View style={s.coachPill}>
-                      <Ionicons name="person-circle-outline" size={13} color={Colors.textSecondary} />
+                      <Ionicons name="person-circle-outline" size={13} color={colors.textSecondary} />
                       <Text style={s.coachPillText}>{activePkg.coachName}</Text>
                     </View>
                   )}
@@ -374,7 +377,7 @@ export default function ClientDetailScreen() {
             </View>
             {!editing && (
               <Pressable style={s.editBtn} onPress={() => setEditing(true)}>
-                <Ionicons name="pencil-outline" size={16} color={Colors.textSecondary} />
+                <Ionicons name="pencil-outline" size={16} color={colors.textSecondary} />
               </Pressable>
             )}
           </View>
@@ -384,7 +387,7 @@ export default function ClientDetailScreen() {
 
           {!activePkg ? (
             <View style={s.noPkgCard}>
-              <Ionicons name="cube-outline" size={36} color={Colors.border} />
+              <Ionicons name="cube-outline" size={36} color={colors.border} />
               <Text style={s.noPkgText}>No active package</Text>
               {pastPkgs.length > 0 ? (
                 <Pressable
@@ -432,14 +435,14 @@ export default function ClientDetailScreen() {
                       s.progressFill,
                       {
                         width: `${fillPct}%` as any,
-                        backgroundColor: activePkg.sessionsRemaining <= 3 ? Colors.accent : '#4CAF50',
+                        backgroundColor: activePkg.sessionsRemaining <= 3 ? colors.accent : '#4CAF50',
                       },
                     ]}
                   />
                 </View>
                 <Text style={s.sessionsLeft}>
                   <Text style={{
-                    color: activePkg.sessionsRemaining <= 3 ? Colors.accent : '#4CAF50',
+                    color: activePkg.sessionsRemaining <= 3 ? colors.accent : '#4CAF50',
                     fontWeight: '800',
                   }}>
                     {activePkg.sessionsRemaining}
@@ -493,7 +496,7 @@ export default function ClientDetailScreen() {
                   style={s.actionPrimary}
                   onPress={() => { setAddTarget(activePkg); setSessionsToAdd(''); setAddModal(true); }}
                 >
-                  <Ionicons name="add-circle-outline" size={15} color={Colors.bg} />
+                  <Ionicons name="add-circle-outline" size={15} color={colors.bg} />
                   <Text style={s.actionPrimaryText}>Add Sessions</Text>
                 </Pressable>
                 <Pressable
@@ -506,11 +509,11 @@ export default function ClientDetailScreen() {
                     setRenewModal(true);
                   }}
                 >
-                  <Ionicons name="refresh-outline" size={15} color={Colors.accent} />
+                  <Ionicons name="refresh-outline" size={15} color={colors.accent} />
                   <Text style={s.actionSecondaryText}>Renew</Text>
                 </Pressable>
                 <Pressable style={s.actionDanger} onPress={() => handleDeactivate(activePkg)}>
-                  <Ionicons name="close-circle-outline" size={15} color={Colors.accent} />
+                  <Ionicons name="close-circle-outline" size={15} color={colors.accent} />
                   <Text style={s.actionDangerText}>Deactivate</Text>
                 </Pressable>
               </View>
@@ -597,7 +600,7 @@ export default function ClientDetailScreen() {
                         {p.notes ? ` · ${p.notes}` : ''}
                       </Text>
                       {p.invoice_number && (
-                        <Text style={[s.historyNotes, { color: Colors.accent, marginTop: 2 }]}>
+                        <Text style={[s.historyNotes, { color: colors.accent, marginTop: 2 }]}>
                           Invoice #{p.invoice_number}
                         </Text>
                       )}
@@ -610,7 +613,7 @@ export default function ClientDetailScreen() {
                         style={s.invoiceBtn}
                         onPress={() => router.push(`/(admin)/invoice/${p.id}` as any)}
                       >
-                        <Ionicons name="document-text-outline" size={12} color={Colors.accent} />
+                        <Ionicons name="document-text-outline" size={12} color={colors.accent} />
                         <Text style={s.invoiceBtnText}>Invoice</Text>
                       </Pressable>
                     </View>
@@ -628,7 +631,7 @@ export default function ClientDetailScreen() {
             onPress={handleDeactivateAccount}
             disabled={deactivating}
           >
-            <Ionicons name="archive-outline" size={16} color={Colors.danger} />
+            <Ionicons name="archive-outline" size={16} color={colors.danger} />
             <Text style={s.deactivateBtnText}>{deactivating ? 'Deactivating…' : 'Deactivate Account'}</Text>
           </Pressable>
         </View>
@@ -647,7 +650,7 @@ export default function ClientDetailScreen() {
               value={sessionsToAdd}
               onChangeText={(v) => setSessionsToAdd(v.replace(/[^0-9]/g, ''))}
               placeholder="Number of sessions to add"
-              placeholderTextColor={Colors.textSecondary}
+              placeholderTextColor={colors.textSecondary}
               keyboardType="number-pad"
               autoFocus
             />
@@ -695,7 +698,7 @@ export default function ClientDetailScreen() {
               value={renewTotal}
               onChangeText={(v) => setRenewTotal(v.replace(/[^0-9]/g, ''))}
               placeholder="e.g. 12"
-              placeholderTextColor={Colors.textSecondary}
+              placeholderTextColor={colors.textSecondary}
               keyboardType="number-pad"
             />
 
@@ -705,7 +708,7 @@ export default function ClientDetailScreen() {
               value={renewWeeks}
               onChangeText={(v) => setRenewWeeks(v.replace(/[^0-9]/g, ''))}
               placeholder="e.g. 6"
-              placeholderTextColor={Colors.textSecondary}
+              placeholderTextColor={colors.textSecondary}
               keyboardType="number-pad"
             />
 
@@ -733,7 +736,7 @@ export default function ClientDetailScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
               <Text style={s.modalTitle}>REQUEST PAYMENT</Text>
               <Pressable onPress={() => setShowPayReqModal(false)}>
-                <Ionicons name="close" size={20} color={Colors.textSecondary} />
+                <Ionicons name="close" size={20} color={colors.textSecondary} />
               </Pressable>
             </View>
             <Text style={[s.modalSub, { marginBottom: 20 }]}>
@@ -753,7 +756,7 @@ export default function ClientDetailScreen() {
                   value={payReqAmount}
                   onChangeText={(v) => setPayReqAmount(v.replace(/[^0-9.]/g, ''))}
                   placeholder="e.g. 545.00"
-                  placeholderTextColor={Colors.textSecondary}
+                  placeholderTextColor={colors.textSecondary}
                   keyboardType="decimal-pad"
                 />
                 <Text style={[s.modalLabel, { marginTop: 12 }]}>Note — optional</Text>
@@ -762,7 +765,7 @@ export default function ClientDetailScreen() {
                   value={payReqNotes}
                   onChangeText={setPayReqNotes}
                   placeholder="e.g. Monthly renewal due"
-                  placeholderTextColor={Colors.textSecondary}
+                  placeholderTextColor={colors.textSecondary}
                   multiline
                 />
                 <Pressable
@@ -784,235 +787,237 @@ export default function ClientDetailScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: Colors.bg },
-  content: { padding: 20, paddingBottom: 48 },
-  contentDesktop: { padding: 40, paddingTop: 32 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.bg },
-  inner: { width: '100%' },
-  innerDesktop: { maxWidth: 720, alignSelf: 'center' },
-  grayText: { ...Typography.body, color: Colors.textSecondary },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    scroll: { flex: 1 },
+    content: { padding: 20, paddingBottom: 48 },
+    contentDesktop: { padding: 40, paddingTop: 32 },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    inner: { width: '100%' },
+    innerDesktop: { maxWidth: 720, alignSelf: 'center' },
+    grayText: { ...Typography.body, color: c.textSecondary },
 
-  // Profile
-  profileCard: {
-    flexDirection: 'row', alignItems: 'flex-start',
-    backgroundColor: Colors.surface, borderRadius: 16,
-    borderWidth: 1, borderColor: Colors.border,
-    padding: 18, gap: 14, marginBottom: 16,
-  },
-  avatarLg: {
-    width: 60, height: 60, borderRadius: 30,
-    backgroundColor: '#4CAF5018',
-    borderWidth: 2, borderColor: '#4CAF5050',
-    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
-  },
-  avatarLgText: { fontSize: 20, fontWeight: '800', color: '#4CAF50' },
-  profileRight: { flex: 1 },
-  clientName: { ...Typography.subtitle, color: Colors.textPrimary, fontWeight: '700', marginBottom: 3 },
-  clientEmail: { ...Typography.body, color: Colors.textSecondary, marginBottom: 2 },
-  clientPhone: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 4 },
-  coachPill: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  coachPillText: { ...Typography.caption, color: Colors.textSecondary },
-  editBtn: {
-    width: 34, height: 34, borderRadius: 10,
-    backgroundColor: Colors.border + '40',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  editInput: {
-    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
-    color: Colors.textPrimary, fontSize: 15,
-  },
-  editActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  saveBtn: {
-    backgroundColor: Colors.accent, borderRadius: 9,
-    paddingHorizontal: 16, paddingVertical: 8,
-  },
-  saveBtnText: { color: Colors.bg, fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
-  cancelEditBtn: {
-    backgroundColor: Colors.border + '40', borderRadius: 9,
-    paddingHorizontal: 14, paddingVertical: 8,
-  },
-  cancelEditText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700' },
+    // Profile
+    profileCard: {
+      flexDirection: 'row', alignItems: 'flex-start',
+      backgroundColor: c.surface, borderRadius: 16,
+      borderWidth: 1, borderColor: c.border,
+      padding: 18, gap: 14, marginBottom: 16,
+    },
+    avatarLg: {
+      width: 60, height: 60, borderRadius: 30,
+      backgroundColor: '#4CAF5018',
+      borderWidth: 2, borderColor: '#4CAF5050',
+      justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+    },
+    avatarLgText: { fontSize: 20, fontWeight: '800', color: '#4CAF50' },
+    profileRight: { flex: 1 },
+    clientName: { ...Typography.subtitle, color: c.textPrimary, fontWeight: '700', marginBottom: 3 },
+    clientEmail: { ...Typography.body, color: c.textSecondary, marginBottom: 2 },
+    clientPhone: { ...Typography.caption, color: c.textSecondary, marginBottom: 4 },
+    coachPill: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    coachPillText: { ...Typography.caption, color: c.textSecondary },
+    editBtn: {
+      width: 34, height: 34, borderRadius: 10,
+      backgroundColor: c.border + '40',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    editInput: {
+      backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
+      borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
+      color: c.textPrimary, fontSize: 15,
+    },
+    editActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
+    saveBtn: {
+      backgroundColor: c.accent, borderRadius: 9,
+      paddingHorizontal: 16, paddingVertical: 8,
+    },
+    saveBtnText: { color: c.bg, fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
+    cancelEditBtn: {
+      backgroundColor: c.border + '40', borderRadius: 9,
+      paddingHorizontal: 14, paddingVertical: 8,
+    },
+    cancelEditText: { color: c.textSecondary, fontSize: 12, fontWeight: '700' },
 
-  sectionTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 12 },
+    sectionTitle: { ...Typography.label, color: c.textSecondary, marginBottom: 12 },
 
-  // No package
-  noPkgCard: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border,
-    alignItems: 'center', padding: 32, gap: 8,
-  },
-  noPkgText: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 4 },
-  noPkgSub: { ...Typography.body, color: Colors.textSecondary },
-  renewFromEmpty: {
-    marginTop: 8, backgroundColor: Colors.accent, borderRadius: 10,
-    paddingHorizontal: 20, paddingVertical: 10,
-  },
-  renewFromEmptyText: { color: Colors.bg, fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
+    // No package
+    noPkgCard: {
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border,
+      alignItems: 'center', padding: 32, gap: 8,
+    },
+    noPkgText: { ...Typography.subtitle, color: c.textPrimary, marginTop: 4 },
+    noPkgSub: { ...Typography.body, color: c.textSecondary },
+    renewFromEmpty: {
+      marginTop: 8, backgroundColor: c.accent, borderRadius: 10,
+      paddingHorizontal: 20, paddingVertical: 10,
+    },
+    renewFromEmptyText: { color: c.bg, fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
 
-  // Package card
-  pkgCard: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border,
-    padding: 18, gap: 16,
-  },
-  pkgHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  pkgTypeBadge: {
-    backgroundColor: Colors.accent + '18', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 4,
-    borderWidth: 1, borderColor: Colors.accent + '40',
-  },
-  pkgTypeText: { color: Colors.accent, fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
-  activePill: {
-    backgroundColor: '#4CAF5018', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 4,
-    borderWidth: 1, borderColor: '#4CAF5040',
-  },
-  activePillText: { color: '#4CAF50', fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
+    // Package card
+    pkgCard: {
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border,
+      padding: 18, gap: 16,
+    },
+    pkgHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    pkgTypeBadge: {
+      backgroundColor: c.accent + '18', borderRadius: 8,
+      paddingHorizontal: 10, paddingVertical: 4,
+      borderWidth: 1, borderColor: c.accent + '40',
+    },
+    pkgTypeText: { color: c.accent, fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
+    activePill: {
+      backgroundColor: '#4CAF5018', borderRadius: 8,
+      paddingHorizontal: 10, paddingVertical: 4,
+      borderWidth: 1, borderColor: '#4CAF5040',
+    },
+    activePillText: { color: '#4CAF50', fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
 
-  progressSection: { gap: 6 },
-  progressLabelRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  progressLabel: { ...Typography.caption, color: Colors.textSecondary },
-  progressFraction: { ...Typography.caption, color: Colors.textSecondary, fontWeight: '600' },
-  progressBg: {
-    height: 6, backgroundColor: Colors.border,
-    borderRadius: 3, overflow: 'hidden',
-  },
-  progressFill: { height: '100%', borderRadius: 3 },
-  sessionsLeft: { ...Typography.body, color: Colors.textSecondary },
+    progressSection: { gap: 6 },
+    progressLabelRow: { flexDirection: 'row', justifyContent: 'space-between' },
+    progressLabel: { ...Typography.caption, color: c.textSecondary },
+    progressFraction: { ...Typography.caption, color: c.textSecondary, fontWeight: '600' },
+    progressBg: {
+      height: 6, backgroundColor: c.border,
+      borderRadius: 3, overflow: 'hidden',
+    },
+    progressFill: { height: '100%', borderRadius: 3 },
+    sessionsLeft: { ...Typography.body, color: c.textSecondary },
 
-  pkgMeta: {
-    backgroundColor: Colors.bg, borderRadius: 10,
-    borderWidth: 1, borderColor: Colors.border,
-    paddingHorizontal: 14, paddingVertical: 4,
-  },
-  pkgMetaRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: Colors.border + '60',
-  },
-  pkgMetaLabel: { ...Typography.caption, color: Colors.textSecondary },
-  pkgMetaValue: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
-  endBadge: { fontSize: 10, fontWeight: '800', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+    pkgMeta: {
+      backgroundColor: c.bg, borderRadius: 10,
+      borderWidth: 1, borderColor: c.border,
+      paddingHorizontal: 14, paddingVertical: 4,
+    },
+    pkgMetaRow: {
+      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+      paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: c.border + '60',
+    },
+    pkgMetaLabel: { ...Typography.caption, color: c.textSecondary },
+    pkgMetaValue: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    endBadge: { fontSize: 10, fontWeight: '800', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
 
-  pkgActions: { flexDirection: 'row', gap: 8 },
-  actionPrimary: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-    backgroundColor: Colors.accent, borderRadius: 10, paddingVertical: 10,
-  },
-  actionPrimaryText: { color: Colors.bg, fontSize: 12, fontWeight: '700' },
-  actionSecondary: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-    backgroundColor: Colors.accent + '15', borderRadius: 10, paddingVertical: 10,
-    borderWidth: 1, borderColor: Colors.accent + '40',
-  },
-  actionSecondaryText: { color: Colors.accent, fontSize: 12, fontWeight: '700' },
-  actionDanger: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-    backgroundColor: Colors.border + '40', borderRadius: 10, paddingVertical: 10,
-  },
-  actionDangerText: { color: Colors.accent, fontSize: 12, fontWeight: '700' },
+    pkgActions: { flexDirection: 'row', gap: 8 },
+    actionPrimary: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+      backgroundColor: c.accent, borderRadius: 10, paddingVertical: 10,
+    },
+    actionPrimaryText: { color: c.bg, fontSize: 12, fontWeight: '700' },
+    actionSecondary: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+      backgroundColor: c.accent + '15', borderRadius: 10, paddingVertical: 10,
+      borderWidth: 1, borderColor: c.accent + '40',
+    },
+    actionSecondaryText: { color: c.accent, fontSize: 12, fontWeight: '700' },
+    actionDanger: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+      backgroundColor: c.border + '40', borderRadius: 10, paddingVertical: 10,
+    },
+    actionDangerText: { color: c.accent, fontSize: 12, fontWeight: '700' },
 
-  // Session history
-  historyList: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
-  },
-  historyRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: Colors.border + '60',
-  },
-  historyDateCol: { width: 52, alignItems: 'center' },
-  historyDay: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700', textAlign: 'center' },
-  historyYear: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center' },
-  historyMid: { flex: 1 },
-  historyDur: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
-  historyNotes: { ...Typography.caption, color: Colors.textSecondary },
-  noShowBadge: {
-    backgroundColor: Colors.accent + '18', borderRadius: 6,
-    paddingHorizontal: 7, paddingVertical: 3,
-    borderWidth: 1, borderColor: Colors.accent + '40',
-  },
-  noShowText: { color: Colors.accent, fontSize: 10, fontWeight: '700' },
+    // Session history
+    historyList: {
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border, overflow: 'hidden',
+    },
+    historyRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      paddingHorizontal: 16, paddingVertical: 12,
+      borderBottomWidth: 1, borderBottomColor: c.border + '60',
+    },
+    historyDateCol: { width: 52, alignItems: 'center' },
+    historyDay: { ...Typography.body, color: c.textPrimary, fontWeight: '700', textAlign: 'center' },
+    historyYear: { ...Typography.caption, color: c.textSecondary, textAlign: 'center' },
+    historyMid: { flex: 1 },
+    historyDur: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
+    historyNotes: { ...Typography.caption, color: c.textSecondary },
+    noShowBadge: {
+      backgroundColor: c.accent + '18', borderRadius: 6,
+      paddingHorizontal: 7, paddingVertical: 3,
+      borderWidth: 1, borderColor: c.accent + '40',
+    },
+    noShowText: { color: c.accent, fontSize: 10, fontWeight: '700' },
 
-  // Past packages
-  pastPkgRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: Colors.border + '60',
-  },
-  pastPkgType: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
-  pastPkgDate: { ...Typography.caption, color: Colors.textSecondary },
-  pastPkgUsed: { ...Typography.caption, color: Colors.textSecondary },
-  payAmount: { fontSize: 15, fontWeight: '800', color: '#4CAF50', flexShrink: 0 },
-  invoiceBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    borderWidth: 1, borderColor: Colors.accent + '60',
-    borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4,
-  },
-  invoiceBtnText: { fontSize: 11, fontWeight: '700', color: Colors.accent },
+    // Past packages
+    pastPkgRow: {
+      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+      paddingHorizontal: 16, paddingVertical: 12,
+      borderBottomWidth: 1, borderBottomColor: c.border + '60',
+    },
+    pastPkgType: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
+    pastPkgDate: { ...Typography.caption, color: c.textSecondary },
+    pastPkgUsed: { ...Typography.caption, color: c.textSecondary },
+    payAmount: { fontSize: 15, fontWeight: '800', color: '#4CAF50', flexShrink: 0 },
+    invoiceBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      borderWidth: 1, borderColor: c.accent + '60',
+      borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4,
+    },
+    invoiceBtnText: { fontSize: 11, fontWeight: '700', color: c.accent },
 
-  sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  reqPayBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#1a6b2a', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 6,
-  },
-  reqPayBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
-  payReqSuccess: { alignItems: 'center', paddingVertical: 24, gap: 10 },
-  payReqSuccessText: { fontSize: 16, fontWeight: '700', color: '#4CAF50' },
+    sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+    reqPayBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      backgroundColor: '#1a6b2a', borderRadius: 8,
+      paddingHorizontal: 10, paddingVertical: 6,
+    },
+    reqPayBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+    payReqSuccess: { alignItems: 'center', paddingVertical: 24, gap: 10 },
+    payReqSuccessText: { fontSize: 16, fontWeight: '700', color: '#4CAF50' },
 
-  // Modals
-  overlay: {
-    flex: 1, backgroundColor: '#00000080',
-    justifyContent: 'flex-end',
-  },
-  modalHandle: {
-    width: 36, height: 4, borderRadius: 2,
-    backgroundColor: Colors.border, alignSelf: 'center', marginBottom: 16,
-  },
-  modalBox: {
-    backgroundColor: Colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    padding: 24, gap: 12,
-  },
-  modalTitle: { ...Typography.subtitle, color: Colors.textPrimary, fontWeight: '700' },
-  modalSub: { ...Typography.body, color: Colors.textSecondary, marginTop: -4 },
-  modalLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: -4 },
-  modalInput: {
-    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13,
-    color: Colors.textPrimary, fontSize: 15,
-  },
-  modalActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  modalBtnPrimary: {
-    flex: 1, backgroundColor: Colors.accent, borderRadius: 12,
-    paddingVertical: 14, alignItems: 'center',
-  },
-  modalBtnPrimaryText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 0.8 },
-  modalBtnCancel: {
-    backgroundColor: Colors.border + '40', borderRadius: 12,
-    paddingHorizontal: 20, paddingVertical: 14, alignItems: 'center',
-  },
-  modalBtnCancelText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '700' },
+    // Modals
+    overlay: {
+      flex: 1, backgroundColor: '#00000080',
+      justifyContent: 'flex-end',
+    },
+    modalHandle: {
+      width: 36, height: 4, borderRadius: 2,
+      backgroundColor: c.border, alignSelf: 'center', marginBottom: 16,
+    },
+    modalBox: {
+      backgroundColor: c.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+      padding: 24, gap: 12,
+    },
+    modalTitle: { ...Typography.subtitle, color: c.textPrimary, fontWeight: '700' },
+    modalSub: { ...Typography.body, color: c.textSecondary, marginTop: -4 },
+    modalLabel: { ...Typography.label, color: c.textSecondary, marginBottom: -4 },
+    modalInput: {
+      backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
+      borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13,
+      color: c.textPrimary, fontSize: 15,
+    },
+    modalActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
+    modalBtnPrimary: {
+      flex: 1, backgroundColor: c.accent, borderRadius: 12,
+      paddingVertical: 14, alignItems: 'center',
+    },
+    modalBtnPrimaryText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 0.8 },
+    modalBtnCancel: {
+      backgroundColor: c.border + '40', borderRadius: 12,
+      paddingHorizontal: 20, paddingVertical: 14, alignItems: 'center',
+    },
+    modalBtnCancelText: { color: c.textSecondary, fontSize: 14, fontWeight: '700' },
 
-  segmented: {
-    flexDirection: 'row', backgroundColor: Colors.bg,
-    borderRadius: 10, borderWidth: 1, borderColor: Colors.border,
-    padding: 3, gap: 3,
-  },
-  segment: { flex: 1, paddingVertical: 9, borderRadius: 8, alignItems: 'center' },
-  segmentActive: { backgroundColor: Colors.accent },
-  segmentText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
-  segmentActiveText: { color: Colors.bg },
+    segmented: {
+      flexDirection: 'row', backgroundColor: c.bg,
+      borderRadius: 10, borderWidth: 1, borderColor: c.border,
+      padding: 3, gap: 3,
+    },
+    segment: { flex: 1, paddingVertical: 9, borderRadius: 8, alignItems: 'center' },
+    segmentActive: { backgroundColor: c.accent },
+    segmentText: { fontSize: 13, fontWeight: '600', color: c.textSecondary },
+    segmentActiveText: { color: c.bg },
 
-  dangerSection: { marginTop: 36, marginBottom: 8, gap: 12 },
-  dangerLabel: { fontSize: 11, fontWeight: '800', color: Colors.textSecondary, letterSpacing: 1 },
-  deactivateBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    borderWidth: 1, borderColor: Colors.danger + '60',
-    borderRadius: 12, paddingVertical: 13, paddingHorizontal: 16,
-    backgroundColor: Colors.danger + '08',
-  },
-  deactivateBtnText: { fontSize: 14, fontWeight: '700', color: Colors.danger },
-});
+    dangerSection: { marginTop: 36, marginBottom: 8, gap: 12 },
+    dangerLabel: { fontSize: 11, fontWeight: '800', color: c.textSecondary, letterSpacing: 1 },
+    deactivateBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      borderWidth: 1, borderColor: c.danger + '60',
+      borderRadius: 12, paddingVertical: 13, paddingHorizontal: 16,
+      backgroundColor: c.danger + '08',
+    },
+    deactivateBtnText: { fontSize: 14, fontWeight: '700', color: c.danger },
+  });
+}

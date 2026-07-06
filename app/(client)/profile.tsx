@@ -1,5 +1,5 @@
 import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -7,12 +7,14 @@ import QRCode from 'react-native-qrcode-svg';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useClientData } from '@/hooks/useClientData';
-import { Colors, Typography } from '@/constants/theme';
+import { Typography } from '@/constants/theme';
+import type { ColorScheme } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 
 export default function ClientProfileScreen() {
   const { profile, signOut, refreshProfile } = useAuth();
-  const { isDark, toggleTheme } = useTheme();
+  const { colors, isDark, toggleTheme } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { coachInfo } = useClientData();
   const [timeWindow, setTimeWindow] = useState(() => Math.floor(Date.now() / 300000));
   const [secondsLeft, setSecondsLeft] = useState(() => 300 - Math.floor((Date.now() % 300000) / 1000));
@@ -108,7 +110,7 @@ export default function ClientProfileScreen() {
             </View>
           )}
           <View style={styles.editBadge}>
-            <Ionicons name="camera" size={12} color={Colors.bg} />
+            <Ionicons name="camera" size={12} color={colors.bg} />
           </View>
         </Pressable>
         <View style={styles.rolePill}>
@@ -128,8 +130,8 @@ export default function ClientProfileScreen() {
             <QRCode
               value={`${profile.id}:${timeWindow}`}
               size={180}
-              color={Colors.textPrimary}
-              backgroundColor={Colors.surface}
+              color={colors.textPrimary}
+              backgroundColor={colors.surface}
             />
           </View>
           <Text style={styles.qrExpiry}>
@@ -146,7 +148,7 @@ export default function ClientProfileScreen() {
           </View>
           <View style={[styles.infoSection, { marginBottom: 24 }]}>
             <View style={[styles.infoRow, styles.infoRowBorder]}>
-              <Ionicons name="person-outline" size={18} color={Colors.accent} style={styles.rowIcon} />
+              <Ionicons name="person-outline" size={18} color={colors.accent} style={styles.rowIcon} />
               <View style={styles.rowContent}>
                 <Text style={styles.infoLabel}>Name</Text>
                 <Text style={styles.infoValue}>{coachInfo.name}</Text>
@@ -158,6 +160,8 @@ export default function ClientProfileScreen() {
                 label="Phone"
                 value={coachInfo.phone}
                 onPress={() => Linking.openURL(`tel:${coachInfo.phone}`)}
+                styles={styles}
+                colors={colors}
               />
             )}
             {coachInfo.whatsapp && (
@@ -167,6 +171,8 @@ export default function ClientProfileScreen() {
                 value={coachInfo.whatsapp}
                 iconColor="#25D366"
                 onPress={() => Linking.openURL(`whatsapp://send?phone=${coachInfo.whatsapp!.replace(/\D/g, '')}`)}
+                styles={styles}
+                colors={colors}
               />
             )}
             {coachInfo.instagram && (
@@ -177,11 +183,13 @@ export default function ClientProfileScreen() {
                 iconColor="#E1306C"
                 onPress={() => Linking.openURL(`https://instagram.com/${coachInfo.instagram}`)}
                 last
+                styles={styles}
+                colors={colors}
               />
             )}
             {!coachInfo.phone && !coachInfo.whatsapp && !coachInfo.instagram && (
               <View style={[styles.infoRow]}>
-                <Text style={[styles.infoValue, { color: Colors.textSecondary, fontSize: 13 }]}>
+                <Text style={[styles.infoValue, { color: colors.textSecondary, fontSize: 13 }]}>
                   No contact info available yet
                 </Text>
               </View>
@@ -195,7 +203,7 @@ export default function ClientProfileScreen() {
         <Text style={styles.sectionLabel}>CONTACT & SOCIAL</Text>
         {!editing && (
           <Pressable style={styles.editBtn} onPress={handleStartEdit}>
-            <Ionicons name="pencil-outline" size={13} color={Colors.accent} />
+            <Ionicons name="pencil-outline" size={13} color={colors.accent} />
             <Text style={styles.editBtnText}>Edit</Text>
           </Pressable>
         )}
@@ -203,9 +211,9 @@ export default function ClientProfileScreen() {
 
       {editing ? (
         <View style={styles.editCard}>
-          <EditField icon="call-outline" label="PHONE" value={phone} onChangeText={setPhone} placeholder="+63 912 345 6789" keyboardType="phone-pad" />
-          <EditField icon="logo-whatsapp" label="WHATSAPP" value={whatsapp} onChangeText={setWhatsapp} placeholder="+63 912 345 6789" keyboardType="phone-pad" iconColor="#25D366" />
-          <EditField icon="logo-instagram" label="INSTAGRAM" value={instagram} onChangeText={setInstagram} placeholder="@yourhandle" iconColor="#E1306C" last />
+          <EditField icon="call-outline" label="PHONE" value={phone} onChangeText={setPhone} placeholder="+63 912 345 6789" keyboardType="phone-pad" styles={styles} colors={colors} />
+          <EditField icon="logo-whatsapp" label="WHATSAPP" value={whatsapp} onChangeText={setWhatsapp} placeholder="+63 912 345 6789" keyboardType="phone-pad" iconColor="#25D366" styles={styles} colors={colors} />
+          <EditField icon="logo-instagram" label="INSTAGRAM" value={instagram} onChangeText={setInstagram} placeholder="@yourhandle" iconColor="#E1306C" last styles={styles} colors={colors} />
           <View style={styles.editActions}>
             <Pressable style={styles.cancelBtn} onPress={() => setEditing(false)}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
@@ -222,6 +230,8 @@ export default function ClientProfileScreen() {
             label="Phone"
             value={profile?.phone}
             onPress={profile?.phone ? () => openLink(`tel:${profile.phone}`) : undefined}
+            styles={styles}
+            colors={colors}
           />
           <SocialRow
             icon="logo-whatsapp"
@@ -229,6 +239,8 @@ export default function ClientProfileScreen() {
             value={profile?.whatsapp}
             iconColor="#25D366"
             onPress={profile?.whatsapp ? () => openLink(`whatsapp://send?phone=${profile.whatsapp!.replace(/\D/g, '')}`) : undefined}
+            styles={styles}
+            colors={colors}
           />
           <SocialRow
             icon="logo-instagram"
@@ -237,6 +249,8 @@ export default function ClientProfileScreen() {
             iconColor="#E1306C"
             onPress={profile?.instagram ? () => openLink(`https://instagram.com/${profile.instagram}`) : undefined}
             last
+            styles={styles}
+            colors={colors}
           />
         </View>
       )}
@@ -245,13 +259,13 @@ export default function ClientProfileScreen() {
         style={({ pressed }) => [styles.guideBtn, pressed && { opacity: 0.7 }]}
         onPress={() => router.push('/(client)/guide')}
       >
-        <Ionicons name="book-outline" size={16} color={Colors.accent} />
+        <Ionicons name="book-outline" size={16} color={colors.accent} />
         <Text style={styles.guideBtnText}>User Guide</Text>
-        <Ionicons name="chevron-forward" size={14} color={Colors.accent} style={{ marginLeft: 'auto' }} />
+        <Ionicons name="chevron-forward" size={14} color={colors.accent} style={{ marginLeft: 'auto' }} />
       </Pressable>
 
       <View style={[styles.infoRow, { marginBottom: 8 }]}>
-        <Ionicons name={isDark ? 'moon-outline' : 'sunny-outline'} size={18} color={Colors.textSecondary} style={{ marginRight: 10 }} />
+        <Ionicons name={isDark ? 'moon-outline' : 'sunny-outline'} size={18} color={colors.textSecondary} style={{ marginRight: 10 }} />
         <View style={{ flex: 1 }}>
           <Text style={styles.infoLabel}>APPEARANCE</Text>
           <Text style={styles.infoValue}>{isDark ? 'Dark Mode' : 'Light Mode'}</Text>
@@ -259,8 +273,8 @@ export default function ClientProfileScreen() {
         <Switch
           value={!isDark}
           onValueChange={toggleTheme}
-          trackColor={{ false: Colors.border, true: Colors.accent + '80' }}
-          thumbColor={!isDark ? Colors.accent : Colors.textSecondary}
+          trackColor={{ false: colors.border, true: colors.accent + '80' }}
+          thumbColor={!isDark ? colors.accent : colors.textSecondary}
         />
       </View>
 
@@ -275,39 +289,41 @@ export default function ClientProfileScreen() {
 }
 
 function SocialRow({
-  icon, label, value, iconColor, onPress, last,
+  icon, label, value, iconColor, onPress, last, styles, colors,
 }: {
   icon: string; label: string; value: string | null | undefined;
   iconColor?: string; onPress?: () => void; last?: boolean;
+  styles: ReturnType<typeof makeStyles>; colors: ColorScheme;
 }) {
-  const color = iconColor ?? Colors.textSecondary;
+  const color = iconColor ?? colors.textSecondary;
   return (
     <Pressable
       style={({ pressed }) => [styles.infoRow, !last && styles.infoRowBorder, pressed && onPress && { opacity: 0.65 }]}
       onPress={onPress}
       disabled={!onPress}
     >
-      <Ionicons name={icon as any} size={18} color={value ? color : Colors.border} style={styles.rowIcon} />
+      <Ionicons name={icon as any} size={18} color={value ? color : colors.border} style={styles.rowIcon} />
       <View style={styles.rowContent}>
         <Text style={styles.infoLabel}>{label}</Text>
-        <Text style={[styles.infoValue, !value && { color: Colors.textSecondary }]}>
+        <Text style={[styles.infoValue, !value && { color: colors.textSecondary }]}>
           {value ?? 'Not set'}
         </Text>
       </View>
-      {onPress && <Ionicons name="open-outline" size={14} color={Colors.textSecondary} />}
+      {onPress && <Ionicons name="open-outline" size={14} color={colors.textSecondary} />}
     </Pressable>
   );
 }
 
 function EditField({
-  icon, label, value, onChangeText, placeholder, keyboardType, iconColor, last,
+  icon, label, value, onChangeText, placeholder, keyboardType, iconColor, last, styles, colors,
 }: {
   icon: string; label: string; value: string; onChangeText: (v: string) => void;
   placeholder?: string; keyboardType?: any; iconColor?: string; last?: boolean;
+  styles: ReturnType<typeof makeStyles>; colors: ColorScheme;
 }) {
   return (
     <View style={[styles.editField, !last && styles.editFieldBorder]}>
-      <Ionicons name={icon as any} size={18} color={iconColor ?? Colors.textSecondary} style={styles.rowIcon} />
+      <Ionicons name={icon as any} size={18} color={iconColor ?? colors.textSecondary} style={styles.rowIcon} />
       <View style={styles.rowContent}>
         <Text style={styles.infoLabel}>{label}</Text>
         <TextInput
@@ -315,7 +331,7 @@ function EditField({
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor={Colors.textSecondary + '80'}
+          placeholderTextColor={colors.textSecondary + '80'}
           keyboardType={keyboardType}
           autoCapitalize="none"
           autoCorrect={false}
@@ -325,85 +341,87 @@ function EditField({
   );
 }
 
-const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: Colors.bg },
-  content: { padding: 24, paddingBottom: 60, alignItems: 'center' },
-  avatarWrap: { alignItems: 'center', marginTop: 20, marginBottom: 16 },
-  avatarPressable: { position: 'relative' },
-  avatar: {
-    width: 88, height: 88, borderRadius: 44,
-    backgroundColor: Colors.accent + '20', borderWidth: 2, borderColor: Colors.accent,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  avatarImg: { width: 88, height: 88, borderRadius: 44, borderWidth: 2, borderColor: Colors.accent },
-  editBadge: {
-    position: 'absolute', bottom: 0, right: 0,
-    width: 26, height: 26, borderRadius: 13,
-    backgroundColor: Colors.accent, justifyContent: 'center', alignItems: 'center',
-    borderWidth: 2, borderColor: Colors.bg,
-  },
-  initials: { fontSize: 30, fontWeight: '800', color: Colors.accent },
-  rolePill: {
-    marginTop: 10, backgroundColor: Colors.accent + '20', borderRadius: 20,
-    paddingHorizontal: 12, paddingVertical: 4, borderWidth: 1, borderColor: Colors.accent + '60',
-  },
-  roleText: { ...Typography.label, color: Colors.accent, fontSize: 10 },
-  name: { ...Typography.title, color: Colors.textPrimary, marginBottom: 4, textAlign: 'center' },
-  email: { ...Typography.body, color: Colors.textSecondary, marginBottom: 28, textAlign: 'center' },
-  qrCard: {
-    width: '100%', backgroundColor: Colors.surface, borderRadius: 20,
-    borderWidth: 1, borderColor: Colors.accent + '40', padding: 20,
-    alignItems: 'center', marginBottom: 24, gap: 4,
-  },
-  qrTitle: { ...Typography.label, color: Colors.accent, letterSpacing: 1.5 },
-  qrSub: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 12 },
-  qrWrap: { padding: 16, backgroundColor: Colors.surface, borderRadius: 14, borderWidth: 1, borderColor: Colors.border },
-  qrExpiry: { ...Typography.caption, color: Colors.textSecondary, marginTop: 10, textAlign: 'center' },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    scroll: { flex: 1 },
+    content: { padding: 24, paddingBottom: 60, alignItems: 'center' },
+    avatarWrap: { alignItems: 'center', marginTop: 20, marginBottom: 16 },
+    avatarPressable: { position: 'relative' },
+    avatar: {
+      width: 88, height: 88, borderRadius: 44,
+      backgroundColor: c.accent + '20', borderWidth: 2, borderColor: c.accent,
+      justifyContent: 'center', alignItems: 'center',
+    },
+    avatarImg: { width: 88, height: 88, borderRadius: 44, borderWidth: 2, borderColor: c.accent },
+    editBadge: {
+      position: 'absolute', bottom: 0, right: 0,
+      width: 26, height: 26, borderRadius: 13,
+      backgroundColor: c.accent, justifyContent: 'center', alignItems: 'center',
+      borderWidth: 2, borderColor: c.bg,
+    },
+    initials: { fontSize: 30, fontWeight: '800', color: c.accent },
+    rolePill: {
+      marginTop: 10, backgroundColor: c.accent + '20', borderRadius: 20,
+      paddingHorizontal: 12, paddingVertical: 4, borderWidth: 1, borderColor: c.accent + '60',
+    },
+    roleText: { ...Typography.label, color: c.accent, fontSize: 10 },
+    name: { ...Typography.title, color: c.textPrimary, marginBottom: 4, textAlign: 'center' },
+    email: { ...Typography.body, color: c.textSecondary, marginBottom: 28, textAlign: 'center' },
+    qrCard: {
+      width: '100%', backgroundColor: c.surface, borderRadius: 20,
+      borderWidth: 1, borderColor: c.accent + '40', padding: 20,
+      alignItems: 'center', marginBottom: 24, gap: 4,
+    },
+    qrTitle: { ...Typography.label, color: c.accent, letterSpacing: 1.5 },
+    qrSub: { ...Typography.caption, color: c.textSecondary, marginBottom: 12 },
+    qrWrap: { padding: 16, backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: c.border },
+    qrExpiry: { ...Typography.caption, color: c.textSecondary, marginTop: 10, textAlign: 'center' },
 
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 10 },
-  sectionLabel: { ...Typography.label, color: Colors.textSecondary },
-  editBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  editBtnText: { color: Colors.accent, fontSize: 13, fontWeight: '600' },
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 10 },
+    sectionLabel: { ...Typography.label, color: c.textSecondary },
+    editBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    editBtnText: { color: c.accent, fontSize: 13, fontWeight: '600' },
 
-  infoSection: {
-    width: '100%', backgroundColor: Colors.surface, borderRadius: 16,
-    borderWidth: 1, borderColor: Colors.border, overflow: 'hidden', marginBottom: 24,
-  },
-  infoRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
-  infoRowBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
-  rowIcon: { marginRight: 12 },
-  rowContent: { flex: 1 },
-  infoLabel: { ...Typography.label, color: Colors.textSecondary, fontSize: 10, marginBottom: 2 },
-  infoValue: { ...Typography.body, color: Colors.textPrimary, fontWeight: '500' },
+    infoSection: {
+      width: '100%', backgroundColor: c.surface, borderRadius: 16,
+      borderWidth: 1, borderColor: c.border, overflow: 'hidden', marginBottom: 24,
+    },
+    infoRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
+    infoRowBorder: { borderBottomWidth: 1, borderBottomColor: c.border },
+    rowIcon: { marginRight: 12 },
+    rowContent: { flex: 1 },
+    infoLabel: { ...Typography.label, color: c.textSecondary, fontSize: 10, marginBottom: 2 },
+    infoValue: { ...Typography.body, color: c.textPrimary, fontWeight: '500' },
 
-  editCard: {
-    width: '100%', backgroundColor: Colors.surface, borderRadius: 16,
-    borderWidth: 1, borderColor: Colors.border, overflow: 'hidden', marginBottom: 24,
-  },
-  editField: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
-  editFieldBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
-  editInput: { ...Typography.body, color: Colors.textPrimary, paddingVertical: 2 },
-  editActions: { flexDirection: 'row', gap: 10, padding: 14 },
-  cancelBtn: {
-    flex: 1, borderRadius: 10, borderWidth: 1, borderColor: Colors.border,
-    paddingVertical: 11, alignItems: 'center',
-  },
-  cancelBtnText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 14 },
-  saveBtn: {
-    flex: 1, borderRadius: 10, backgroundColor: Colors.accent,
-    paddingVertical: 11, alignItems: 'center',
-  },
-  saveBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 14 },
-  guideBtn: {
-    width: '100%', borderRadius: 12, paddingVertical: 14, marginTop: 8, marginBottom: 10,
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    borderWidth: 1, borderColor: Colors.accent + '50',
-    backgroundColor: Colors.accent + '08', paddingHorizontal: 16,
-  },
-  guideBtnText: { color: Colors.accent, fontSize: 15, fontWeight: '700' },
-  signOutBtn: {
-    width: '100%', borderRadius: 12, paddingVertical: 15,
-    alignItems: 'center', borderWidth: 1, borderColor: Colors.danger, marginTop: 8,
-  },
-  signOutText: { color: Colors.danger, fontSize: 15, fontWeight: '700' },
-});
+    editCard: {
+      width: '100%', backgroundColor: c.surface, borderRadius: 16,
+      borderWidth: 1, borderColor: c.border, overflow: 'hidden', marginBottom: 24,
+    },
+    editField: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
+    editFieldBorder: { borderBottomWidth: 1, borderBottomColor: c.border },
+    editInput: { ...Typography.body, color: c.textPrimary, paddingVertical: 2 },
+    editActions: { flexDirection: 'row', gap: 10, padding: 14 },
+    cancelBtn: {
+      flex: 1, borderRadius: 10, borderWidth: 1, borderColor: c.border,
+      paddingVertical: 11, alignItems: 'center',
+    },
+    cancelBtnText: { color: c.textSecondary, fontWeight: '600', fontSize: 14 },
+    saveBtn: {
+      flex: 1, borderRadius: 10, backgroundColor: c.accent,
+      paddingVertical: 11, alignItems: 'center',
+    },
+    saveBtnText: { color: c.bg, fontWeight: '800', fontSize: 14 },
+    guideBtn: {
+      width: '100%', borderRadius: 12, paddingVertical: 14, marginTop: 8, marginBottom: 10,
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      borderWidth: 1, borderColor: c.accent + '50',
+      backgroundColor: c.accent + '08', paddingHorizontal: 16,
+    },
+    guideBtnText: { color: c.accent, fontSize: 15, fontWeight: '700' },
+    signOutBtn: {
+      width: '100%', borderRadius: 12, paddingVertical: 15,
+      alignItems: 'center', borderWidth: 1, borderColor: c.danger, marginTop: 8,
+    },
+    signOutText: { color: c.danger, fontSize: 15, fontWeight: '700' },
+  });
+}

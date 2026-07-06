@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 const COMPANY = {
   name: 'Elevate Personal Training',
@@ -47,6 +48,8 @@ type InvoiceData = {
 
 export default function InvoicePage() {
   const { paymentId } = useLocalSearchParams<{ paymentId: string }>();
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const [data, setData] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -117,7 +120,7 @@ export default function InvoicePage() {
 
   if (loading) return (
     <View style={s.center}>
-      <ActivityIndicator color={Colors.accent} size="large" />
+      <ActivityIndicator color={colors.accent} size="large" />
     </View>
   );
 
@@ -140,12 +143,12 @@ export default function InvoicePage() {
       {/* Action bar — hidden when printing */}
       <View style={s.actionBar}>
         <Pressable style={s.backBtn} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={18} color={Colors.textSecondary} />
+          <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
           <Text style={s.backBtnText}>Back</Text>
         </Pressable>
         {Platform.OS === 'web' && data.invoice_number && (
           <Pressable style={s.printBtn} onPress={handlePrint}>
-            <Ionicons name="print-outline" size={16} color={Colors.bg} />
+            <Ionicons name="print-outline" size={16} color="#fff" />
             <Text style={s.printBtnText}>Print / Save PDF</Text>
           </Pressable>
         )}
@@ -241,11 +244,12 @@ export default function InvoicePage() {
   );
 }
 
-const s = StyleSheet.create({
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F5F5F5' },
   pageContent: { padding: 24, paddingBottom: 60, alignItems: 'center' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.bg },
-  errorText: { ...Typography.body, color: Colors.accent },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  errorText: { ...Typography.body, color: c.accent },
 
   actionBar: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -262,7 +266,7 @@ const s = StyleSheet.create({
 
   generateBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: Colors.accent, borderRadius: 8,
+    backgroundColor: c.accent, borderRadius: 8,
     paddingHorizontal: 12, paddingVertical: 7, marginTop: 4,
   },
   generateBtnText: { color: '#fff', fontWeight: '600', fontSize: 13 },
@@ -317,4 +321,5 @@ const s = StyleSheet.create({
   payRow: { fontSize: 13, lineHeight: 22 },
   payKey: { fontWeight: '700', color: '#333' },
   payVal: { color: '#111' },
-});
+  });
+}

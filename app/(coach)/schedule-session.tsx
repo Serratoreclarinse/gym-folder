@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -24,7 +24,8 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useClients } from '@/hooks/useClients';
 import { sendPushNotification } from '@/lib/pushNotifications';
-import { Colors, Typography } from '@/constants/theme';
+import { Typography, ColorScheme } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 const todayISO = () => new Date().toISOString().split('T')[0];
 
@@ -52,6 +53,8 @@ function buildScheduledAt(date: string, time: string): string {
 
 export default function ScheduleSessionScreen() {
   const { profile } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const params = useLocalSearchParams<{ date?: string }>();
   const { clients } = useClients();
 
@@ -145,10 +148,10 @@ export default function ScheduleSessionScreen() {
       {/* Client */}
       <Text style={styles.label}>CLIENT</Text>
       <Pressable style={styles.select} onPress={() => setPickerOpen((v) => !v)}>
-        <Text style={[styles.selectText, !selectedClient && { color: Colors.textSecondary + '80' }]}>
+        <Text style={[styles.selectText, !selectedClient && { color: colors.textSecondary + '80' }]}>
           {selectedClient ? selectedClient.name : 'Select a client…'}
         </Text>
-        <Ionicons name={pickerOpen ? 'chevron-up' : 'chevron-down'} size={15} color={Colors.textSecondary} />
+        <Ionicons name={pickerOpen ? 'chevron-up' : 'chevron-down'} size={15} color={colors.textSecondary} />
       </Pressable>
       {pickerOpen && (
         <View style={styles.dropdown}>
@@ -161,10 +164,10 @@ export default function ScheduleSessionScreen() {
                 style={[styles.dropItem, c.id === selectedClientId && styles.dropItemActive]}
                 onPress={() => { setSelectedClientId(c.id); setPickerOpen(false); }}
               >
-                <Text style={[styles.dropItemText, c.id === selectedClientId && { color: Colors.accent }]}>
+                <Text style={[styles.dropItemText, c.id === selectedClientId && { color: colors.accent }]}>
                   {c.name}
                 </Text>
-                {c.id === selectedClientId && <Ionicons name="checkmark" size={14} color={Colors.accent} />}
+                {c.id === selectedClientId && <Ionicons name="checkmark" size={14} color={colors.accent} />}
               </Pressable>
             )}
           />
@@ -175,7 +178,7 @@ export default function ScheduleSessionScreen() {
       <Text style={styles.label}>DATE</Text>
       <View style={styles.dateRow}>
         <Pressable style={styles.dateArrow} onPress={() => shiftDate(-1)}>
-          <Ionicons name="chevron-back" size={18} color={Colors.textPrimary} />
+          <Ionicons name="chevron-back" size={18} color={colors.textPrimary} />
         </Pressable>
         <Text style={styles.dateDisplay}>
           {new Date(sessionDate + 'T00:00:00').toLocaleDateString('en-US', {
@@ -183,7 +186,7 @@ export default function ScheduleSessionScreen() {
           })}
         </Text>
         <Pressable style={styles.dateArrow} onPress={() => shiftDate(1)}>
-          <Ionicons name="chevron-forward" size={18} color={Colors.textPrimary} />
+          <Ionicons name="chevron-forward" size={18} color={colors.textPrimary} />
         </Pressable>
       </View>
       <View style={styles.dateChips}>
@@ -208,7 +211,7 @@ export default function ScheduleSessionScreen() {
       <Text style={styles.label}>TIME</Text>
       <Pressable style={styles.select} onPress={() => setTimePickerOpen((v) => !v)}>
         <Text style={styles.selectText}>{sessionTime || '9:00 AM'}</Text>
-        <Ionicons name={timePickerOpen ? 'chevron-up' : 'chevron-down'} size={15} color={Colors.textSecondary} />
+        <Ionicons name={timePickerOpen ? 'chevron-up' : 'chevron-down'} size={15} color={colors.textSecondary} />
       </Pressable>
       {timePickerOpen && (
         <View style={[styles.dropdown, { maxHeight: 200 }]}>
@@ -221,8 +224,8 @@ export default function ScheduleSessionScreen() {
                   style={[styles.dropItem, active && styles.dropItemActive]}
                   onPress={() => { setSessionTime(slot); setTimePickerOpen(false); }}
                 >
-                  <Text style={[styles.dropItemText, active && { color: Colors.accent }]}>{slot}</Text>
-                  {active && <Ionicons name="checkmark" size={14} color={Colors.accent} />}
+                  <Text style={[styles.dropItemText, active && { color: colors.accent }]}>{slot}</Text>
+                  {active && <Ionicons name="checkmark" size={14} color={colors.accent} />}
                 </Pressable>
               );
             })}
@@ -234,7 +237,7 @@ export default function ScheduleSessionScreen() {
         value={sessionTime}
         onChangeText={(v) => { setSessionTime(v); setTimePickerOpen(false); }}
         placeholder="or type: 9:00 AM / 14:30"
-        placeholderTextColor={Colors.textSecondary + '60'}
+        placeholderTextColor={colors.textSecondary + '60'}
         autoCorrect={false}
       />
 
@@ -275,7 +278,7 @@ export default function ScheduleSessionScreen() {
         value={notes}
         onChangeText={setNotes}
         placeholder="e.g. Focus on legs today"
-        placeholderTextColor={Colors.textSecondary + '60'}
+        placeholderTextColor={colors.textSecondary + '60'}
         multiline
         numberOfLines={3}
         autoCorrect={false}
@@ -286,7 +289,7 @@ export default function ScheduleSessionScreen() {
         onPress={handleSave}
         disabled={!selectedClientId || saving}
       >
-        <Ionicons name="calendar-outline" size={18} color={Colors.bg} />
+        <Ionicons name="calendar-outline" size={18} color={colors.bg} />
         <Text style={styles.saveBtnText}>{saving ? 'Scheduling…' : 'Schedule Session'}</Text>
       </Pressable>
       <View style={{ height: 48 }} />
@@ -294,67 +297,69 @@ export default function ScheduleSessionScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: Colors.bg },
-  content: { padding: 20 },
-  title: {
-    ...Typography.label, color: Colors.textPrimary,
-    fontWeight: '800', letterSpacing: 1.5, marginBottom: 24,
-  },
-  label: { ...Typography.label, color: Colors.textSecondary, marginBottom: 8, marginTop: 20 },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    scroll: { flex: 1 },
+    content: { padding: 20 },
+    title: {
+      ...Typography.label, color: c.textPrimary,
+      fontWeight: '800', letterSpacing: 1.5, marginBottom: 24,
+    },
+    label: { ...Typography.label, color: c.textSecondary, marginBottom: 8, marginTop: 20 },
 
-  select: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: Colors.surface, borderRadius: 12, borderWidth: 1, borderColor: Colors.border,
-    paddingHorizontal: 14, paddingVertical: 13,
-  },
-  selectText: { ...Typography.body, color: Colors.textPrimary, flex: 1 },
-  dropdown: {
-    backgroundColor: Colors.surface, borderRadius: 12, borderWidth: 1, borderColor: Colors.border,
-    marginTop: 4, maxHeight: 220, overflow: 'hidden',
-  },
-  dropItem: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 14, paddingVertical: 13,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  dropItemActive: { backgroundColor: Colors.accent + '10' },
-  dropItemText: { ...Typography.body, color: Colors.textPrimary },
+    select: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      backgroundColor: c.surface, borderRadius: 12, borderWidth: 1, borderColor: c.border,
+      paddingHorizontal: 14, paddingVertical: 13,
+    },
+    selectText: { ...Typography.body, color: c.textPrimary, flex: 1 },
+    dropdown: {
+      backgroundColor: c.surface, borderRadius: 12, borderWidth: 1, borderColor: c.border,
+      marginTop: 4, maxHeight: 220, overflow: 'hidden',
+    },
+    dropItem: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 14, paddingVertical: 13,
+      borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    dropItemActive: { backgroundColor: c.accent + '10' },
+    dropItemText: { ...Typography.body, color: c.textPrimary },
 
-  dateRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: Colors.surface, borderRadius: 12, borderWidth: 1, borderColor: Colors.border,
-    paddingVertical: 4,
-  },
-  dateArrow: { paddingHorizontal: 16, paddingVertical: 10 },
-  dateDisplay: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
-  dateChips: { flexDirection: 'row', gap: 8, marginTop: 8 },
-  dateChip: {
-    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
-  },
-  dateChipActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  dateChipText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
-  dateChipTextActive: { color: Colors.bg },
+    dateRow: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      backgroundColor: c.surface, borderRadius: 12, borderWidth: 1, borderColor: c.border,
+      paddingVertical: 4,
+    },
+    dateArrow: { paddingHorizontal: 16, paddingVertical: 10 },
+    dateDisplay: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    dateChips: { flexDirection: 'row', gap: 8, marginTop: 8 },
+    dateChip: {
+      paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
+      backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
+    },
+    dateChipActive: { backgroundColor: c.accent, borderColor: c.accent },
+    dateChipText: { fontSize: 13, fontWeight: '600', color: c.textSecondary },
+    dateChipTextActive: { color: c.bg },
 
-  input: {
-    backgroundColor: Colors.surface, borderRadius: 12, borderWidth: 1, borderColor: Colors.border,
-    paddingHorizontal: 14, paddingVertical: 13, color: Colors.textPrimary, fontSize: 15,
-  },
-  inputMulti: { height: 80, textAlignVertical: 'top' },
+    input: {
+      backgroundColor: c.surface, borderRadius: 12, borderWidth: 1, borderColor: c.border,
+      paddingHorizontal: 14, paddingVertical: 13, color: c.textPrimary, fontSize: 15,
+    },
+    inputMulti: { height: 80, textAlignVertical: 'top' },
 
-  segRow: { flexDirection: 'row', gap: 8 },
-  seg: {
-    flex: 1, paddingVertical: 10, borderRadius: 10,
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, alignItems: 'center',
-  },
-  segActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  segText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
-  segTextActive: { color: Colors.bg },
+    segRow: { flexDirection: 'row', gap: 8 },
+    seg: {
+      flex: 1, paddingVertical: 10, borderRadius: 10,
+      backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: 'center',
+    },
+    segActive: { backgroundColor: c.accent, borderColor: c.accent },
+    segText: { fontSize: 13, fontWeight: '700', color: c.textSecondary },
+    segTextActive: { color: c.bg },
 
-  saveBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: Colors.accent, borderRadius: 14, paddingVertical: 15, marginTop: 28,
-  },
-  saveBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 16 },
-});
+    saveBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+      backgroundColor: c.accent, borderRadius: 14, paddingVertical: 15, marginTop: 28,
+    },
+    saveBtnText: { color: c.bg, fontWeight: '800', fontSize: 16 },
+  });
+}

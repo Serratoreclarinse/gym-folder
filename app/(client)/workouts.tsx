@@ -1,19 +1,22 @@
 import { Alert, Modal, RefreshControl, ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useClientData, type ClientSession } from '@/hooks/useClientData';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { ErrorBanner } from '@/components/ErrorBanner';
-import { Colors, Typography } from '@/constants/theme';
+import { Typography } from '@/constants/theme';
+import type { ColorScheme } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 // ─── Single exercise row ─────────────────────────────────────
-function ExerciseRow({ name, sets, reps, weight, notes }: {
+function ExerciseRow({ name, sets, reps, weight, notes, styles }: {
   name: string;
   sets: number | null;
   reps: number | null;
   weight: string | null;
   notes: string | null;
+  styles: ReturnType<typeof makeStyles>;
 }) {
   const meta = [
     sets != null && reps != null ? `${sets} × ${reps}` : sets != null ? `${sets} sets` : null,
@@ -33,11 +36,13 @@ function ExerciseRow({ name, sets, reps, weight, notes }: {
 }
 
 // ─── Session card ────────────────────────────────────────────
-function SessionCard({ session, showRateBadge, onRate, ratingExpired }: {
+function SessionCard({ session, showRateBadge, onRate, ratingExpired, styles, colors }: {
   session: ClientSession;
   showRateBadge?: boolean;
   onRate?: () => void;
   ratingExpired?: boolean;
+  styles: ReturnType<typeof makeStyles>;
+  colors: ColorScheme;
 }) {
   const isNoShow = session.status === 'absent';
   const date = new Date(session.session_date).toLocaleDateString('en-US', {
@@ -57,7 +62,7 @@ function SessionCard({ session, showRateBadge, onRate, ratingExpired }: {
           </View>
         ) : (
           <View style={styles.durationChip}>
-            <Ionicons name="time-outline" size={12} color={Colors.accent} />
+            <Ionicons name="time-outline" size={12} color={colors.accent} />
             <Text style={styles.durationText}>{session.duration_minutes} min</Text>
           </View>
         )}
@@ -75,6 +80,7 @@ function SessionCard({ session, showRateBadge, onRate, ratingExpired }: {
               reps={ex.reps}
               weight={ex.weight}
               notes={ex.notes}
+              styles={styles}
             />
           ))}
         </View>
@@ -84,7 +90,7 @@ function SessionCard({ session, showRateBadge, onRate, ratingExpired }: {
 
       {!isNoShow && session.notes ? (
         <View style={styles.notesBox}>
-          <Ionicons name="document-text-outline" size={13} color={Colors.textSecondary} />
+          <Ionicons name="document-text-outline" size={13} color={colors.textSecondary} />
           <Text style={styles.notesText}>{session.notes}</Text>
         </View>
       ) : null}
@@ -97,7 +103,7 @@ function SessionCard({ session, showRateBadge, onRate, ratingExpired }: {
       )}
       {ratingExpired && !isNoShow && (
         <View style={styles.rateExpiredRow}>
-          <Ionicons name="time-outline" size={12} color={Colors.textSecondary} />
+          <Ionicons name="time-outline" size={12} color={colors.textSecondary} />
           <Text style={styles.rateExpiredText}>Rating window closed (48 hrs)</Text>
         </View>
       )}
@@ -127,6 +133,8 @@ function groupByMonth(sessions: ClientSession[]): { label: string; key: string; 
 export default function ClientWorkoutsScreen() {
   const { user } = useAuth();
   const { sessions, loading, error, refetch } = useClientData();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
 
   // ── Session rating ───────────────────────────────────────────
@@ -188,7 +196,7 @@ export default function ClientWorkoutsScreen() {
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={Colors.accent} />}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={colors.accent} />}
     >
       {error && <ErrorBanner message={error} onRetry={refetch} />}
 
@@ -245,7 +253,7 @@ export default function ClientWorkoutsScreen() {
       {/* Empty state */}
       {!loading && sessions.length === 0 && (
         <View style={styles.emptyState}>
-          <Ionicons name="barbell-outline" size={52} color={Colors.border} />
+          <Ionicons name="barbell-outline" size={52} color={colors.border} />
           <Text style={styles.emptyTitle}>No sessions yet</Text>
           <Text style={styles.emptySub}>Your completed workouts will appear here</Text>
         </View>
@@ -265,6 +273,8 @@ export default function ClientWorkoutsScreen() {
               showRateBadge={unratedSession?.id === s.id}
               onRate={() => { setSelectedRating(0); setShowRatingModal(true); }}
               ratingExpired={ratingExpiredSession?.id === s.id}
+              styles={styles}
+              colors={colors}
             />
           ))}
         </View>
@@ -284,7 +294,7 @@ export default function ClientWorkoutsScreen() {
                   <Ionicons
                     name={star <= selectedRating ? 'star' : 'star-outline'}
                     size={44}
-                    color={star <= selectedRating ? '#FFD700' : Colors.border}
+                    color={star <= selectedRating ? '#FFD700' : colors.border}
                   />
                 </Pressable>
               ))}
@@ -312,119 +322,121 @@ export default function ClientWorkoutsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  scroll:  { flex: 1, backgroundColor: Colors.bg },
-  content: { padding: 20, paddingBottom: 48 },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    scroll:  { flex: 1 },
+    content: { padding: 20, paddingBottom: 48 },
 
-  summaryRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  summaryChip: {
-    flex: 1, backgroundColor: Colors.surface, borderRadius: 14,
-    padding: 14, alignItems: 'center', borderWidth: 1, borderColor: Colors.border,
-  },
-  summaryNum:   { ...Typography.subtitle, color: Colors.accent, marginBottom: 2 },
-  summaryLabel: { ...Typography.label, color: Colors.textSecondary, fontSize: 10, textAlign: 'center' },
+    summaryRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+    summaryChip: {
+      flex: 1, backgroundColor: c.surface, borderRadius: 14,
+      padding: 14, alignItems: 'center', borderWidth: 1, borderColor: c.border,
+    },
+    summaryNum:   { ...Typography.subtitle, color: c.accent, marginBottom: 2 },
+    summaryLabel: { ...Typography.label, color: c.textSecondary, fontSize: 10, textAlign: 'center' },
 
-  filterRow: { marginBottom: 20 },
-  filterContent: { gap: 8, paddingRight: 4 },
-  filterChip: {
-    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
-  },
-  filterChipActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  filterChipText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
-  filterChipTextActive: { color: Colors.bg },
+    filterRow: { marginBottom: 20 },
+    filterContent: { gap: 8, paddingRight: 4 },
+    filterChip: {
+      paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
+      backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
+    },
+    filterChipActive: { backgroundColor: c.accent, borderColor: c.accent },
+    filterChipText: { fontSize: 13, fontWeight: '600', color: c.textSecondary },
+    filterChipTextActive: { color: c.bg },
 
-  monthHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 12, marginTop: 4,
-  },
-  monthLabel: { ...Typography.label, color: Colors.textSecondary },
-  monthCount: { ...Typography.caption, color: Colors.textSecondary },
+    monthHeader: {
+      flexDirection: 'row', justifyContent: 'space-between',
+      alignItems: 'center', marginBottom: 12, marginTop: 4,
+    },
+    monthLabel: { ...Typography.label, color: c.textSecondary },
+    monthCount: { ...Typography.caption, color: c.textSecondary },
 
-  card: {
-    backgroundColor: Colors.surface, borderRadius: 18,
-    padding: 16, marginBottom: 12, borderWidth: 1, borderColor: Colors.border,
-  },
-  cardNoShow: { borderColor: '#FFA50040', backgroundColor: '#FFA50008' },
-  cardHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'flex-start', marginBottom: 14,
-    paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  cardHeaderLeft: { flex: 1, marginRight: 10 },
-  cardDate:  { ...Typography.body, color: Colors.textPrimary, fontWeight: '700', marginBottom: 2 },
-  cardCoach: { ...Typography.caption, color: Colors.textSecondary },
-  durationChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: Colors.accent + '18', borderRadius: 8,
-    paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: Colors.accent + '40',
-  },
-  durationText: { fontSize: 12, fontWeight: '600', color: Colors.accent },
-  noShowBadge: {
-    backgroundColor: '#FFA50020', borderRadius: 8,
-    paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: '#FFA50050',
-  },
-  noShowBadgeText: { color: '#FFA500', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
-  noShowNote: { ...Typography.caption, color: '#FFA500', fontStyle: 'italic' },
+    card: {
+      backgroundColor: c.surface, borderRadius: 18,
+      padding: 16, marginBottom: 12, borderWidth: 1, borderColor: c.border,
+    },
+    cardNoShow: { borderColor: '#FFA50040', backgroundColor: '#FFA50008' },
+    cardHeader: {
+      flexDirection: 'row', justifyContent: 'space-between',
+      alignItems: 'flex-start', marginBottom: 14,
+      paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    cardHeaderLeft: { flex: 1, marginRight: 10 },
+    cardDate:  { ...Typography.body, color: c.textPrimary, fontWeight: '700', marginBottom: 2 },
+    cardCoach: { ...Typography.caption, color: c.textSecondary },
+    durationChip: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      backgroundColor: c.accent + '18', borderRadius: 8,
+      paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: c.accent + '40',
+    },
+    durationText: { fontSize: 12, fontWeight: '600', color: c.accent },
+    noShowBadge: {
+      backgroundColor: '#FFA50020', borderRadius: 8,
+      paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: '#FFA50050',
+    },
+    noShowBadgeText: { color: '#FFA500', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+    noShowNote: { ...Typography.caption, color: '#FFA500', fontStyle: 'italic' },
 
-  exList:  { gap: 10 },
-  exRow:   { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  exBullet: {
-    width: 6, height: 6, borderRadius: 3,
-    backgroundColor: Colors.accent, marginTop: 7, flexShrink: 0,
-  },
-  exBody:  { flex: 1 },
-  exName:  { ...Typography.body, color: Colors.textPrimary, fontWeight: '500' },
-  exMeta:  { ...Typography.caption, color: Colors.textSecondary, marginTop: 1 },
-  exNotes: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic', marginTop: 1 },
-  noExercises: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic' },
+    exList:  { gap: 10 },
+    exRow:   { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+    exBullet: {
+      width: 6, height: 6, borderRadius: 3,
+      backgroundColor: c.accent, marginTop: 7, flexShrink: 0,
+    },
+    exBody:  { flex: 1 },
+    exName:  { ...Typography.body, color: c.textPrimary, fontWeight: '500' },
+    exMeta:  { ...Typography.caption, color: c.textSecondary, marginTop: 1 },
+    exNotes: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic', marginTop: 1 },
+    noExercises: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic' },
 
-  notesBox: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 6,
-    backgroundColor: Colors.bg, borderRadius: 10, padding: 10,
-    marginTop: 12, borderWidth: 1, borderColor: Colors.border,
-  },
-  notesText: { ...Typography.caption, color: Colors.textSecondary, flex: 1, lineHeight: 18 },
+    notesBox: {
+      flexDirection: 'row', alignItems: 'flex-start', gap: 6,
+      backgroundColor: c.bg, borderRadius: 10, padding: 10,
+      marginTop: 12, borderWidth: 1, borderColor: c.border,
+    },
+    notesText: { ...Typography.caption, color: c.textSecondary, flex: 1, lineHeight: 18 },
 
-  // Rate prompt button (on session card)
-  ratePromptBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: Colors.border,
-    justifyContent: 'center',
-  },
-  ratePromptText: { color: '#FFD700', fontWeight: '700', fontSize: 13 },
-  rateExpiredRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.border,
-    justifyContent: 'center',
-  },
-  rateExpiredText: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic' },
+    // Rate prompt button (on session card)
+    ratePromptBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: c.border,
+      justifyContent: 'center',
+    },
+    ratePromptText: { color: '#FFD700', fontWeight: '700', fontSize: 13 },
+    rateExpiredRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: c.border,
+      justifyContent: 'center',
+    },
+    rateExpiredText: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic' },
 
-  // Rating modal
-  ratingBg: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.75)',
-    justifyContent: 'center', alignItems: 'center', padding: 24,
-  },
-  ratingCard: {
-    width: '100%', backgroundColor: Colors.surface, borderRadius: 24,
-    padding: 28, borderWidth: 1, borderColor: Colors.border,
-  },
-  ratingTitle: { ...Typography.subtitle, color: Colors.textPrimary, textAlign: 'center', marginBottom: 4 },
-  ratingSub:   { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center', marginBottom: 24 },
-  starsRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 28 },
-  ratingBtns: { flexDirection: 'row', gap: 10 },
-  ratingSkipBtn: {
-    flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center',
-    borderWidth: 1, borderColor: Colors.border,
-  },
-  ratingSkipText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '600' },
-  ratingSubmitBtn: {
-    flex: 2, paddingVertical: 14, borderRadius: 12, alignItems: 'center',
-    backgroundColor: '#FFD700',
-  },
-  ratingSubmitText: { color: '#000', fontSize: 14, fontWeight: '800' },
+    // Rating modal
+    ratingBg: {
+      flex: 1, backgroundColor: 'rgba(0,0,0,0.75)',
+      justifyContent: 'center', alignItems: 'center', padding: 24,
+    },
+    ratingCard: {
+      width: '100%', backgroundColor: c.surface, borderRadius: 24,
+      padding: 28, borderWidth: 1, borderColor: c.border,
+    },
+    ratingTitle: { ...Typography.subtitle, color: c.textPrimary, textAlign: 'center', marginBottom: 4 },
+    ratingSub:   { ...Typography.caption, color: c.textSecondary, textAlign: 'center', marginBottom: 24 },
+    starsRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 28 },
+    ratingBtns: { flexDirection: 'row', gap: 10 },
+    ratingSkipBtn: {
+      flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center',
+      borderWidth: 1, borderColor: c.border,
+    },
+    ratingSkipText: { color: c.textSecondary, fontSize: 14, fontWeight: '600' },
+    ratingSubmitBtn: {
+      flex: 2, paddingVertical: 14, borderRadius: 12, alignItems: 'center',
+      backgroundColor: '#FFD700',
+    },
+    ratingSubmitText: { color: '#000', fontSize: 14, fontWeight: '800' },
 
-  emptyState: { alignItems: 'center', paddingTop: 80, gap: 10 },
-  emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 12 },
-  emptySub:   { ...Typography.body, color: Colors.textSecondary, textAlign: 'center' },
-});
+    emptyState: { alignItems: 'center', paddingTop: 80, gap: 10 },
+    emptyTitle: { ...Typography.subtitle, color: c.textPrimary, marginTop: 12 },
+    emptySub:   { ...Typography.body, color: c.textSecondary, textAlign: 'center' },
+  });
+}

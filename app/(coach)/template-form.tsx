@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -13,7 +13,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTemplates, NewTemplateExercise } from '@/hooks/useTemplates';
-import { Colors, Typography } from '@/constants/theme';
+import { Typography, ColorScheme } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 type ExField = {
   id: string;
@@ -40,65 +41,69 @@ function ExCard({
   index,
   onChange,
   onRemove,
+  styles,
+  colors,
 }: {
   ex: ExField;
   index: number;
   onChange: (id: string, field: keyof ExField, v: string) => void;
   onRemove: (id: string) => void;
+  styles: ReturnType<typeof makeStyles>;
+  colors: ColorScheme;
 }) {
   return (
-    <View style={s.exCard}>
-      <View style={s.exHead}>
-        <Text style={s.exNum}>EXERCISE {index + 1}</Text>
+    <View style={styles.exCard}>
+      <View style={styles.exHead}>
+        <Text style={styles.exNum}>EXERCISE {index + 1}</Text>
         <Pressable onPress={() => onRemove(ex.id)} hitSlop={8}>
-          <Ionicons name="trash-outline" size={18} color={Colors.danger} />
+          <Ionicons name="trash-outline" size={18} color={colors.danger} />
         </Pressable>
       </View>
       <TextInput
-        style={s.exInput}
+        style={styles.exInput}
         placeholder="Exercise name"
-        placeholderTextColor={Colors.textSecondary}
+        placeholderTextColor={colors.textSecondary}
         value={ex.exercise_name}
         onChangeText={(v) => onChange(ex.id, 'exercise_name', v)}
       />
-      <View style={s.exRow}>
-        <View style={s.exSmall}>
-          <Text style={s.exLabel}>SETS</Text>
+      <View style={styles.exRow}>
+        <View style={styles.exSmall}>
+          <Text style={styles.exLabel}>SETS</Text>
           <TextInput
-            style={s.exSmallInput}
+            style={styles.exSmallInput}
             placeholder="4"
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={colors.textSecondary}
             keyboardType="number-pad"
             value={ex.sets}
             onChangeText={(v) => onChange(ex.id, 'sets', v)}
           />
         </View>
-        <View style={s.exSmall}>
-          <Text style={s.exLabel}>REPS</Text>
+        <View style={styles.exSmall}>
+          <Text style={styles.exLabel}>REPS</Text>
           <TextInput
-            style={s.exSmallInput}
+            style={styles.exSmallInput}
             placeholder="10"
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={colors.textSecondary}
             keyboardType="number-pad"
             value={ex.reps}
             onChangeText={(v) => onChange(ex.id, 'reps', v)}
           />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={s.exLabel}>WEIGHT</Text>
+          <Text style={styles.exLabel}>WEIGHT</Text>
           <TextInput
-            style={s.exSmallInput}
+            style={styles.exSmallInput}
             placeholder="80kg"
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={colors.textSecondary}
             value={ex.weight}
             onChangeText={(v) => onChange(ex.id, 'weight', v)}
           />
         </View>
       </View>
       <TextInput
-        style={[s.exInput, s.exNotes]}
+        style={[styles.exInput, styles.exNotes]}
         placeholder="Notes (optional)"
-        placeholderTextColor={Colors.textSecondary}
+        placeholderTextColor={colors.textSecondary}
         value={ex.notes}
         onChangeText={(v) => onChange(ex.id, 'notes', v)}
         multiline
@@ -109,6 +114,8 @@ function ExCard({
 }
 
 export default function TemplateFormScreen() {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const params = useLocalSearchParams<{ templateId?: string }>();
   const { templates, createTemplate, updateTemplate } = useTemplates();
   const isEdit = !!params.templateId;
@@ -193,7 +200,7 @@ export default function TemplateFormScreen() {
         <TextInput
           style={s.nameInput}
           placeholder="e.g. Push Day A"
-          placeholderTextColor={Colors.textSecondary}
+          placeholderTextColor={colors.textSecondary}
           value={name}
           onChangeText={setName}
           autoFocus={!isEdit}
@@ -205,13 +212,13 @@ export default function TemplateFormScreen() {
             style={s.addBtn}
             onPress={() => setExercises((prev) => [...prev, blank()])}
           >
-            <Ionicons name="add" size={16} color={Colors.bg} />
+            <Ionicons name="add" size={16} color={colors.bg} />
             <Text style={s.addBtnText}>ADD</Text>
           </Pressable>
         </View>
 
         {exercises.map((ex, i) => (
-          <ExCard key={ex.id} ex={ex} index={i} onChange={updateEx} onRemove={removeEx} />
+          <ExCard key={ex.id} ex={ex} index={i} onChange={updateEx} onRemove={removeEx} styles={s} colors={colors} />
         ))}
 
         <Pressable
@@ -228,87 +235,89 @@ export default function TemplateFormScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  kav: { flex: 1, backgroundColor: Colors.bg },
-  scroll: { flex: 1 },
-  content: { padding: 20, paddingBottom: 60 },
-  label: { ...Typography.label, color: Colors.textSecondary, marginBottom: 10 },
-  nameInput: {
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    color: Colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 28,
-  },
-  exHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.accent,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  addBtnText: { color: Colors.bg, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
-  exCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  exHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  exNum: { ...Typography.label, color: Colors.textSecondary, fontSize: 11 },
-  exInput: {
-    backgroundColor: Colors.bg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: Colors.textPrimary,
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  exNotes: { minHeight: 56, textAlignVertical: 'top', marginBottom: 0 },
-  exRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  exSmall: { flex: 1 },
-  exLabel: { ...Typography.label, color: Colors.textSecondary, fontSize: 10, marginBottom: 6 },
-  exSmallInput: {
-    backgroundColor: Colors.bg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    color: Colors.textPrimary,
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  saveBtn: {
-    backgroundColor: Colors.accent,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  saveBtnDisabled: { opacity: 0.35 },
-  saveBtnText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
-});
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    kav: { flex: 1 },
+    scroll: { flex: 1 },
+    content: { padding: 20, paddingBottom: 60 },
+    label: { ...Typography.label, color: c.textSecondary, marginBottom: 10 },
+    nameInput: {
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 13,
+      color: c.textPrimary,
+      fontSize: 16,
+      fontWeight: '600',
+      marginBottom: 28,
+    },
+    exHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 12,
+    },
+    addBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: c.accent,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+    },
+    addBtnText: { color: c.bg, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
+    exCard: {
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      padding: 14,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    exHead: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 10,
+    },
+    exNum: { ...Typography.label, color: c.textSecondary, fontSize: 11 },
+    exInput: {
+      backgroundColor: c.bg,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      color: c.textPrimary,
+      fontSize: 14,
+      marginBottom: 8,
+    },
+    exNotes: { minHeight: 56, textAlignVertical: 'top', marginBottom: 0 },
+    exRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+    exSmall: { flex: 1 },
+    exLabel: { ...Typography.label, color: c.textSecondary, fontSize: 10, marginBottom: 6 },
+    exSmallInput: {
+      backgroundColor: c.bg,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 9,
+      color: c.textPrimary,
+      fontSize: 14,
+      textAlign: 'center',
+    },
+    saveBtn: {
+      backgroundColor: c.accent,
+      borderRadius: 14,
+      paddingVertical: 16,
+      alignItems: 'center',
+      marginTop: 8,
+    },
+    saveBtnDisabled: { opacity: 0.35 },
+    saveBtnText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
+  });
+}

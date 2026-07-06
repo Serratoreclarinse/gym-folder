@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
   Image,
@@ -15,13 +15,16 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 export default function SignUpScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
   const isWeb = Platform.OS === 'web';
   const cardWidth = isWeb ? Math.min(width - 40, 420) : undefined;
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -79,11 +82,6 @@ export default function SignUpScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <Image
-        source={require('@/assets/images/logo.png')}
-        style={styles.bgLogo}
-        resizeMode="contain"
-      />
       <ScrollView contentContainerStyle={[styles.inner, isWeb && styles.innerDesktop]} keyboardShouldPersistTaps="handled">
         <View style={[isWeb ? styles.card : undefined, cardWidth !== undefined && { width: cardWidth }]}>
         <View style={styles.logoWrap}>
@@ -102,7 +100,7 @@ export default function SignUpScreen() {
           <TextInput
             style={styles.input}
             placeholder="Your name"
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={colors.textSecondary}
             autoCapitalize="words"
             autoCorrect={false}
             value={name}
@@ -115,7 +113,7 @@ export default function SignUpScreen() {
           <TextInput
             style={styles.input}
             placeholder="you@example.com"
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={colors.textSecondary}
             autoCapitalize="none"
             keyboardType="email-address"
             autoCorrect={false}
@@ -130,7 +128,7 @@ export default function SignUpScreen() {
             <TextInput
               style={styles.passwordInput}
               placeholder="Min. 6 characters"
-              placeholderTextColor={Colors.textSecondary}
+              placeholderTextColor={colors.textSecondary}
               secureTextEntry={!showPassword}
               value={password}
               onChangeText={setPassword}
@@ -139,7 +137,7 @@ export default function SignUpScreen() {
               <Ionicons
                 name={showPassword ? 'eye-off-outline' : 'eye-outline'}
                 size={20}
-                color={Colors.textSecondary}
+                color={colors.textSecondary}
               />
             </Pressable>
           </View>
@@ -184,16 +182,10 @@ export default function SignUpScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.bg,
-  },
-  bgLogo: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    opacity: 0.06,
   },
   inner: {
     flexGrow: 1,
@@ -207,11 +199,11 @@ const styles = StyleSheet.create({
   },
   card: {
     alignSelf: 'center',
-    backgroundColor: Colors.surface + 'CC',
+    backgroundColor: c.surface + 'CC',
     borderRadius: 20,
     padding: 32,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
   },
   logoWrap: {
     alignItems: 'center',
@@ -223,14 +215,14 @@ const styles = StyleSheet.create({
   },
   heading: {
     ...Typography.hero,
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     marginBottom: 4,
     lineHeight: 36,
     textAlign: 'center',
   },
   sub: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     marginBottom: 24,
     textAlign: 'center',
   },
@@ -239,32 +231,32 @@ const styles = StyleSheet.create({
   },
   fieldLabel: {
     ...Typography.label,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     marginBottom: 8,
   },
   input: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     fontSize: 15,
   },
   passwordWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     borderRadius: 12,
   },
   passwordInput: {
     flex: 1,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     fontSize: 15,
   },
   eyeBtn: {
@@ -280,24 +272,24 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
+    borderColor: c.border,
+    backgroundColor: c.surface,
     alignItems: 'center',
   },
   roleBtnActive: {
-    borderColor: Colors.accent,
-    backgroundColor: Colors.accent,
+    borderColor: c.accent,
+    backgroundColor: c.accent,
   },
   roleBtnText: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.textSecondary,
+    color: c.textSecondary,
   },
   roleBtnTextActive: {
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
   btn: {
-    backgroundColor: Colors.accent,
+    backgroundColor: c.accent,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
@@ -310,7 +302,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   btnText: {
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '800',
     letterSpacing: 1.5,
@@ -321,10 +313,11 @@ const styles = StyleSheet.create({
   },
   loginLinkText: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
   },
   loginLinkAccent: {
-    color: Colors.accent,
+    color: c.accent,
     fontWeight: '600',
   },
-});
+  });
+}

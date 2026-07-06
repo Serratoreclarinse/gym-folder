@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
   Alert,
   FlatList,
@@ -10,16 +10,21 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTemplates, Template } from '@/hooks/useTemplates';
-import { Colors, Typography } from '@/constants/theme';
+import { Typography, ColorScheme } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 function TemplateCard({
   template,
   onPress,
   onLongPress,
+  colors,
+  styles,
 }: {
   template: Template;
   onPress: () => void;
   onLongPress: () => void;
+  colors: ColorScheme;
+  styles: ReturnType<typeof makeStyles>;
 }) {
   const exCount = template.exercises.length;
   const lastUsed = template.last_used_at
@@ -47,7 +52,7 @@ function TemplateCard({
         {preview ? (exCount > 3 ? `${preview}…` : preview) : 'No exercises yet'}
       </Text>
       <View style={styles.cardFooter}>
-        <Ionicons name="time-outline" size={12} color={Colors.textSecondary} />
+        <Ionicons name="time-outline" size={12} color={colors.textSecondary} />
         <Text style={styles.lastUsed}>{lastUsed}</Text>
       </View>
     </Pressable>
@@ -55,6 +60,8 @@ function TemplateCard({
 }
 
 export default function TemplatesScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { templates, loading, refetch, deleteTemplate, duplicateTemplate } = useTemplates();
 
   useFocusEffect(useCallback(() => { refetch(); }, []));
@@ -87,7 +94,7 @@ export default function TemplatesScreen() {
     <View style={styles.container}>
       {!loading && templates.length === 0 ? (
         <View style={styles.empty}>
-          <Ionicons name="copy-outline" size={52} color={Colors.border} />
+          <Ionicons name="copy-outline" size={52} color={colors.border} />
           <Text style={styles.emptyTitle}>No Templates Yet</Text>
           <Text style={styles.emptySub}>
             Save common workout routines to quickly fill sessions
@@ -108,6 +115,8 @@ export default function TemplatesScreen() {
           renderItem={({ item }) => (
             <TemplateCard
               template={item}
+              colors={colors}
+              styles={styles}
               onPress={() =>
                 router.push({ pathname: '/(coach)/template-form', params: { templateId: item.id } })
               }
@@ -118,79 +127,81 @@ export default function TemplatesScreen() {
       )}
 
       <Pressable style={styles.fab} onPress={() => router.push('/(coach)/template-form')}>
-        <Ionicons name="add" size={28} color={Colors.bg} />
+        <Ionicons name="add" size={28} color={colors.bg} />
       </Pressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-  list: { padding: 20, paddingBottom: 100 },
-  card: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  cardTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  cardName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700', flex: 1 },
-  countBadge: {
-    backgroundColor: Colors.accent + '18',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: Colors.accent + '40',
-    marginLeft: 8,
-  },
-  countBadgeText: { color: Colors.accent, fontSize: 11, fontWeight: '800' },
-  cardPreview: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 10 },
-  cardFooter: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  lastUsed: { ...Typography.caption, color: Colors.textSecondary },
-  empty: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 40,
-    gap: 8,
-  },
-  emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 12 },
-  emptySub: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  emptyBtn: {
-    marginTop: 12,
-    backgroundColor: Colors.accent,
-    borderRadius: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 13,
-  },
-  emptyBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 13, letterSpacing: 1 },
-  fab: {
-    position: 'absolute',
-    bottom: 32,
-    right: 24,
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: Colors.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: Colors.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-});
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    container: { flex: 1 },
+    list: { padding: 20, paddingBottom: 100 },
+    card: {
+      backgroundColor: c.surface,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    cardTop: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 6,
+    },
+    cardName: { ...Typography.body, color: c.textPrimary, fontWeight: '700', flex: 1 },
+    countBadge: {
+      backgroundColor: c.accent + '18',
+      borderRadius: 8,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderWidth: 1,
+      borderColor: c.accent + '40',
+      marginLeft: 8,
+    },
+    countBadgeText: { color: c.accent, fontSize: 11, fontWeight: '800' },
+    cardPreview: { ...Typography.caption, color: c.textSecondary, marginBottom: 10 },
+    cardFooter: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    lastUsed: { ...Typography.caption, color: c.textSecondary },
+    empty: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 40,
+      gap: 8,
+    },
+    emptyTitle: { ...Typography.subtitle, color: c.textPrimary, marginTop: 12 },
+    emptySub: {
+      ...Typography.body,
+      color: c.textSecondary,
+      textAlign: 'center',
+      marginBottom: 4,
+    },
+    emptyBtn: {
+      marginTop: 12,
+      backgroundColor: c.accent,
+      borderRadius: 12,
+      paddingHorizontal: 20,
+      paddingVertical: 13,
+    },
+    emptyBtnText: { color: c.bg, fontWeight: '800', fontSize: 13, letterSpacing: 1 },
+    fab: {
+      position: 'absolute',
+      bottom: 32,
+      right: 24,
+      width: 58,
+      height: 58,
+      borderRadius: 29,
+      backgroundColor: c.accent,
+      justifyContent: 'center',
+      alignItems: 'center',
+      shadowColor: c.accent,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.4,
+      shadowRadius: 8,
+      elevation: 8,
+    },
+  });
+}

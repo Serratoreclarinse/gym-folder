@@ -1,16 +1,18 @@
 import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 
 export default function CoachProfileScreen() {
   const { profile, signOut, refreshProfile } = useAuth();
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark, toggleTheme, colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const [editing, setEditing] = useState(false);
   const [phone, setPhone] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
@@ -147,7 +149,7 @@ export default function CoachProfileScreen() {
             </View>
           )}
           <View style={styles.editBadge}>
-            <Ionicons name="camera" size={12} color={Colors.bg} />
+            <Ionicons name="camera" size={12} color={colors.bg} />
           </View>
         </Pressable>
         <View style={styles.rolePill}>
@@ -163,7 +165,7 @@ export default function CoachProfileScreen() {
         <Text style={styles.sectionLabel}>CONTACT & SOCIAL</Text>
         {!editing && (
           <Pressable style={styles.editBtn} onPress={handleStartEdit}>
-            <Ionicons name="pencil-outline" size={13} color={Colors.accent} />
+            <Ionicons name="pencil-outline" size={13} color={colors.accent} />
             <Text style={styles.editBtnText}>Edit</Text>
           </Pressable>
         )}
@@ -171,9 +173,9 @@ export default function CoachProfileScreen() {
 
       {editing ? (
         <View style={styles.editCard}>
-          <EditField icon="call-outline" label="PHONE" value={phone} onChangeText={setPhone} placeholder="+63 912 345 6789" keyboardType="phone-pad" />
-          <EditField icon="logo-whatsapp" label="WHATSAPP" value={whatsapp} onChangeText={setWhatsapp} placeholder="+63 912 345 6789" keyboardType="phone-pad" iconColor="#25D366" />
-          <EditField icon="logo-instagram" label="INSTAGRAM" value={instagram} onChangeText={setInstagram} placeholder="@yourhandle" iconColor="#E1306C" last />
+          <EditField icon="call-outline" label="PHONE" value={phone} onChangeText={setPhone} placeholder="+63 912 345 6789" keyboardType="phone-pad" colors={colors} />
+          <EditField icon="logo-whatsapp" label="WHATSAPP" value={whatsapp} onChangeText={setWhatsapp} placeholder="+63 912 345 6789" keyboardType="phone-pad" iconColor="#25D366" colors={colors} />
+          <EditField icon="logo-instagram" label="INSTAGRAM" value={instagram} onChangeText={setInstagram} placeholder="@yourhandle" iconColor="#E1306C" last colors={colors} />
           <View style={styles.editActions}>
             <Pressable style={styles.cancelBtn} onPress={() => setEditing(false)}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
@@ -190,6 +192,8 @@ export default function CoachProfileScreen() {
             label="Phone"
             value={profile?.phone}
             onPress={profile?.phone ? () => openLink(`tel:${profile.phone}`) : undefined}
+            colors={colors}
+            styles={styles}
           />
           <SocialRow
             icon="logo-whatsapp"
@@ -197,6 +201,8 @@ export default function CoachProfileScreen() {
             value={profile?.whatsapp}
             iconColor="#25D366"
             onPress={profile?.whatsapp ? () => openLink(`whatsapp://send?phone=${profile.whatsapp!.replace(/\D/g, '')}`) : undefined}
+            colors={colors}
+            styles={styles}
           />
           <SocialRow
             icon="logo-instagram"
@@ -205,6 +211,8 @@ export default function CoachProfileScreen() {
             iconColor="#E1306C"
             onPress={profile?.instagram ? () => openLink(`https://instagram.com/${profile.instagram}`) : undefined}
             last
+            colors={colors}
+            styles={styles}
           />
         </View>
       )}
@@ -218,26 +226,26 @@ export default function CoachProfileScreen() {
           style={({ pressed }) => [styles.infoRow, styles.infoRowBorder, pressed && { opacity: 0.7 }]}
           onPress={() => router.push('/(coach)/availability')}
         >
-          <Ionicons name="calendar-outline" size={18} color={Colors.textSecondary} style={styles.rowIcon} />
+          <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} style={styles.rowIcon} />
           <View style={styles.rowContent}>
             <Text style={styles.infoLabel}>AVAILABILITY</Text>
             <Text style={styles.infoValue}>Set your weekly schedule & blocked dates</Text>
           </View>
-          <Ionicons name="chevron-forward" size={14} color={Colors.textSecondary} />
+          <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
         </Pressable>
         <Pressable
           style={({ pressed }) => [styles.infoRow, styles.infoRowBorder, pressed && { opacity: 0.7 }]}
           onPress={() => router.push('/(coach)/revenue')}
         >
-          <Ionicons name="bar-chart-outline" size={18} color={Colors.textSecondary} style={styles.rowIcon} />
+          <Ionicons name="bar-chart-outline" size={18} color={colors.textSecondary} style={styles.rowIcon} />
           <View style={styles.rowContent}>
             <Text style={styles.infoLabel}>REVENUE</Text>
             <Text style={styles.infoValue}>Earnings, packages & session breakdown</Text>
           </View>
-          <Ionicons name="chevron-forward" size={14} color={Colors.textSecondary} />
+          <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
         </Pressable>
         <View style={styles.infoRow}>
-          <Ionicons name={isDark ? 'moon-outline' : 'sunny-outline'} size={18} color={Colors.textSecondary} style={styles.rowIcon} />
+          <Ionicons name={isDark ? 'moon-outline' : 'sunny-outline'} size={18} color={colors.textSecondary} style={styles.rowIcon} />
           <View style={styles.rowContent}>
             <Text style={styles.infoLabel}>APPEARANCE</Text>
             <Text style={styles.infoValue}>{isDark ? 'Dark Mode' : 'Light Mode'}</Text>
@@ -245,8 +253,8 @@ export default function CoachProfileScreen() {
           <Switch
             value={!isDark}
             onValueChange={toggleTheme}
-            trackColor={{ false: Colors.border, true: Colors.accent + '80' }}
-            thumbColor={!isDark ? Colors.accent : Colors.textSecondary}
+            trackColor={{ false: colors.border, true: colors.accent + '80' }}
+            thumbColor={!isDark ? colors.accent : colors.textSecondary}
           />
         </View>
       </View>
@@ -266,6 +274,7 @@ export default function CoachProfileScreen() {
             placeholder="Enter new email address"
             keyboardType="email-address"
             last
+            colors={colors}
           />
           <View style={styles.editActions}>
             <Pressable style={styles.cancelBtn} onPress={() => { setEditingEmail(false); setNewEmail(''); }}>
@@ -289,6 +298,7 @@ export default function CoachProfileScreen() {
             onChangeText={setNewName}
             placeholder="Enter your name"
             last
+            colors={colors}
           />
           <View style={styles.editActions}>
             <Pressable style={styles.cancelBtn} onPress={() => setEditingName(false)}>
@@ -312,6 +322,7 @@ export default function CoachProfileScreen() {
             onChangeText={setNewPassword}
             placeholder="Min. 6 characters"
             secureTextEntry
+            colors={colors}
           />
           <EditField
             icon="lock-closed-outline"
@@ -321,6 +332,7 @@ export default function CoachProfileScreen() {
             placeholder="Repeat new password"
             secureTextEntry
             last
+            colors={colors}
           />
           <View style={styles.editActions}>
             <Pressable style={styles.cancelBtn} onPress={() => { setEditingPassword(false); setNewPassword(''); setConfirmPassword(''); }}>
@@ -341,34 +353,34 @@ export default function CoachProfileScreen() {
             style={({ pressed }) => [styles.infoRow, styles.infoRowBorder, pressed && { opacity: 0.7 }]}
             onPress={() => { setNewName(profile?.name ?? ''); setEditingName(true); }}
           >
-            <Ionicons name="person-outline" size={18} color={Colors.textSecondary} style={styles.rowIcon} />
+            <Ionicons name="person-outline" size={18} color={colors.textSecondary} style={styles.rowIcon} />
             <View style={styles.rowContent}>
               <Text style={styles.infoLabel}>DISPLAY NAME</Text>
               <Text style={styles.infoValue}>{profile?.name ?? '—'}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={14} color={Colors.textSecondary} />
+            <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
           </Pressable>
           <Pressable
             style={({ pressed }) => [styles.infoRow, styles.infoRowBorder, pressed && { opacity: 0.7 }]}
             onPress={() => { setNewEmail(profile?.email ?? ''); setEditingEmail(true); }}
           >
-            <Ionicons name="mail-outline" size={18} color={Colors.textSecondary} style={styles.rowIcon} />
+            <Ionicons name="mail-outline" size={18} color={colors.textSecondary} style={styles.rowIcon} />
             <View style={styles.rowContent}>
               <Text style={styles.infoLabel}>EMAIL</Text>
               <Text style={styles.infoValue}>{profile?.email ?? '—'}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={14} color={Colors.textSecondary} />
+            <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
           </Pressable>
           <Pressable
             style={({ pressed }) => [styles.infoRow, pressed && { opacity: 0.7 }]}
             onPress={() => setEditingPassword(true)}
           >
-            <Ionicons name="lock-closed-outline" size={18} color={Colors.textSecondary} style={styles.rowIcon} />
+            <Ionicons name="lock-closed-outline" size={18} color={colors.textSecondary} style={styles.rowIcon} />
             <View style={styles.rowContent}>
               <Text style={styles.infoLabel}>PASSWORD</Text>
               <Text style={styles.infoValue}>••••••••</Text>
             </View>
-            <Ionicons name="chevron-forward" size={14} color={Colors.textSecondary} />
+            <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
           </Pressable>
         </View>
       )}
@@ -378,9 +390,9 @@ export default function CoachProfileScreen() {
         style={({ pressed }) => [styles.guideBtn, pressed && { opacity: 0.7 }]}
         onPress={() => router.push('/(coach)/guide')}
       >
-        <Ionicons name="book-outline" size={16} color={Colors.accent} />
+        <Ionicons name="book-outline" size={16} color={colors.accent} />
         <Text style={styles.guideBtnText}>User Guide</Text>
-        <Ionicons name="chevron-forward" size={14} color={Colors.accent} style={{ marginLeft: 'auto' }} />
+        <Ionicons name="chevron-forward" size={14} color={colors.accent} style={{ marginLeft: 'auto' }} />
       </Pressable>
 
       {/* Sign out */}
@@ -395,40 +407,43 @@ export default function CoachProfileScreen() {
 }
 
 function SocialRow({
-  icon, label, value, iconColor, onPress, last,
+  icon, label, value, iconColor, onPress, last, colors, styles,
 }: {
   icon: string; label: string; value: string | null | undefined;
   iconColor?: string; onPress?: () => void; last?: boolean;
+  colors: ColorScheme; styles: ReturnType<typeof makeStyles>;
 }) {
-  const color = iconColor ?? Colors.textSecondary;
+  const color = iconColor ?? colors.textSecondary;
   return (
     <Pressable
       style={({ pressed }) => [styles.infoRow, !last && styles.infoRowBorder, pressed && onPress && { opacity: 0.65 }]}
       onPress={onPress}
       disabled={!onPress}
     >
-      <Ionicons name={icon as any} size={18} color={value ? color : Colors.border} style={styles.rowIcon} />
+      <Ionicons name={icon as any} size={18} color={value ? color : colors.border} style={styles.rowIcon} />
       <View style={styles.rowContent}>
         <Text style={styles.infoLabel}>{label}</Text>
-        <Text style={[styles.infoValue, !value && { color: Colors.textSecondary }]}>
+        <Text style={[styles.infoValue, !value && { color: colors.textSecondary }]}>
           {value ?? 'Not set'}
         </Text>
       </View>
-      {onPress && <Ionicons name="open-outline" size={14} color={Colors.textSecondary} />}
+      {onPress && <Ionicons name="open-outline" size={14} color={colors.textSecondary} />}
     </Pressable>
   );
 }
 
 function EditField({
-  icon, label, value, onChangeText, placeholder, keyboardType, iconColor, secureTextEntry, last,
+  icon, label, value, onChangeText, placeholder, keyboardType, iconColor, secureTextEntry, last, colors,
 }: {
   icon: string; label: string; value: string; onChangeText: (v: string) => void;
   placeholder?: string; keyboardType?: any; iconColor?: string; secureTextEntry?: boolean; last?: boolean;
+  colors: ColorScheme;
 }) {
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [hidden, setHidden] = useState(secureTextEntry ?? false);
   return (
     <View style={[styles.editField, !last && styles.editFieldBorder]}>
-      <Ionicons name={icon as any} size={18} color={iconColor ?? Colors.textSecondary} style={styles.rowIcon} />
+      <Ionicons name={icon as any} size={18} color={iconColor ?? colors.textSecondary} style={styles.rowIcon} />
       <View style={styles.rowContent}>
         <Text style={styles.infoLabel}>{label}</Text>
         <View style={styles.pwRow}>
@@ -437,7 +452,7 @@ function EditField({
             value={value}
             onChangeText={onChangeText}
             placeholder={placeholder}
-            placeholderTextColor={Colors.textSecondary + '80'}
+            placeholderTextColor={colors.textSecondary + '80'}
             keyboardType={keyboardType}
             autoCapitalize="none"
             autoCorrect={false}
@@ -448,7 +463,7 @@ function EditField({
               <Ionicons
                 name={hidden ? 'eye-outline' : 'eye-off-outline'}
                 size={18}
-                color={Colors.textSecondary}
+                color={colors.textSecondary}
               />
             </Pressable>
           )}
@@ -458,78 +473,80 @@ function EditField({
   );
 }
 
-const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: Colors.bg },
-  content: { padding: 24, paddingBottom: 60, alignItems: 'center' },
-  avatarWrap: { alignItems: 'center', marginTop: 20, marginBottom: 16 },
-  avatarPressable: { position: 'relative' },
-  avatar: {
-    width: 88, height: 88, borderRadius: 44,
-    backgroundColor: Colors.accent + '20', borderWidth: 2, borderColor: Colors.accent,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  avatarImg: { width: 88, height: 88, borderRadius: 44, borderWidth: 2, borderColor: Colors.accent },
-  editBadge: {
-    position: 'absolute', bottom: 0, right: 0,
-    width: 26, height: 26, borderRadius: 13,
-    backgroundColor: Colors.accent, justifyContent: 'center', alignItems: 'center',
-    borderWidth: 2, borderColor: Colors.bg,
-  },
-  initials: { fontSize: 30, fontWeight: '800', color: Colors.accent },
-  rolePill: {
-    marginTop: 10, backgroundColor: Colors.accent + '20', borderRadius: 20,
-    paddingHorizontal: 12, paddingVertical: 4, borderWidth: 1, borderColor: Colors.accent + '60',
-  },
-  roleText: { ...Typography.label, color: Colors.accent, fontSize: 10 },
-  name: { ...Typography.title, color: Colors.textPrimary, marginBottom: 4, textAlign: 'center' },
-  email: { ...Typography.body, color: Colors.textSecondary, marginBottom: 28, textAlign: 'center' },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    scroll: { flex: 1 },
+    content: { padding: 24, paddingBottom: 60, alignItems: 'center' },
+    avatarWrap: { alignItems: 'center', marginTop: 20, marginBottom: 16 },
+    avatarPressable: { position: 'relative' },
+    avatar: {
+      width: 88, height: 88, borderRadius: 44,
+      backgroundColor: c.accent + '20', borderWidth: 2, borderColor: c.accent,
+      justifyContent: 'center', alignItems: 'center',
+    },
+    avatarImg: { width: 88, height: 88, borderRadius: 44, borderWidth: 2, borderColor: c.accent },
+    editBadge: {
+      position: 'absolute', bottom: 0, right: 0,
+      width: 26, height: 26, borderRadius: 13,
+      backgroundColor: c.accent, justifyContent: 'center', alignItems: 'center',
+      borderWidth: 2, borderColor: c.bg,
+    },
+    initials: { fontSize: 30, fontWeight: '800', color: c.accent },
+    rolePill: {
+      marginTop: 10, backgroundColor: c.accent + '20', borderRadius: 20,
+      paddingHorizontal: 12, paddingVertical: 4, borderWidth: 1, borderColor: c.accent + '60',
+    },
+    roleText: { ...Typography.label, color: c.accent, fontSize: 10 },
+    name: { ...Typography.title, color: c.textPrimary, marginBottom: 4, textAlign: 'center' },
+    email: { ...Typography.body, color: c.textSecondary, marginBottom: 28, textAlign: 'center' },
 
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 10 },
-  sectionLabel: { ...Typography.label, color: Colors.textSecondary },
-  editBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  editBtnText: { color: Colors.accent, fontSize: 13, fontWeight: '600' },
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 10 },
+    sectionLabel: { ...Typography.label, color: c.textSecondary },
+    editBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    editBtnText: { color: c.accent, fontSize: 13, fontWeight: '600' },
 
-  infoSection: {
-    width: '100%', backgroundColor: Colors.surface, borderRadius: 16,
-    borderWidth: 1, borderColor: Colors.border, overflow: 'hidden', marginBottom: 24,
-  },
-  infoRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
-  infoRowBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
-  rowIcon: { marginRight: 12 },
-  rowContent: { flex: 1 },
-  infoLabel: { ...Typography.label, color: Colors.textSecondary, fontSize: 10, marginBottom: 2 },
-  infoValue: { ...Typography.body, color: Colors.textPrimary, fontWeight: '500' },
+    infoSection: {
+      width: '100%', backgroundColor: c.surface, borderRadius: 16,
+      borderWidth: 1, borderColor: c.border, overflow: 'hidden', marginBottom: 24,
+    },
+    infoRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
+    infoRowBorder: { borderBottomWidth: 1, borderBottomColor: c.border },
+    rowIcon: { marginRight: 12 },
+    rowContent: { flex: 1 },
+    infoLabel: { ...Typography.label, color: c.textSecondary, fontSize: 10, marginBottom: 2 },
+    infoValue: { ...Typography.body, color: c.textPrimary, fontWeight: '500' },
 
-  editCard: {
-    width: '100%', backgroundColor: Colors.surface, borderRadius: 16,
-    borderWidth: 1, borderColor: Colors.border, overflow: 'hidden', marginBottom: 24,
-  },
-  editField: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
-  editFieldBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
-  editInput: { ...Typography.body, color: Colors.textPrimary, paddingVertical: 2 },
-  pwRow: { flexDirection: 'row', alignItems: 'center' },
-  eyeBtn: { paddingLeft: 8, paddingVertical: 4 },
-  editActions: { flexDirection: 'row', gap: 10, padding: 14 },
-  cancelBtn: {
-    flex: 1, borderRadius: 10, borderWidth: 1, borderColor: Colors.border,
-    paddingVertical: 11, alignItems: 'center',
-  },
-  cancelBtnText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 14 },
-  saveBtn: {
-    flex: 1, borderRadius: 10, backgroundColor: Colors.accent,
-    paddingVertical: 11, alignItems: 'center',
-  },
-  saveBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 14 },
-  guideBtn: {
-    width: '100%', borderRadius: 12, paddingVertical: 14, marginBottom: 10,
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    borderWidth: 1, borderColor: Colors.accent + '50',
-    backgroundColor: Colors.accent + '08', paddingHorizontal: 16,
-  },
-  guideBtnText: { color: Colors.accent, fontSize: 15, fontWeight: '700' },
-  signOutBtn: {
-    width: '100%', borderRadius: 12, paddingVertical: 15,
-    alignItems: 'center', borderWidth: 1, borderColor: Colors.danger,
-  },
-  signOutText: { color: Colors.danger, fontSize: 15, fontWeight: '700' },
-});
+    editCard: {
+      width: '100%', backgroundColor: c.surface, borderRadius: 16,
+      borderWidth: 1, borderColor: c.border, overflow: 'hidden', marginBottom: 24,
+    },
+    editField: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
+    editFieldBorder: { borderBottomWidth: 1, borderBottomColor: c.border },
+    editInput: { ...Typography.body, color: c.textPrimary, paddingVertical: 2 },
+    pwRow: { flexDirection: 'row', alignItems: 'center' },
+    eyeBtn: { paddingLeft: 8, paddingVertical: 4 },
+    editActions: { flexDirection: 'row', gap: 10, padding: 14 },
+    cancelBtn: {
+      flex: 1, borderRadius: 10, borderWidth: 1, borderColor: c.border,
+      paddingVertical: 11, alignItems: 'center',
+    },
+    cancelBtnText: { color: c.textSecondary, fontWeight: '600', fontSize: 14 },
+    saveBtn: {
+      flex: 1, borderRadius: 10, backgroundColor: c.accent,
+      paddingVertical: 11, alignItems: 'center',
+    },
+    saveBtnText: { color: c.bg, fontWeight: '800', fontSize: 14 },
+    guideBtn: {
+      width: '100%', borderRadius: 12, paddingVertical: 14, marginBottom: 10,
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      borderWidth: 1, borderColor: c.accent + '50',
+      backgroundColor: c.accent + '08', paddingHorizontal: 16,
+    },
+    guideBtnText: { color: c.accent, fontSize: 15, fontWeight: '700' },
+    signOutBtn: {
+      width: '100%', borderRadius: 12, paddingVertical: 15,
+      alignItems: 'center', borderWidth: 1, borderColor: c.danger,
+    },
+    signOutText: { color: c.danger, fontSize: 15, fontWeight: '700' },
+  });
+}

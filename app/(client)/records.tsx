@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Dimensions,
@@ -22,7 +22,9 @@ import { useMyProgressPhotos, type ProgressPhoto } from '@/hooks/useProgressPhot
 import { useMyMeasurements } from '@/hooks/useBodyMeasurements';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { Colors, Typography } from '@/constants/theme';
+import { Typography } from '@/constants/theme';
+import type { ColorScheme } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 const SCREEN_W = Dimensions.get('window').width;
 const PAD = 20;
@@ -160,6 +162,7 @@ async function buildReportHtml(
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 function MiniWeightChart({ points }: { points: { logged_at: string; weight_kg: number }[] }) {
+  const { colors } = useTheme();
   if (points.length < 2) return null;
   const weights = points.map((p) => p.weight_kg);
   const minW = Math.min(...weights), maxW = Math.max(...weights);
@@ -173,18 +176,18 @@ function MiniWeightChart({ points }: { points: { logged_at: string; weight_kg: n
   return (
     <Svg width={CHART_W} height={CHART_H}>
       {yLabels.map((v, i) => (
-        <SvgText key={i} x={CP.left - 4} y={y(v) + 4} fontSize={9} fill={Colors.textSecondary} textAnchor="end">
+        <SvgText key={i} x={CP.left - 4} y={y(v) + 4} fontSize={9} fill={colors.textSecondary} textAnchor="end">
           {v.toFixed(1)}
         </SvgText>
       ))}
-      <Line x1={CP.left} y1={CP.top} x2={CP.left} y2={CP.top + iH} stroke={Colors.border} strokeWidth={1} />
-      <Line x1={CP.left} y1={CP.top + iH} x2={CP.left + iW} y2={CP.top + iH} stroke={Colors.border} strokeWidth={1} />
-      <Path d={d} stroke={Colors.accent} strokeWidth={2} fill="none" />
+      <Line x1={CP.left} y1={CP.top} x2={CP.left} y2={CP.top + iH} stroke={colors.border} strokeWidth={1} />
+      <Line x1={CP.left} y1={CP.top + iH} x2={CP.left + iW} y2={CP.top + iH} stroke={colors.border} strokeWidth={1} />
+      <Path d={d} stroke={colors.accent} strokeWidth={2} fill="none" />
       {points.map((p, i) => (
-        <Circle key={i} cx={x(i)} cy={y(p.weight_kg)} r={3} fill={Colors.accent} />
+        <Circle key={i} cx={x(i)} cy={y(p.weight_kg)} r={3} fill={colors.accent} />
       ))}
       {[0, points.length - 1].map((i) => (
-        <SvgText key={i} x={x(i)} y={CHART_H - 4} fontSize={9} fill={Colors.textSecondary} textAnchor={i === 0 ? 'start' : 'end'}>
+        <SvgText key={i} x={x(i)} y={CHART_H - 4} fontSize={9} fill={colors.textSecondary} textAnchor={i === 0 ? 'start' : 'end'}>
           {new Date(points[i].logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
         </SvgText>
       ))}
@@ -195,6 +198,8 @@ function MiniWeightChart({ points }: { points: { logged_at: string; weight_kg: n
 export default function RecordsScreen() {
   const { user, profile } = useAuth();
   const { prs, loading, refetch } = useClientPRs();
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const [generating, setGenerating] = useState(false);
 
   // Coach ID from active package
@@ -343,7 +348,7 @@ export default function RecordsScreen() {
       <ScrollView
         style={s.scroll}
         contentContainerStyle={s.content}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={Colors.accent} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={colors.accent} />}
       >
         {/* ── PRs header ── */}
         <View style={s.titleRow}>
@@ -356,7 +361,7 @@ export default function RecordsScreen() {
             onPress={handleGenerateReport}
             disabled={generating}
           >
-            <Ionicons name="document-text-outline" size={15} color={Colors.accent} />
+            <Ionicons name="document-text-outline" size={15} color={colors.accent} />
             <Text style={s.reportBtnText}>{generating ? 'Generating…' : 'PDF Report'}</Text>
           </Pressable>
         </View>
@@ -364,7 +369,7 @@ export default function RecordsScreen() {
         {/* ── PR list ── */}
         {!loading && prs.length === 0 ? (
           <View style={s.empty}>
-            <Ionicons name="trophy-outline" size={56} color={Colors.border} />
+            <Ionicons name="trophy-outline" size={56} color={colors.border} />
             <Text style={s.emptyTitle}>No records yet</Text>
             <Text style={s.emptySub}>Complete sessions with weighted exercises to start tracking PRs</Text>
           </View>
@@ -380,10 +385,10 @@ export default function RecordsScreen() {
               <View style={s.info}>
                 <Text style={s.exerciseName}>{pr.exercise_name}</Text>
                 <View style={s.metaRow}>
-                  <Ionicons name="calendar-outline" size={11} color={Colors.textSecondary} />
+                  <Ionicons name="calendar-outline" size={11} color={colors.textSecondary} />
                   <Text style={s.metaText}>{fmtDate(pr.achieved_date)}</Text>
                   <Text style={s.dot}>·</Text>
-                  <Ionicons name="repeat-outline" size={11} color={Colors.textSecondary} />
+                  <Ionicons name="repeat-outline" size={11} color={colors.textSecondary} />
                   <Text style={s.metaText}>{pr.session_count}× performed</Text>
                 </View>
               </View>
@@ -404,14 +409,14 @@ export default function RecordsScreen() {
                 <Text style={s.sub}>Sent privately to your coach only.</Text>
               </View>
               <Pressable style={s.sendBtn} onPress={handlePickPhoto}>
-                <Ionicons name="camera-outline" size={15} color={Colors.accent} />
+                <Ionicons name="camera-outline" size={15} color={colors.accent} />
                 <Text style={s.sendBtnText}>Send Photo</Text>
               </Pressable>
             </View>
 
             {photos.length === 0 ? (
               <View style={s.photoEmpty}>
-                <Ionicons name="camera-outline" size={36} color={Colors.border} />
+                <Ionicons name="camera-outline" size={36} color={colors.border} />
                 <Text style={s.photoEmptyText}>No photos sent yet</Text>
               </View>
             ) : (
@@ -433,14 +438,14 @@ export default function RecordsScreen() {
             <Text style={s.sub}>Track your weight and body measurements over time.</Text>
           </View>
           <Pressable style={s.sendBtn} onPress={openMeasModal}>
-            <Ionicons name="add-outline" size={15} color={Colors.accent} />
+            <Ionicons name="add-outline" size={15} color={colors.accent} />
             <Text style={s.sendBtnText}>Log Today</Text>
           </Pressable>
         </View>
 
         {measurements.length === 0 ? (
           <View style={s.photoEmpty}>
-            <Ionicons name="body-outline" size={36} color={Colors.border} />
+            <Ionicons name="body-outline" size={36} color={colors.border} />
             <Text style={s.photoEmptyText}>No measurements logged yet</Text>
           </View>
         ) : (
@@ -487,55 +492,55 @@ export default function RecordsScreen() {
           <View style={s.measInputRow}>
             <View style={s.measInputGroup}>
               <Text style={s.measInputLabel}>Weight (kg)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 72.5" placeholderTextColor={Colors.textSecondary}
+              <TextInput style={s.measInput} placeholder="e.g. 72.5" placeholderTextColor={colors.textSecondary}
                 keyboardType="decimal-pad" value={mWeight} onChangeText={setMWeight} />
             </View>
             <View style={s.measInputGroup}>
               <Text style={s.measInputLabel}>Body fat (%)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 18.0" placeholderTextColor={Colors.textSecondary}
+              <TextInput style={s.measInput} placeholder="e.g. 18.0" placeholderTextColor={colors.textSecondary}
                 keyboardType="decimal-pad" value={mFat} onChangeText={setMFat} />
             </View>
           </View>
           <View style={s.measInputRow}>
             <View style={s.measInputGroup}>
               <Text style={s.measInputLabel}>Muscle mass (kg)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 35.0" placeholderTextColor={Colors.textSecondary}
+              <TextInput style={s.measInput} placeholder="e.g. 35.0" placeholderTextColor={colors.textSecondary}
                 keyboardType="decimal-pad" value={mMuscle} onChangeText={setMMuscle} />
             </View>
             <View style={s.measInputGroup}>
               <Text style={s.measInputLabel}>Chest (cm)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 95" placeholderTextColor={Colors.textSecondary}
+              <TextInput style={s.measInput} placeholder="e.g. 95" placeholderTextColor={colors.textSecondary}
                 keyboardType="decimal-pad" value={mChest} onChangeText={setMChest} />
             </View>
           </View>
           <View style={s.measInputRow}>
             <View style={s.measInputGroup}>
               <Text style={s.measInputLabel}>Waist (cm)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 80" placeholderTextColor={Colors.textSecondary}
+              <TextInput style={s.measInput} placeholder="e.g. 80" placeholderTextColor={colors.textSecondary}
                 keyboardType="decimal-pad" value={mWaist} onChangeText={setMWaist} />
             </View>
             <View style={s.measInputGroup}>
               <Text style={s.measInputLabel}>Hips (cm)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 98" placeholderTextColor={Colors.textSecondary}
+              <TextInput style={s.measInput} placeholder="e.g. 98" placeholderTextColor={colors.textSecondary}
                 keyboardType="decimal-pad" value={mHips} onChangeText={setMHips} />
             </View>
           </View>
           <View style={s.measInputRow}>
             <View style={s.measInputGroup}>
               <Text style={s.measInputLabel}>Arms (cm)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 35" placeholderTextColor={Colors.textSecondary}
+              <TextInput style={s.measInput} placeholder="e.g. 35" placeholderTextColor={colors.textSecondary}
                 keyboardType="decimal-pad" value={mArms} onChangeText={setMArms} />
             </View>
             <View style={s.measInputGroup}>
               <Text style={s.measInputLabel}>Thighs (cm)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 58" placeholderTextColor={Colors.textSecondary}
+              <TextInput style={s.measInput} placeholder="e.g. 58" placeholderTextColor={colors.textSecondary}
                 keyboardType="decimal-pad" value={mThighs} onChangeText={setMThighs} />
             </View>
           </View>
           <TextInput
             style={[s.measInput, { marginBottom: 16 }]}
             placeholder="Notes (optional)"
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={colors.textSecondary}
             value={mNotes} onChangeText={setMNotes}
           />
           <Pressable
@@ -559,7 +564,7 @@ export default function RecordsScreen() {
           <TextInput
             style={s.noteInput}
             placeholder="Add a note (optional)"
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={colors.textSecondary}
             value={noteText}
             onChangeText={setNoteText}
             maxLength={200}
@@ -603,130 +608,132 @@ export default function RecordsScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const s = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: Colors.bg },
-  content: { padding: PAD, paddingTop: 24 },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    scroll: { flex: 1 },
+    content: { padding: PAD, paddingTop: 24 },
 
-  titleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 12 },
-  sectionHeading: { ...Typography.label, color: Colors.textSecondary, marginBottom: 4 },
-  sub: { ...Typography.caption, color: Colors.textSecondary, lineHeight: 18 },
+    titleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 12 },
+    sectionHeading: { ...Typography.label, color: c.textSecondary, marginBottom: 4 },
+    sub: { ...Typography.caption, color: c.textSecondary, lineHeight: 18 },
 
-  reportBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    borderWidth: 1, borderColor: Colors.accent + '60',
-    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
-    backgroundColor: Colors.accent + '10',
-  },
-  reportBtnText: { ...Typography.caption, color: Colors.accent, fontWeight: '600' },
+    reportBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      borderWidth: 1, borderColor: c.accent + '60',
+      borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
+      backgroundColor: c.accent + '10',
+    },
+    reportBtnText: { ...Typography.caption, color: c.accent, fontWeight: '600' },
 
-  empty: { alignItems: 'center', paddingTop: 48, paddingBottom: 8, gap: 8 },
-  emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 12 },
-  emptySub: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
+    empty: { alignItems: 'center', paddingTop: 48, paddingBottom: 8, gap: 8 },
+    emptyTitle: { ...Typography.subtitle, color: c.textPrimary, marginTop: 12 },
+    emptySub: { ...Typography.body, color: c.textSecondary, textAlign: 'center', lineHeight: 20 },
 
-  card: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border,
-    paddingVertical: 14, paddingHorizontal: 14,
-    marginBottom: 8, gap: 12,
-  },
-  rankCol: { width: 28, alignItems: 'center' },
-  medal: { fontSize: 22 },
-  rankNum: { ...Typography.label, color: Colors.textSecondary, fontSize: 13 },
-  info: { flex: 1 },
-  exerciseName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 4 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText: { ...Typography.caption, color: Colors.textSecondary },
-  dot: { color: Colors.border, fontSize: 10 },
-  weightCol: { alignItems: 'flex-end' },
-  weight: { ...Typography.subtitle, color: Colors.accent, fontWeight: '700' },
-  weightLabel: { ...Typography.label, color: Colors.textSecondary, fontSize: 9, marginTop: 1 },
+    card: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border,
+      paddingVertical: 14, paddingHorizontal: 14,
+      marginBottom: 8, gap: 12,
+    },
+    rankCol: { width: 28, alignItems: 'center' },
+    medal: { fontSize: 22 },
+    rankNum: { ...Typography.label, color: c.textSecondary, fontSize: 13 },
+    info: { flex: 1 },
+    exerciseName: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 4 },
+    metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    metaText: { ...Typography.caption, color: c.textSecondary },
+    dot: { color: c.border, fontSize: 10 },
+    weightCol: { alignItems: 'flex-end' },
+    weight: { ...Typography.subtitle, color: c.accent, fontWeight: '700' },
+    weightLabel: { ...Typography.label, color: c.textSecondary, fontSize: 9, marginTop: 1 },
 
-  // Progress photos
-  photoHeader: {
-    flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
-    marginTop: 28, marginBottom: 14, gap: 12,
-  },
-  sendBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    borderWidth: 1, borderColor: Colors.accent + '60',
-    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
-    backgroundColor: Colors.accent + '10',
-  },
-  sendBtnText: { ...Typography.caption, color: Colors.accent, fontWeight: '600' },
-  photoEmpty: { alignItems: 'center', paddingVertical: 28, gap: 8 },
-  photoEmptyText: { ...Typography.body, color: Colors.textSecondary },
-  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },
-  photoThumb: { width: THUMB, height: THUMB, borderRadius: 4, backgroundColor: Colors.surface },
+    // Progress photos
+    photoHeader: {
+      flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
+      marginTop: 28, marginBottom: 14, gap: 12,
+    },
+    sendBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      borderWidth: 1, borderColor: c.accent + '60',
+      borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
+      backgroundColor: c.accent + '10',
+    },
+    sendBtnText: { ...Typography.caption, color: c.accent, fontWeight: '600' },
+    photoEmpty: { alignItems: 'center', paddingVertical: 28, gap: 8 },
+    photoEmptyText: { ...Typography.body, color: c.textSecondary },
+    photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },
+    photoThumb: { width: THUMB, height: THUMB, borderRadius: 4, backgroundColor: c.surface },
 
-  // Send modal
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
-  modalSheet: {
-    backgroundColor: Colors.surface,
-    borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    padding: 24, gap: 14,
-  },
-  modalTitle: { ...Typography.subtitle, color: Colors.textPrimary, fontWeight: '700' },
-  modalPreview: {
-    width: '100%', height: 220, borderRadius: 12,
-    backgroundColor: Colors.border,
-  },
-  noteInput: {
-    borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 10, padding: 12,
-    ...Typography.body, color: Colors.textPrimary,
-    backgroundColor: Colors.bg,
-  },
-  sendConfirmBtn: {
-    backgroundColor: Colors.accent, borderRadius: 12,
-    padding: 14, alignItems: 'center',
-  },
-  sendConfirmText: { ...Typography.subtitle, color: '#fff', fontWeight: '700' },
+    // Send modal
+    modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+    modalSheet: {
+      backgroundColor: c.surface,
+      borderTopLeftRadius: 20, borderTopRightRadius: 20,
+      padding: 24, gap: 14,
+    },
+    modalTitle: { ...Typography.subtitle, color: c.textPrimary, fontWeight: '700' },
+    modalPreview: {
+      width: '100%', height: 220, borderRadius: 12,
+      backgroundColor: c.border,
+    },
+    noteInput: {
+      borderWidth: 1, borderColor: c.border,
+      borderRadius: 10, padding: 12,
+      ...Typography.body, color: c.textPrimary,
+      backgroundColor: c.bg,
+    },
+    sendConfirmBtn: {
+      backgroundColor: c.accent, borderRadius: 12,
+      padding: 14, alignItems: 'center',
+    },
+    sendConfirmText: { ...Typography.subtitle, color: '#fff', fontWeight: '700' },
 
-  // Body measurements
-  measHeader: {
-    flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
-    marginTop: 28, marginBottom: 14, gap: 12,
-  },
-  measChartCard: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border,
-    padding: 14, marginBottom: 8,
-  },
-  measRow: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.surface, borderRadius: 12,
-    borderWidth: 1, borderColor: Colors.border,
-    paddingVertical: 10, paddingHorizontal: 14,
-    marginBottom: 6, gap: 12,
-  },
-  measDate: { width: 52, ...Typography.caption, color: Colors.textSecondary },
-  measStats: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  measStat: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
-  measStatMuted: { ...Typography.caption, color: Colors.textSecondary },
-  measModalSheet: {
-    backgroundColor: Colors.surface,
-    borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    padding: 24,
-  },
-  measInputRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  measInputGroup: { flex: 1, gap: 5 },
-  measInputLabel: { ...Typography.label, color: Colors.textSecondary, fontSize: 10 },
-  measInput: {
-    borderWidth: 1, borderColor: Colors.border, borderRadius: 10,
-    padding: 11, ...Typography.body, color: Colors.textPrimary,
-    backgroundColor: Colors.bg,
-  },
+    // Body measurements
+    measHeader: {
+      flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
+      marginTop: 28, marginBottom: 14, gap: 12,
+    },
+    measChartCard: {
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border,
+      padding: 14, marginBottom: 8,
+    },
+    measRow: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: c.surface, borderRadius: 12,
+      borderWidth: 1, borderColor: c.border,
+      paddingVertical: 10, paddingHorizontal: 14,
+      marginBottom: 6, gap: 12,
+    },
+    measDate: { width: 52, ...Typography.caption, color: c.textSecondary },
+    measStats: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    measStat: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    measStatMuted: { ...Typography.caption, color: c.textSecondary },
+    measModalSheet: {
+      backgroundColor: c.surface,
+      borderTopLeftRadius: 20, borderTopRightRadius: 20,
+      padding: 24,
+    },
+    measInputRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+    measInputGroup: { flex: 1, gap: 5 },
+    measInputLabel: { ...Typography.label, color: c.textSecondary, fontSize: 10 },
+    measInput: {
+      borderWidth: 1, borderColor: c.border, borderRadius: 10,
+      padding: 11, ...Typography.body, color: c.textPrimary,
+      backgroundColor: c.bg,
+    },
 
-  // Viewer
-  viewerOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.92)',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  viewerClose: { position: 'absolute', top: 52, right: 20, zIndex: 10, padding: 8 },
-  viewerDelete: { position: 'absolute', top: 52, left: 20, zIndex: 10, padding: 8 },
-  viewerImg: { width: SCREEN_W, height: SCREEN_W * 1.2 },
-  viewerCaption: { marginTop: 16, alignItems: 'center', gap: 4, paddingHorizontal: 24 },
-  viewerDate: { ...Typography.caption, color: 'rgba(255,255,255,0.6)' },
-  viewerNote: { ...Typography.body, color: '#fff', textAlign: 'center' },
-});
+    // Viewer
+    viewerOverlay: {
+      flex: 1, backgroundColor: 'rgba(0,0,0,0.92)',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    viewerClose: { position: 'absolute', top: 52, right: 20, zIndex: 10, padding: 8 },
+    viewerDelete: { position: 'absolute', top: 52, left: 20, zIndex: 10, padding: 8 },
+    viewerImg: { width: SCREEN_W, height: SCREEN_W * 1.2 },
+    viewerCaption: { marginTop: 16, alignItems: 'center', gap: 4, paddingHorizontal: 24 },
+    viewerDate: { ...Typography.caption, color: 'rgba(255,255,255,0.6)' },
+    viewerNote: { ...Typography.body, color: '#fff', textAlign: 'center' },
+  });
+}
