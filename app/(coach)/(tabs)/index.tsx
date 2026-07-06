@@ -251,9 +251,9 @@ export default function CoachDashboard() {
           <Pressable style={styles.addBtn} onPress={() => setShowPicker(true)}>
             <Ionicons name="menu-outline" size={22} color={colors.accent} />
           </Pressable>
-          <View>
-            <Text style={styles.greeting}>Hi Coach, {firstName} 👊</Text>
-            <Text style={styles.date}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.greeting} numberOfLines={1}>Hi Coach, {firstName} 👊</Text>
+            <Text style={styles.date} numberOfLines={1}>
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </Text>
           </View>
