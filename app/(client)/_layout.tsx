@@ -16,6 +16,7 @@ export default function ClientLayout() {
         tintColor={isDark ? undefined : '#000000'}
       />
       <Tabs
+        sceneContainerStyle={{ backgroundColor: 'transparent' }}
         screenOptions={{
           tabBarActiveTintColor: colors.accent,
           tabBarInactiveTintColor: colors.textSecondary,
