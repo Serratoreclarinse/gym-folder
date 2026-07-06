@@ -127,26 +127,30 @@ export default function CoachDetailScreen() {
   const [addingBlock, setAddingBlock] = useState(false);
   const [deactivating, setDeactivating] = useState(false);
 
-  const handleDeactivate = () => {
-    Alert.alert(
-      'Deactivate Account',
-      `Move ${coach?.name ?? 'this coach'} to the Recycle Bin? Their clients will remain but this coach will no longer appear in the coaches list. You can restore them later.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Deactivate',
-          style: 'destructive',
-          onPress: async () => {
-            setDeactivating(true);
-            const { error } = await supabase
-              .rpc('admin_deactivate_account', { p_user_id: id });
-            setDeactivating(false);
-            if (error) { Alert.alert('Error', error.message); return; }
-            router.back();
-          },
+  const handleDeactivate = async () => {
+    const msg = `Move ${coach?.name ?? 'this coach'} to the Recycle Bin? Their clients will remain but this coach will no longer appear in the coaches list. You can restore them later.`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(msg)) return;
+      setDeactivating(true);
+      const { error } = await supabase.rpc('admin_deactivate_account', { p_user_id: id });
+      setDeactivating(false);
+      if (error) { window.alert('Error: ' + error.message); return; }
+      router.back();
+      return;
+    }
+    Alert.alert('Deactivate Account', msg, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Deactivate', style: 'destructive',
+        onPress: async () => {
+          setDeactivating(true);
+          const { error } = await supabase.rpc('admin_deactivate_account', { p_user_id: id });
+          setDeactivating(false);
+          if (error) { Alert.alert('Error', error.message); return; }
+          router.back();
         },
-      ],
-    );
+      },
+    ]);
   };
 
   const load = useCallback(async () => {

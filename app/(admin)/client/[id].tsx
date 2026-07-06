@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Modal, Pressable, RefreshControl,
+  ActivityIndicator, Alert, Modal, Platform, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -110,26 +110,30 @@ export default function ClientDetailScreen() {
   const [renewing, setRenewing] = useState(false);
   const [deactivating, setDeactivating] = useState(false);
 
-  const handleDeactivateAccount = () => {
-    Alert.alert(
-      'Deactivate Account',
-      `Move ${client?.name ?? 'this client'} to the Recycle Bin? They will no longer appear in the clients list. You can restore them later.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Deactivate',
-          style: 'destructive',
-          onPress: async () => {
-            setDeactivating(true);
-            const { error } = await supabase
-              .rpc('admin_deactivate_account', { p_user_id: id });
-            setDeactivating(false);
-            if (error) { Alert.alert('Error', error.message); return; }
-            router.back();
-          },
+  const handleDeactivateAccount = async () => {
+    const msg = `Move ${client?.name ?? 'this client'} to the Recycle Bin? They will no longer appear in the clients list. You can restore them later.`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(msg)) return;
+      setDeactivating(true);
+      const { error } = await supabase.rpc('admin_deactivate_account', { p_user_id: id });
+      setDeactivating(false);
+      if (error) { window.alert('Error: ' + error.message); return; }
+      router.back();
+      return;
+    }
+    Alert.alert('Deactivate Account', msg, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Deactivate', style: 'destructive',
+        onPress: async () => {
+          setDeactivating(true);
+          const { error } = await supabase.rpc('admin_deactivate_account', { p_user_id: id });
+          setDeactivating(false);
+          if (error) { Alert.alert('Error', error.message); return; }
+          router.back();
         },
-      ],
-    );
+      },
+    ]);
   };
 
   const load = useCallback(async () => {

@@ -1,12 +1,20 @@
-import { Image, View } from 'react-native';
+import { Image, Platform, View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/context/ThemeContext';
 
 export default function AdminTabsLayout() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      document.body.style.backgroundColor = colors.bg;
+      document.documentElement.style.backgroundColor = colors.bg;
+    }
+  }, [colors.bg]);
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Image
@@ -16,6 +24,7 @@ export default function AdminTabsLayout() {
         tintColor={isDark ? undefined : '#000000'}
       />
       <Tabs
+        sceneContainerStyle={{ backgroundColor: 'transparent' }}
         screenOptions={{
           tabBarActiveTintColor: colors.accent,
           tabBarInactiveTintColor: colors.textSecondary,
