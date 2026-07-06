@@ -598,6 +598,7 @@ export default function LogSessionScreen() {
   };
 
   return (
+    <View style={styles.root}>
     <KeyboardAvoidingView style={styles.kav} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
@@ -1029,11 +1030,13 @@ export default function LogSessionScreen() {
         onCancel={() => { setShowQRGate(false); setQrConfirmFn(null); }}
       />
     </KeyboardAvoidingView>
+    </View>
   );
 }
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
+  root: { flex: 1, backgroundColor: c.bg },
   kav: { flex: 1, backgroundColor: c.bg },
   scroll: { flex: 1, backgroundColor: c.bg },
   content: { padding: 20, paddingBottom: 60 },
