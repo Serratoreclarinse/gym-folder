@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTemplates, NewTemplateExercise } from '@/hooks/useTemplates';
 import { Typography, ColorScheme } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
+import { ExercisePickerModal } from '@/components/ExercisePickerModal';
 
 type ExField = {
   id: string;
@@ -41,6 +42,7 @@ function ExCard({
   index,
   onChange,
   onRemove,
+  onOpenPicker,
   styles,
   colors,
 }: {
@@ -48,6 +50,7 @@ function ExCard({
   index: number;
   onChange: (id: string, field: keyof ExField, v: string) => void;
   onRemove: (id: string) => void;
+  onOpenPicker: (id: string) => void;
   styles: ReturnType<typeof makeStyles>;
   colors: ColorScheme;
 }) {
@@ -59,13 +62,18 @@ function ExCard({
           <Ionicons name="trash-outline" size={18} color={colors.danger} />
         </Pressable>
       </View>
-      <TextInput
-        style={styles.exInput}
-        placeholder="Exercise name"
-        placeholderTextColor={colors.textSecondary}
-        value={ex.exercise_name}
-        onChangeText={(v) => onChange(ex.id, 'exercise_name', v)}
-      />
+      <Pressable
+        style={[styles.exInput, styles.exNameBtn]}
+        onPress={() => onOpenPicker(ex.id)}
+      >
+        <Text
+          style={[styles.exNameText, !ex.exercise_name && { color: colors.textSecondary }]}
+          numberOfLines={1}
+        >
+          {ex.exercise_name || 'Tap to select exercise…'}
+        </Text>
+        <Ionicons name="search-outline" size={15} color={colors.textSecondary} />
+      </Pressable>
       <View style={styles.exRow}>
         <View style={styles.exSmall}>
           <Text style={styles.exLabel}>SETS</Text>
@@ -125,6 +133,8 @@ export default function TemplateFormScreen() {
   const [exercises, setExercises] = useState<ExField[]>([blank()]);
   const [saving, setSaving] = useState(false);
   const [ready, setReady] = useState(!isEdit);
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [pickerTargetId, setPickerTargetId] = useState<string | null>(null);
 
   useEffect(() => {
     if (isEdit && existing && !ready) {
@@ -147,6 +157,19 @@ export default function TemplateFormScreen() {
 
   const updateEx = (id: string, field: keyof ExField, v: string) => {
     setExercises((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: v } : e)));
+  };
+
+  const openPicker = (id: string) => {
+    setPickerTargetId(id);
+    setPickerVisible(true);
+  };
+
+  const handlePickerSelect = (name: string) => {
+    if (pickerTargetId) {
+      updateEx(pickerTargetId, 'exercise_name', name);
+    }
+    setPickerVisible(false);
+    setPickerTargetId(null);
   };
 
   const removeEx = (id: string) => {
@@ -218,7 +241,7 @@ export default function TemplateFormScreen() {
         </View>
 
         {exercises.map((ex, i) => (
-          <ExCard key={ex.id} ex={ex} index={i} onChange={updateEx} onRemove={removeEx} styles={s} colors={colors} />
+          <ExCard key={ex.id} ex={ex} index={i} onChange={updateEx} onRemove={removeEx} onOpenPicker={openPicker} styles={s} colors={colors} />
         ))}
 
         <Pressable
@@ -231,14 +254,20 @@ export default function TemplateFormScreen() {
           </Text>
         </Pressable>
       </ScrollView>
+
+      <ExercisePickerModal
+        visible={pickerVisible}
+        onClose={() => { setPickerVisible(false); setPickerTargetId(null); }}
+        onSelect={handlePickerSelect}
+      />
     </KeyboardAvoidingView>
   );
 }
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-    kav: { flex: 1 },
-    scroll: { flex: 1 },
+    kav: { flex: 1, backgroundColor: c.bg },
+    scroll: { flex: 1, backgroundColor: c.bg },
     content: { padding: 20, paddingBottom: 60 },
     label: { ...Typography.label, color: c.textSecondary, marginBottom: 10 },
     nameInput: {
@@ -294,6 +323,18 @@ function makeStyles(c: ColorScheme) {
       color: c.textPrimary,
       fontSize: 14,
       marginBottom: 8,
+    },
+    exNameBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    exNameText: {
+      flex: 1,
+      color: c.textPrimary,
+      fontSize: 14,
+      fontWeight: '500',
+      marginRight: 8,
     },
     exNotes: { minHeight: 56, textAlignVertical: 'top', marginBottom: 0 },
     exRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
