@@ -475,7 +475,7 @@ function EditField({
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-    scroll: { flex: 1 },
+    scroll: { flex: 1, backgroundColor: c.bg },
     content: { padding: 24, paddingBottom: 60, alignItems: 'center' },
     avatarWrap: { alignItems: 'center', marginTop: 20, marginBottom: 16 },
     avatarPressable: { position: 'relative' },

@@ -324,7 +324,7 @@ export default function ClientWorkoutsScreen() {
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-    scroll:  { flex: 1 },
+    scroll:  { flex: 1, backgroundColor: c.bg },
     content: { padding: 20, paddingBottom: 48 },
 
     summaryRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },

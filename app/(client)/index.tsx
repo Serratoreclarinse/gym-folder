@@ -796,7 +796,7 @@ export default function ClientProgressScreen() {
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-    scroll:   { flex: 1 },
+    scroll:   { flex: 1, backgroundColor: c.bg },
     content:  { padding: HP, paddingBottom: rs(48) },
 
     header:   { marginBottom: 20 },

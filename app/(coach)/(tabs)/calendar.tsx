@@ -1101,7 +1101,7 @@ export default function CalendarScreen() {
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-    root: { flex: 1 },
+    root: { flex: 1, backgroundColor: c.bg },
     scroll: { flex: 1 },
     content: { padding: 16, paddingBottom: 24 },
 

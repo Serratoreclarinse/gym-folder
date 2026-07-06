@@ -95,7 +95,7 @@ export default function CoachSessionsScreen() {
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-    scroll: { flex: 1 },
+    scroll: { flex: 1, backgroundColor: c.bg },
     content: { padding: 20, paddingBottom: 40 },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
     count: { ...Typography.body, color: c.textSecondary },

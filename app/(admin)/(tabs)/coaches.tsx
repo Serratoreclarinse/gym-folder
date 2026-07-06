@@ -169,7 +169,7 @@ export default function AdminCoachesScreen() {
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-    root: { flex: 1 },
+    root: { flex: 1, backgroundColor: c.bg },
 
     toolbar: { borderBottomWidth: 1, borderBottomColor: c.border, padding: 12 },
     toolbarDesktop: { padding: 20, paddingBottom: 16 },

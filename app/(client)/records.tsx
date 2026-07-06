@@ -610,7 +610,7 @@ export default function RecordsScreen() {
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-    scroll: { flex: 1 },
+    scroll: { flex: 1, backgroundColor: c.bg },
     content: { padding: PAD, paddingTop: 24 },
 
     titleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 12 },

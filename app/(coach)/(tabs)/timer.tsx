@@ -247,6 +247,7 @@ function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
     container: {
       flex: 1,
+      backgroundColor: c.bg,
       paddingHorizontal: 24,
       paddingTop: 16,
       alignItems: 'center',

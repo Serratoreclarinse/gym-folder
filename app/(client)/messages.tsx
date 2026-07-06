@@ -173,7 +173,7 @@ export default function ClientMessagesScreen() {
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-    root: { flex: 1 },
+    root: { flex: 1, backgroundColor: c.bg },
 
     noCoach: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 8 },
     noCoachText: { ...Typography.subtitle, color: c.textPrimary, textAlign: 'center', marginTop: 12 },

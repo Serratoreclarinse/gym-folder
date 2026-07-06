@@ -582,7 +582,7 @@ function makeStyles(c: ColorScheme) {
       borderBottomWidth: 1,
       borderBottomColor: c.border,
     },
-    scroll: { flex: 1 },
+    scroll: { flex: 1, backgroundColor: c.bg },
     content: { padding: HP, paddingBottom: rs(40) },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: rs(20) },
     greeting: { ...Typography.title, color: c.textPrimary, marginBottom: 4 },
