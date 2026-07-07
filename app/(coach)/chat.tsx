@@ -12,6 +12,8 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useChat } from '@/hooks/useChat';
+import { useAuth } from '@/context/AuthContext';
+import { sendPushNotification } from '@/lib/pushNotifications';
 import { Typography, ColorScheme } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 
@@ -32,6 +34,7 @@ export default function CoachChatScreen() {
   const { clientId, clientName } = useLocalSearchParams<{ clientId: string; clientName: string }>();
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
+  const { profile } = useAuth();
   const { messages, loading, sendMessage, myId } = useChat(clientId);
   const [text, setText] = useState('');
   const listRef = useRef<FlatList>(null);
@@ -44,8 +47,14 @@ export default function CoachChatScreen() {
 
   const handleSend = () => {
     if (!text.trim()) return;
-    sendMessage(text);
+    const msg = text.trim();
+    sendMessage(msg);
     setText('');
+    sendPushNotification(clientId, {
+      title: profile?.name ?? 'Your Coach',
+      body: msg,
+      data: { screen: 'messages' },
+    });
   };
 
   // Group messages by day

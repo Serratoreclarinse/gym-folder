@@ -6,6 +6,8 @@ import {
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
+import { registerPushToken } from '@/lib/pushNotifications';
+import { useAuth } from '@/context/AuthContext';
 import { ColorScheme, Typography } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 
@@ -48,8 +50,13 @@ function daysUntil(dateStr: string): number {
 export default function AdminDashboardScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
+  const { profile } = useAuth();
   const { colors, isDark, toggleTheme } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
+
+  useEffect(() => {
+    if (profile?.id) registerPushToken(profile.id);
+  }, [profile?.id]);
 
   const [stats, setStats]   = useState<Stats | null>(null);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);

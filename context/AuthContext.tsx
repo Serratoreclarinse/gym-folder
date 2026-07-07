@@ -38,6 +38,7 @@ type AuthContextType = {
   profile: Profile | null;
   loading: boolean;
   profileError: string | null;
+  needsPasswordReset: boolean;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
@@ -48,6 +49,7 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   loading: true,
   profileError: null,
+  needsPasswordReset: false,
   signOut: async () => {},
   refreshProfile: async () => {},
 });
@@ -77,6 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [needsPasswordReset, setNeedsPasswordReset] = useState(false);
 
   async function syncProfileFromDB(userId: string, jwtRole: UserRole) {
     try {
@@ -116,6 +119,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         saveWebSession(session);
         setSession(session);
 
+        if (event === 'PASSWORD_RECOVERY') {
+          setNeedsPasswordReset(true);
+        }
+
         if (session?.user) {
           const metaProfile = buildProfileFromSession(session);
           setProfile(metaProfile);
@@ -124,6 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else {
           setProfile(null);
           setProfileError(null);
+          setNeedsPasswordReset(false);
         }
 
         if (event === 'INITIAL_SESSION') {
@@ -167,7 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ session, user: session?.user ?? null, profile, loading, profileError, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ session, user: session?.user ?? null, profile, loading, profileError, needsPasswordReset, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

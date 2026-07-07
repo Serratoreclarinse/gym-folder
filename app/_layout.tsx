@@ -37,7 +37,7 @@ function useAuthDeepLink() {
 // This avoids the bug where index.tsx was unmounted after redirecting to login
 // and could no longer react to SIGNED_IN events.
 function AuthNavigation() {
-  const { session, profile, loading } = useAuth();
+  const { session, profile, loading, needsPasswordReset } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -45,9 +45,15 @@ function AuthNavigation() {
     if (loading) return;
 
     const inAuthGroup = segments[0] === '(auth)';
+    const onResetScreen = segments[1] === 'reset-password';
     const inCoachGroup = segments[0] === '(coach)';
     const inClientGroup = segments[0] === '(client)';
     const inAdminGroup = segments[0] === '(admin)';
+
+    if (needsPasswordReset) {
+      if (!onResetScreen) router.replace('/(auth)/reset-password');
+      return;
+    }
 
     if (!session) {
       if (!inAuthGroup) router.replace('/(auth)/login');
@@ -60,7 +66,7 @@ function AuthNavigation() {
         router.replace('/(admin)');
       }
     }
-  }, [session, profile, loading, segments]);
+  }, [session, profile, loading, needsPasswordReset, segments]);
 
   return null;
 }

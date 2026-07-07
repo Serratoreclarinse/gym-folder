@@ -13,7 +13,7 @@ import { useCoachBookingRequests } from '@/hooks/useBookingRequests';
 import { getDaysUntilBirthday } from '@/hooks/useBirthdays';
 import { useAnnouncements } from '@/hooks/useAnnouncements';
 import { supabase } from '@/lib/supabase';
-import { sendPushNotification } from '@/lib/pushNotifications';
+import { registerPushToken, sendPushNotification } from '@/lib/pushNotifications';
 import { useActiveSessionContext } from '@/context/ActiveSessionContext';
 import { ActiveSessionCard } from '@/components/ActiveSessionCard';
 import { NextSessionCard } from '@/components/NextSessionCard';
@@ -118,6 +118,10 @@ export default function CoachDashboard() {
     id: string; client_name: string; from_coach_id: string; from_coach_name: string;
     package_type: string; sessions_remaining: number; notes: string | null;
   }[]>([]);
+
+  useEffect(() => {
+    if (profile?.id) registerPushToken(profile.id);
+  }, [profile?.id]);
 
   const fetchIncomingTransfers = useCallback(async () => {
     if (!profile?.id) return;
