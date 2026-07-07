@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, useWindowDimensions, View,
@@ -201,7 +202,7 @@ export default function AdminDashboardScreen() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   if (loading && !stats) {
     return (
