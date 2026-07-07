@@ -52,11 +52,22 @@ export function useMyCheckins(clientId: string | null, coachId: string | null) {
   useEffect(() => { load(); }, [load]);
 
   const upsert = async (input: CheckinInput): Promise<{ error: string | null }> => {
-    if (!clientId || !coachId) return { error: 'Not authenticated' };
+    if (!clientId) return { error: 'Not authenticated' };
+    let resolvedCoachId = coachId;
+    if (!resolvedCoachId) {
+      const { data } = await supabase
+        .from('packages')
+        .select('coach_id')
+        .eq('client_id', clientId)
+        .eq('status', 'active')
+        .single();
+      resolvedCoachId = data?.coach_id ?? null;
+    }
+    if (!resolvedCoachId) return { error: 'No active coaching package found' };
     const week_date = thisWeekMonday();
     const payload = {
       client_id: clientId,
-      coach_id: coachId,
+      coach_id: resolvedCoachId,
       week_date,
       weight_kg: input.weight_kg ? Number(input.weight_kg) : null,
       mood: input.mood,
