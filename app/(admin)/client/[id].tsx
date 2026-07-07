@@ -110,6 +110,15 @@ export default function ClientDetailScreen() {
   const [renewing, setRenewing] = useState(false);
   const [deactivating, setDeactivating] = useState(false);
 
+  // Assign package modal (first-time, no previous package)
+  const [assignModal, setAssignModal] = useState(false);
+  const [coaches, setCoaches] = useState<{ id: string; name: string }[]>([]);
+  const [assignCoachId, setAssignCoachId] = useState('');
+  const [assignPkgType, setAssignPkgType] = useState<PackageType>('1hr');
+  const [assignTotal, setAssignTotal] = useState('');
+  const [assignWeeks, setAssignWeeks] = useState('');
+  const [assigning, setAssigning] = useState(false);
+
   const handleDeactivateAccount = async () => {
     const msg = `Move ${client?.name ?? 'this client'} to the Recycle Bin? They will no longer appear in the clients list. You can restore them later.`;
     if (Platform.OS === 'web') {
@@ -288,6 +297,37 @@ export default function ClientDetailScreen() {
     load();
   };
 
+  const openAssignModal = async () => {
+    const { data } = await supabase.from('profiles').select('id, name').eq('role', 'coach').is('deactivated_at', null).order('name');
+    setCoaches(data ?? []);
+    setAssignCoachId('');
+    setAssignPkgType('1hr');
+    setAssignTotal('');
+    setAssignWeeks('');
+    setAssignModal(true);
+  };
+
+  const handleAssign = async () => {
+    if (!assignCoachId) { Alert.alert('Select a coach', 'Choose which coach this client belongs to.'); return; }
+    if (!assignTotal || parseInt(assignTotal, 10) < 1) { Alert.alert('Invalid', 'Enter total sessions (at least 1).'); return; }
+    if (!client) return;
+    setAssigning(true);
+    const { error } = await supabase.from('packages').insert({
+      coach_id: assignCoachId,
+      client_id: client.id,
+      package_type: assignPkgType,
+      total_sessions: parseInt(assignTotal, 10),
+      sessions_used: 0,
+      status: 'active',
+      start_date: new Date().toISOString().slice(0, 10),
+      ...(assignWeeks && parseInt(assignWeeks, 10) > 0 ? { duration_weeks: parseInt(assignWeeks, 10) } : {}),
+    });
+    setAssigning(false);
+    if (error) { Alert.alert('Error', error.message); return; }
+    setAssignModal(false);
+    load();
+  };
+
   const handleSendPaymentRequest = async () => {
     if (!id) return;
     setSendingPayReq(true);
@@ -407,7 +447,9 @@ export default function ClientDetailScreen() {
                   <Text style={s.renewFromEmptyText}>RENEW PACKAGE</Text>
                 </Pressable>
               ) : (
-                <Text style={s.noPkgSub}>Use Add Client to create a package.</Text>
+                <Pressable style={s.renewFromEmpty} onPress={openAssignModal}>
+                  <Text style={s.renewFromEmptyText}>ASSIGN PACKAGE</Text>
+                </Pressable>
               )}
             </View>
           ) : (
@@ -732,6 +774,80 @@ export default function ClientDetailScreen() {
         </View>
       </Modal>
 
+      {/* Assign Package Modal */}
+      <Modal visible={assignModal} transparent animationType="slide">
+        <View style={s.overlay}>
+          <View style={s.modalBox}>
+            <Text style={s.modalTitle}>Assign Package</Text>
+            <Text style={s.modalSub}>Create a first package and assign a coach for this client.</Text>
+
+            <Text style={s.modalLabel}>Coach *</Text>
+            <View style={s.coachList}>
+              {coaches.map((c) => (
+                <Pressable
+                  key={c.id}
+                  style={[s.coachOption, assignCoachId === c.id && s.coachOptionActive]}
+                  onPress={() => setAssignCoachId(c.id)}
+                >
+                  <Text style={[s.coachOptionText, assignCoachId === c.id && s.coachOptionTextActive]}>
+                    {c.name}
+                  </Text>
+                  {assignCoachId === c.id && <Ionicons name="checkmark" size={16} color={colors.accent} />}
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={s.modalLabel}>Session Duration</Text>
+            <View style={s.segmented}>
+              {PKG_OPTIONS.map((opt) => (
+                <Pressable
+                  key={opt.value}
+                  style={[s.segment, assignPkgType === opt.value && s.segmentActive]}
+                  onPress={() => setAssignPkgType(opt.value)}
+                >
+                  <Text style={[s.segmentText, assignPkgType === opt.value && s.segmentActiveText]}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={s.modalLabel}>Total Sessions *</Text>
+            <TextInput
+              style={s.modalInput}
+              value={assignTotal}
+              onChangeText={(v) => setAssignTotal(v.replace(/[^0-9]/g, ''))}
+              placeholder="e.g. 12"
+              placeholderTextColor={colors.textSecondary}
+              keyboardType="number-pad"
+            />
+
+            <Text style={s.modalLabel}>Duration (weeks) — optional</Text>
+            <TextInput
+              style={s.modalInput}
+              value={assignWeeks}
+              onChangeText={(v) => setAssignWeeks(v.replace(/[^0-9]/g, ''))}
+              placeholder="e.g. 6"
+              placeholderTextColor={colors.textSecondary}
+              keyboardType="number-pad"
+            />
+
+            <View style={s.modalActions}>
+              <Pressable
+                style={[s.modalBtnPrimary, assigning && { opacity: 0.5 }]}
+                onPress={handleAssign}
+                disabled={assigning}
+              >
+                <Text style={s.modalBtnPrimaryText}>{assigning ? 'SAVING…' : 'ASSIGN'}</Text>
+              </Pressable>
+              <Pressable style={s.modalBtnCancel} onPress={() => setAssignModal(false)}>
+                <Text style={s.modalBtnCancelText}>CANCEL</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* ── Request Payment Modal ── */}
       <Modal visible={showPayReqModal} transparent animationType="slide" onRequestClose={() => setShowPayReqModal(false)}>
         <View style={s.overlay}>
@@ -844,6 +960,17 @@ function makeStyles(c: ColorScheme) {
     cancelEditText: { color: c.textSecondary, fontSize: 12, fontWeight: '700' },
 
     sectionTitle: { ...Typography.label, color: c.textSecondary, marginBottom: 12 },
+
+    coachList: { gap: 6, marginBottom: 14 },
+    coachOption: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingVertical: 10, paddingHorizontal: 12,
+      borderRadius: 10, borderWidth: 1, borderColor: c.border,
+      backgroundColor: c.bg,
+    },
+    coachOptionActive: { borderColor: c.accent, backgroundColor: c.accent + '12' },
+    coachOptionText: { ...Typography.body, color: c.textPrimary },
+    coachOptionTextActive: { color: c.accent, fontWeight: '600' },
 
     // No package
     noPkgCard: {
