@@ -803,15 +803,6 @@ export default function LogSessionScreen() {
                   </ScrollView>
                 </View>
               )}
-              <TextInput
-                style={[styles.input, { marginTop: 6 }]}
-                value={sessionTime}
-                onChangeText={(v) => { setSessionTime(v); setShowTimePicker(false); }}
-                placeholder="9:00 AM"
-                placeholderTextColor={colors.textSecondary}
-                returnKeyType="done"
-              />
-              <Text style={styles.timeFormatHint}>Type manually: 9:00 AM  or  14:30</Text>
             </View>
           </>
         )}
@@ -1261,12 +1252,6 @@ function makeStyles(c: ColorScheme) {
   },
   saveBtnDisabled: { opacity: 0.35 },
   saveBtnText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
-  timeFormatHint: {
-    fontSize: 11,
-    color: c.textSecondary,
-    marginTop: 5,
-    letterSpacing: 0.2,
-  },
   lastWeightHint: {
     fontSize: 11,
     color: c.accent,
