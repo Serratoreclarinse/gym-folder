@@ -20,6 +20,7 @@ import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 import { useClientPRs, type PersonalRecord } from '@/hooks/useClientPRs';
 import { useMyProgressPhotos, type ProgressPhoto } from '@/hooks/useProgressPhotos';
 import { useMyMeasurements } from '@/hooks/useBodyMeasurements';
+import { useMyCheckins, thisWeekMonday, type CheckinInput } from '@/hooks/useWeeklyCheckins';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Typography } from '@/constants/theme';
@@ -275,6 +276,55 @@ export default function RecordsScreen() {
   const [noteText, setNoteText] = useState('');
   const [sending, setSending] = useState(false);
   const [viewing, setViewing] = useState<ProgressPhoto | null>(null);
+  // Photo compare mode
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareSelected, setCompareSelected] = useState<string[]>([]);
+  const [comparePhotos, setComparePhotos] = useState<[ProgressPhoto, ProgressPhoto] | null>(null);
+
+  // Weekly check-in
+  const { checkins, thisWeek, upsert: upsertCheckin } = useMyCheckins(user?.id ?? null, coachId);
+  const [checkinModal, setCheckinModal] = useState(false);
+  const [ciMood, setCiMood] = useState(3);
+  const [ciSleep, setCiSleep] = useState(3);
+  const [ciEnergy, setCiEnergy] = useState(3);
+  const [ciWeight, setCiWeight] = useState('');
+  const [ciNotes, setCiNotes] = useState('');
+  const [ciSaving, setCiSaving] = useState(false);
+
+  function openCheckinModal() {
+    if (thisWeek) {
+      setCiMood(thisWeek.mood ?? 3);
+      setCiSleep(thisWeek.sleep_quality ?? 3);
+      setCiEnergy(thisWeek.energy_level ?? 3);
+      setCiWeight(thisWeek.weight_kg?.toString() ?? '');
+      setCiNotes(thisWeek.notes ?? '');
+    } else {
+      setCiMood(3); setCiSleep(3); setCiEnergy(3); setCiWeight(''); setCiNotes('');
+    }
+    setCheckinModal(true);
+  }
+
+  async function handleSaveCheckin() {
+    setCiSaving(true);
+    const { error } = await upsertCheckin({ mood: ciMood, sleep_quality: ciSleep, energy_level: ciEnergy, weight_kg: ciWeight, notes: ciNotes } as CheckinInput);
+    setCiSaving(false);
+    if (error) { Alert.alert('Error', error); return; }
+    setCheckinModal(false);
+  }
+
+  function toggleCompareSelect(photo: ProgressPhoto) {
+    setCompareSelected((prev) => {
+      if (prev.includes(photo.id)) return prev.filter((id) => id !== photo.id);
+      if (prev.length >= 2) return prev;
+      const next = [...prev, photo.id];
+      if (next.length === 2) {
+        const p1 = photos.find((p) => p.id === next[0])!;
+        const p2 = photos.find((p) => p.id === next[1])!;
+        setComparePhotos([p1, p2]);
+      }
+      return next;
+    });
+  }
 
   async function handlePickPhoto() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -400,6 +450,51 @@ export default function RecordsScreen() {
           ))
         )}
 
+        {/* ── Weekly Check-in ── */}
+        <View style={s.checkinHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.sectionHeading}>WEEKLY CHECK-IN</Text>
+            <Text style={s.sub}>How are you feeling this week?</Text>
+          </View>
+          <Pressable style={s.sendBtn} onPress={openCheckinModal}>
+            <Ionicons name={thisWeek ? 'create-outline' : 'add-outline'} size={15} color={colors.accent} />
+            <Text style={s.sendBtnText}>{thisWeek ? 'Edit' : 'Fill In'}</Text>
+          </Pressable>
+        </View>
+
+        {thisWeek ? (
+          <View style={s.checkinCard}>
+            <View style={s.checkinRow}>
+              <Text style={s.checkinLabel}>Mood</Text>
+              <Text style={s.checkinEmoji}>{'😞😕😐🙂😄'[thisWeek.mood! - 1]}</Text>
+              <Text style={s.checkinValue}>{thisWeek.mood}/5</Text>
+            </View>
+            <View style={s.checkinRow}>
+              <Text style={s.checkinLabel}>Sleep</Text>
+              <Text style={s.checkinEmoji}>{'🌙'}</Text>
+              <Text style={s.checkinValue}>{thisWeek.sleep_quality}/5</Text>
+            </View>
+            <View style={s.checkinRow}>
+              <Text style={s.checkinLabel}>Energy</Text>
+              <Text style={s.checkinEmoji}>{'⚡'}</Text>
+              <Text style={s.checkinValue}>{thisWeek.energy_level}/5</Text>
+            </View>
+            {thisWeek.weight_kg && (
+              <View style={s.checkinRow}>
+                <Text style={s.checkinLabel}>Weight</Text>
+                <Text style={s.checkinEmoji}>{'⚖️'}</Text>
+                <Text style={s.checkinValue}>{thisWeek.weight_kg} kg</Text>
+              </View>
+            )}
+            {thisWeek.notes ? <Text style={s.checkinNotes}>{thisWeek.notes}</Text> : null}
+          </View>
+        ) : (
+          <View style={s.photoEmpty}>
+            <Ionicons name="clipboard-outline" size={32} color={colors.border} />
+            <Text style={s.photoEmptyText}>No check-in this week yet</Text>
+          </View>
+        )}
+
         {/* ── Progress Photos ── */}
         {coachId ? (
           <>
@@ -408,11 +503,28 @@ export default function RecordsScreen() {
                 <Text style={s.sectionHeading}>PROGRESS PHOTOS</Text>
                 <Text style={s.sub}>Sent privately to your coach only.</Text>
               </View>
-              <Pressable style={s.sendBtn} onPress={handlePickPhoto}>
-                <Ionicons name="camera-outline" size={15} color={colors.accent} />
-                <Text style={s.sendBtnText}>Send Photo</Text>
-              </Pressable>
+              <View style={s.photoHeaderBtns}>
+                {photos.length >= 2 && (
+                  <Pressable
+                    style={[s.sendBtn, compareMode && { backgroundColor: colors.accent + '20', borderColor: colors.accent }]}
+                    onPress={() => { setCompareMode((v) => !v); setCompareSelected([]); setComparePhotos(null); }}
+                  >
+                    <Ionicons name="git-compare-outline" size={15} color={colors.accent} />
+                    <Text style={s.sendBtnText}>{compareMode ? 'Cancel' : 'Compare'}</Text>
+                  </Pressable>
+                )}
+                <Pressable style={s.sendBtn} onPress={handlePickPhoto}>
+                  <Ionicons name="camera-outline" size={15} color={colors.accent} />
+                  <Text style={s.sendBtnText}>Send</Text>
+                </Pressable>
+              </View>
             </View>
+
+            {compareMode && (
+              <Text style={s.compareHint}>
+                {compareSelected.length === 0 ? 'Select 2 photos to compare' : compareSelected.length === 1 ? 'Select 1 more photo' : 'Tap Compare to view'}
+              </Text>
+            )}
 
             {photos.length === 0 ? (
               <View style={s.photoEmpty}>
@@ -421,12 +533,35 @@ export default function RecordsScreen() {
               </View>
             ) : (
               <View style={s.photoGrid}>
-                {photos.map((p) => (
-                  <Pressable key={p.id} onPress={() => setViewing(p)}>
-                    <Image source={{ uri: p.file_url }} style={s.photoThumb} resizeMode="cover" />
-                  </Pressable>
-                ))}
+                {photos.map((p) => {
+                  const isSelected = compareSelected.includes(p.id);
+                  return (
+                    <Pressable
+                      key={p.id}
+                      onPress={() => compareMode ? toggleCompareSelect(p) : setViewing(p)}
+                      style={s.photoThumbWrap}
+                    >
+                      <Image source={{ uri: p.file_url }} style={s.photoThumb} resizeMode="cover" />
+                      {compareMode && (
+                        <View style={[s.compareCheck, isSelected && { backgroundColor: colors.accent, borderColor: colors.accent }]}>
+                          {isSelected && <Ionicons name="checkmark" size={12} color="#fff" />}
+                        </View>
+                      )}
+                    </Pressable>
+                  );
+                })}
               </View>
+            )}
+
+            {compareMode && compareSelected.length === 2 && (
+              <Pressable style={s.compareBtn} onPress={() => {
+                const p1 = photos.find((p) => p.id === compareSelected[0])!;
+                const p2 = photos.find((p) => p.id === compareSelected[1])!;
+                setComparePhotos([p1, p2]);
+              }}>
+                <Ionicons name="git-compare-outline" size={16} color="#fff" />
+                <Text style={s.compareBtnText}>VIEW COMPARISON</Text>
+              </Pressable>
             )}
           </>
         ) : null}
@@ -577,6 +712,79 @@ export default function RecordsScreen() {
             <Text style={s.sendConfirmText}>{sending ? 'Sending…' : 'Send'}</Text>
           </Pressable>
         </View>
+      </Modal>
+
+      {/* ── Photo comparison modal ── */}
+      <Modal visible={!!comparePhotos} transparent animationType="fade" onRequestClose={() => { setComparePhotos(null); setCompareSelected([]); setCompareMode(false); }}>
+        <View style={s.compareOverlay}>
+          <Pressable style={s.viewerClose} onPress={() => { setComparePhotos(null); setCompareSelected([]); setCompareMode(false); }}>
+            <Ionicons name="close" size={26} color="#fff" />
+          </Pressable>
+          <Text style={s.compareTitle}>BEFORE / AFTER</Text>
+          {comparePhotos && (
+            <View style={s.compareSplit}>
+              <View style={s.compareHalf}>
+                <Image source={{ uri: comparePhotos[0].file_url }} style={s.compareImg} resizeMode="cover" />
+                <Text style={s.compareDate}>{fmtDateTime(comparePhotos[0].sent_at)}</Text>
+              </View>
+              <View style={s.compareDivider} />
+              <View style={s.compareHalf}>
+                <Image source={{ uri: comparePhotos[1].file_url }} style={s.compareImg} resizeMode="cover" />
+                <Text style={s.compareDate}>{fmtDateTime(comparePhotos[1].sent_at)}</Text>
+              </View>
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      {/* ── Weekly check-in modal ── */}
+      <Modal visible={checkinModal} transparent animationType="slide" onRequestClose={() => setCheckinModal(false)}>
+        <Pressable style={s.modalBackdrop} onPress={() => setCheckinModal(false)} />
+        <ScrollView style={s.measModalSheet} keyboardShouldPersistTaps="handled">
+          <Text style={s.modalTitle}>Weekly Check-in</Text>
+          <Text style={[s.sub, { marginBottom: 20 }]}>Week of {new Date(thisWeekMonday() + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</Text>
+
+          {([
+            { label: 'Mood', emoji: ['😞','😕','😐','🙂','😄'], value: ciMood, set: setCiMood },
+            { label: 'Sleep Quality', emoji: ['😴','😪','😑','😌','🌙'], value: ciSleep, set: setCiSleep },
+            { label: 'Energy Level', emoji: ['🪫','😓','😐','💪','⚡'], value: ciEnergy, set: setCiEnergy },
+          ] as const).map(({ label, emoji, value, set }) => (
+            <View key={label} style={s.ciRow}>
+              <Text style={s.ciLabel}>{label}</Text>
+              <View style={s.ciButtons}>
+                {[1,2,3,4,5].map((n) => (
+                  <Pressable key={n} style={[s.ciBtn, value === n && s.ciBtnActive]} onPress={() => (set as any)(n)}>
+                    <Text style={s.ciBtnEmoji}>{emoji[n-1]}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ))}
+
+          <Text style={s.ciLabel}>Weight (kg) — optional</Text>
+          <TextInput
+            style={[s.measInput, { marginBottom: 16 }]}
+            placeholder="e.g. 72.5"
+            placeholderTextColor={colors.textSecondary}
+            keyboardType="decimal-pad"
+            value={ciWeight}
+            onChangeText={setCiWeight}
+          />
+          <Text style={s.ciLabel}>Notes — optional</Text>
+          <TextInput
+            style={[s.measInput, { height: 80, textAlignVertical: 'top', paddingTop: 10, marginBottom: 20 }]}
+            placeholder="How are you feeling? Any concerns?"
+            placeholderTextColor={colors.textSecondary}
+            value={ciNotes}
+            onChangeText={setCiNotes}
+            multiline
+            maxLength={500}
+          />
+          <Pressable style={[s.sendConfirmBtn, ciSaving && { opacity: 0.6 }]} onPress={handleSaveCheckin} disabled={ciSaving}>
+            <Text style={s.sendConfirmText}>{ciSaving ? 'Saving…' : 'Save Check-in'}</Text>
+          </Pressable>
+          <View style={{ height: 40 }} />
+        </ScrollView>
       </Modal>
 
       {/* ── Fullscreen viewer ── */}
@@ -735,5 +943,60 @@ function makeStyles(c: ColorScheme) {
     viewerCaption: { marginTop: 16, alignItems: 'center', gap: 4, paddingHorizontal: 24 },
     viewerDate: { ...Typography.caption, color: 'rgba(255,255,255,0.6)' },
     viewerNote: { ...Typography.body, color: '#fff', textAlign: 'center' },
+
+    // Photo compare
+    photoHeaderBtns: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+    photoThumbWrap: { position: 'relative' },
+    compareCheck: {
+      position: 'absolute', top: 4, right: 4,
+      width: 20, height: 20, borderRadius: 10,
+      backgroundColor: 'rgba(0,0,0,0.4)', borderWidth: 1.5, borderColor: '#fff',
+      alignItems: 'center', justifyContent: 'center',
+    },
+    compareHint: { ...Typography.caption, color: c.textSecondary, marginBottom: 8 },
+    compareBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      backgroundColor: c.accent, borderRadius: 12,
+      paddingVertical: 12, justifyContent: 'center', marginTop: 12,
+    },
+    compareBtnText: { ...Typography.label, color: '#fff', letterSpacing: 1 },
+    compareOverlay: {
+      flex: 1, backgroundColor: 'rgba(0,0,0,0.95)',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    compareTitle: { ...Typography.label, color: 'rgba(255,255,255,0.5)', letterSpacing: 2, marginBottom: 12 },
+    compareSplit: { flexDirection: 'row', width: SCREEN_W, gap: 2 },
+    compareHalf: { flex: 1, alignItems: 'center' },
+    compareImg: { width: (SCREEN_W - 2) / 2, height: SCREEN_W * 0.7 },
+    compareDivider: { width: 2, backgroundColor: 'rgba(255,255,255,0.15)' },
+    compareDate: { ...Typography.caption, color: 'rgba(255,255,255,0.5)', marginTop: 6, textAlign: 'center' },
+
+    // Weekly check-in
+    checkinHeader: {
+      flexDirection: 'row', alignItems: 'center',
+      justifyContent: 'space-between', marginBottom: 12,
+    },
+    checkinCard: {
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border,
+      padding: 14, marginBottom: 24, gap: 8,
+    },
+    checkinRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    checkinLabel: { ...Typography.caption, color: c.textSecondary, flex: 1 },
+    checkinEmoji: { fontSize: 18 },
+    checkinValue: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    checkinNotes: { ...Typography.caption, color: c.textSecondary, marginTop: 4 },
+
+    // Check-in modal
+    ciRow: { marginBottom: 16 },
+    ciLabel: { ...Typography.label, color: c.textSecondary, marginBottom: 8 },
+    ciButtons: { flexDirection: 'row', gap: 8 },
+    ciBtn: {
+      flex: 1, alignItems: 'center', paddingVertical: 10,
+      backgroundColor: c.surface, borderRadius: 10,
+      borderWidth: 1, borderColor: c.border,
+    },
+    ciBtnActive: { backgroundColor: c.accent + '20', borderColor: c.accent },
+    ciBtnEmoji: { fontSize: 22 },
   });
 }
