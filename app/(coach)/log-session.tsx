@@ -776,14 +776,14 @@ export default function LogSessionScreen() {
                   value={sessionTime}
                   onChangeText={(v) => { setSessionTime(v); setShowTimePicker(false); }}
                   placeholder="e.g. 9:00 AM"
-                  placeholderTextColor={Colors.textSecondary}
+                  placeholderTextColor={colors.textSecondary}
                   returnKeyType="done"
                 />
                 <Pressable onPress={() => setShowTimePicker((v) => !v)} hitSlop={8}>
                   <Ionicons
                     name={showTimePicker ? 'chevron-up' : 'chevron-down'}
                     size={18}
-                    color={Colors.textSecondary}
+                    color={colors.textSecondary}
                   />
                 </Pressable>
               </View>
