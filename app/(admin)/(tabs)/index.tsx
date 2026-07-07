@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator, Pressable, RefreshControl,
@@ -30,6 +30,14 @@ type AlertItem = {
   route: string;
 };
 
+type RatingItem = {
+  id: string;
+  clientName: string;
+  clientId: string;
+  rating: number;
+  sessionDate: string;
+};
+
 const LEVEL_COLOR = {
   critical: '#FF1744',
   warning:  '#FF6D00',
@@ -59,16 +67,20 @@ export default function AdminDashboardScreen() {
     if (profile?.id) registerPushToken(profile.id);
   }, [profile?.id]);
 
-  const [stats, setStats]   = useState<Stats | null>(null);
-  const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [stats, setStats]     = useState<Stats | null>(null);
+  const [alerts, setAlerts]   = useState<AlertItem[]>([]);
+  const [ratings, setRatings] = useState<RatingItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     const ms = monthStart();
 
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+
     const [coachRes, clientRes, pkgRes, sessRes, revMonthRes, revAllRes,
-           lowPkgRes, coachAlertRes, neverPaidRes, allPaymentsRes] = await Promise.all([
+           lowPkgRes, coachAlertRes, neverPaidRes, allPaymentsRes,
+           ratingsRes, pendingTransferRes] = await Promise.all([
       supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'coach'),
       supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'client'),
       supabase.from('packages').select('id', { count: 'exact', head: true }).eq('status', 'active'),
@@ -91,6 +103,22 @@ export default function AdminDashboardScreen() {
         .eq('status', 'active'),
       // All payments: get distinct client_ids who have paid
       supabase.from('payments').select('client_id'),
+      // Recent session ratings (last 30 days)
+      supabase
+        .from('workout_sessions')
+        .select(`
+          id, session_date, client_id,
+          client:profiles!workout_sessions_client_id_fkey(name),
+          session_ratings(rating)
+        `)
+        .gte('session_date', thirtyDaysAgo)
+        .order('session_date', { ascending: false })
+        .limit(100),
+      // Pending transfers awaiting admin approval
+      supabase
+        .from('client_transfers')
+        .select('id, client_id, from_coach_id, profiles!client_transfers_client_id_fkey(name)')
+        .eq('status', 'pending_admin'),
     ]);
 
     const revenueThisMonth = (revMonthRes.data ?? []).reduce((s, r: any) => s + Number(r.amount), 0);
@@ -192,6 +220,19 @@ export default function AdminDashboardScreen() {
       });
     }
 
+    // Pending transfer alerts
+    for (const tx of (pendingTransferRes.data ?? []) as any[]) {
+      const clientName = tx.profiles?.name ?? 'Unknown Client';
+      newAlerts.push({
+        id: `tx-${tx.id}`,
+        level: 'notice',
+        icon: 'swap-horizontal-outline',
+        title: `Transfer Request — ${clientName}`,
+        subtitle: 'Pending admin approval',
+        route: '/(admin)/(tabs)/transfers',
+      });
+    }
+
     // Sort: critical first
     newAlerts.sort((a, b) => {
       const order = { critical: 0, warning: 1, notice: 2 };
@@ -199,6 +240,22 @@ export default function AdminDashboardScreen() {
     });
 
     setAlerts(newAlerts);
+
+    // Build ratings list
+    const newRatings: RatingItem[] = [];
+    for (const row of (ratingsRes.data ?? []) as any[]) {
+      const ratingArr = row.session_ratings as { rating: number }[] | null;
+      if (!ratingArr || ratingArr.length === 0) continue;
+      newRatings.push({
+        id: row.id,
+        clientName: row.client?.name ?? 'Unknown',
+        clientId: row.client_id,
+        rating: ratingArr[0].rating,
+        sessionDate: row.session_date,
+      });
+    }
+    setRatings(newRatings);
+
     setLoading(false);
   }, []);
 
@@ -321,6 +378,55 @@ export default function AdminDashboardScreen() {
             </Text>
           </View>
         </View>
+
+        {/* ── Client Ratings ── */}
+        <Text style={[s.sectionTitle, { marginTop: 28 }]}>CLIENT RATINGS (Last 30 Days)</Text>
+        {ratings.length === 0 ? (
+          <View style={s.noAlerts}>
+            <Ionicons name="star-outline" size={20} color={colors.textSecondary} />
+            <Text style={[s.noAlertsText, { color: colors.textSecondary }]}>No ratings yet</Text>
+          </View>
+        ) : (
+          <View style={s.alertsList}>
+            {ratings.map((r, i) => {
+              const stars = Math.round(r.rating);
+              const isHigh = stars >= 4;
+              const isLow  = stars <= 2;
+              const color  = isHigh ? '#4CAF50' : isLow ? '#FF6D00' : '#FF9800';
+              const icon   = isHigh ? 'star' : isLow ? 'star-half-outline' : 'star-outline';
+              const dateStr = new Date(r.sessionDate + 'T00:00:00').toLocaleDateString('en-US', {
+                month: 'short', day: 'numeric',
+              });
+              return (
+                <Pressable
+                  key={r.id}
+                  style={[s.alertRow, { borderLeftColor: color }, i < ratings.length - 1 && s.alertRowBorder]}
+                  onPress={() => router.push(`/(admin)/client/${r.clientId}` as any)}
+                >
+                  <View style={[s.alertIconWrap, { backgroundColor: color + '18' }]}>
+                    <Ionicons name={icon as any} size={18} color={color} />
+                  </View>
+                  <View style={s.alertText}>
+                    <Text style={[s.alertTitle, { color: colors.textPrimary }]}>
+                      {r.clientName}
+                    </Text>
+                    <Text style={s.alertSub}>{dateStr} · {stars} star{stars !== 1 ? 's' : ''}</Text>
+                  </View>
+                  <View style={s.starRow}>
+                    {[1,2,3,4,5].map((n) => (
+                      <Ionicons
+                        key={n}
+                        name={n <= stars ? 'star' : 'star-outline'}
+                        size={12}
+                        color={color}
+                      />
+                    ))}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
       </View>
     </ScrollView>
   );
@@ -391,6 +497,8 @@ function makeStyles(c: ColorScheme) {
   statValue: { fontSize: 24, fontWeight: '800', lineHeight: 28 },
   statValueDesktop: { fontSize: 30, lineHeight: 34 },
   statLabel: { ...Typography.caption, color: c.textSecondary, lineHeight: 15, fontSize: 11 },
+
+  starRow: { flexDirection: 'row', gap: 2, alignItems: 'center' },
 
   // Revenue
   revenueCard: { flexDirection: 'row', backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: '#4CAF5030', overflow: 'hidden' },
