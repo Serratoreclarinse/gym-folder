@@ -793,7 +793,7 @@ export default function ClientDetailScreen() {
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-    scroll: { flex: 1 },
+    scroll: { flex: 1, backgroundColor: c.bg },
     content: { padding: 20, paddingBottom: 48 },
     contentDesktop: { padding: 40, paddingTop: 32 },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },

@@ -268,7 +268,7 @@ function makeStyles(c: ColorScheme) {
     tabLabel: { ...Typography.body, color: c.textSecondary, fontWeight: '600' },
     tabLabelActive: { color: c.bg },
 
-    scroll: { flex: 1 },
+    scroll: { flex: 1, backgroundColor: c.bg },
     content: { paddingHorizontal: 16, paddingBottom: 40 },
 
     section: { marginBottom: 20 },

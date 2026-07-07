@@ -797,8 +797,8 @@ export default function RevenueScreen() {
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-  root: { flex: 1 },
-  scroll: { flex: 1 },
+  root: { flex: 1, backgroundColor: c.bg },
+  scroll: { flex: 1, backgroundColor: c.bg },
   content: { padding: 20, paddingBottom: 32 },
 
   // Summary grid

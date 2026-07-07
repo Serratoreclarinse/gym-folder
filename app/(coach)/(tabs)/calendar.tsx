@@ -1102,7 +1102,7 @@ export default function CalendarScreen() {
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: c.bg },
-    scroll: { flex: 1 },
+    scroll: { flex: 1, backgroundColor: c.bg },
     content: { padding: 16, paddingBottom: 24 },
 
     // Week navigation

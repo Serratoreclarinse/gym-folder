@@ -151,7 +151,7 @@ export default function CoachChatScreen() {
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-    root: { flex: 1 },
+    root: { flex: 1, backgroundColor: c.bg },
 
     header: {
       flexDirection: 'row', alignItems: 'center', gap: 10,

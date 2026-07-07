@@ -299,7 +299,7 @@ export default function ScheduleSessionScreen() {
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-    scroll: { flex: 1 },
+    scroll: { flex: 1, backgroundColor: c.bg },
     content: { padding: 20 },
     title: {
       ...Typography.label, color: c.textPrimary,

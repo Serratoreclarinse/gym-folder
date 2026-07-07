@@ -178,6 +178,7 @@ function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: c.bg,
   },
   inner: {
     flex: 1,

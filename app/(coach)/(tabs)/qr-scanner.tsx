@@ -578,6 +578,7 @@ function makeStyles(c: ColorScheme) {
       justifyContent: 'center',
       padding: 32,
       gap: 14,
+      backgroundColor: c.bg,
     },
 
     // Permission screen

@@ -260,7 +260,7 @@ export default function CoachGuideScreen() {
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-    scroll: { flex: 1 },
+    scroll: { flex: 1, backgroundColor: c.bg },
     content: { padding: 16, paddingBottom: 48 },
 
     hero: {

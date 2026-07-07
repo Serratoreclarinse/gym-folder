@@ -174,7 +174,7 @@ export default function RecycleBinScreen() {
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-    root: { flex: 1 },
+    root: { flex: 1, backgroundColor: c.bg },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
     content: { padding: 16, paddingBottom: 48 },

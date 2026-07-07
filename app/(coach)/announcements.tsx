@@ -671,7 +671,7 @@ function makeAfStyles(colors: ColorScheme) {
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-  scroll: { flex: 1 },
+  scroll: { flex: 1, backgroundColor: c.bg },
   content: { padding: 20, paddingBottom: 100 },
 
   empty: { alignItems: 'center', paddingTop: 80, gap: 8 },

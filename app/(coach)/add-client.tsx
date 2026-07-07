@@ -210,8 +210,8 @@ export default function AddClientScreen() {
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-    kav: { flex: 1 },
-    scroll: { flex: 1 },
+    kav: { flex: 1, backgroundColor: c.bg },
+    scroll: { flex: 1, backgroundColor: c.bg },
     content: { padding: 20, paddingBottom: 60 },
     sectionTitle: { ...Typography.label, color: c.textSecondary, marginBottom: 16 },
     field: { marginBottom: 16 },

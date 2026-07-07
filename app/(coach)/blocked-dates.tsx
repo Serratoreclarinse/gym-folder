@@ -228,7 +228,7 @@ function makeStyles(c: ColorScheme) {
     fsSaveTxt:   { color: c.bg, fontWeight: '800', fontSize: 14 },
 
     // Screen styles
-    scroll: { flex: 1 },
+    scroll: { flex: 1, backgroundColor: c.bg },
     content: { padding: 20, paddingBottom: 100 },
 
     empty:      { alignItems: 'center', paddingTop: 80, gap: 8 },

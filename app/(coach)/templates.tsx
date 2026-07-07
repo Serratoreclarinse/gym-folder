@@ -135,7 +135,7 @@ export default function TemplatesScreen() {
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-    container: { flex: 1 },
+    container: { flex: 1, backgroundColor: c.bg },
     list: { padding: 20, paddingBottom: 100 },
     card: {
       backgroundColor: c.surface,

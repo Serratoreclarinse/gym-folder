@@ -311,8 +311,8 @@ function Field({
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
-    kav: { flex: 1 },
-    scroll: { flex: 1 },
+    kav: { flex: 1, backgroundColor: c.bg },
+    scroll: { flex: 1, backgroundColor: c.bg },
     content: { padding: 20, paddingBottom: 60 },
     contentDesktop: { padding: 40, paddingTop: 32, alignItems: 'center' },
     form: {},
