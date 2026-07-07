@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator, Pressable, RefreshControl,
@@ -57,6 +57,14 @@ export default function AdminCoachesScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-coaches-profiles')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => load())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [load]);
 
   const filtered = coaches.filter(
     (c) => !search
