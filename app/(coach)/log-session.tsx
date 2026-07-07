@@ -153,6 +153,7 @@ function ExerciseCard({
   onOpenPicker: (id: string) => void;
 }) {
   const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.exCard}>
       <View style={styles.exCardHeader}>
@@ -640,7 +641,7 @@ export default function LogSessionScreen() {
             ) : (
               activeClients.map((c) => (
                 <Pressable
-                  key={colors.id}
+                  key={c.id}
                   style={[styles.dropdownItem, c.id === selectedClientId && styles.dropdownItemActive]}
                   onPress={() => { setSelectedClientId(c.id); setShowClientPicker(false); }}
                 >
