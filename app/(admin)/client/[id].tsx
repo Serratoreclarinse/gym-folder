@@ -34,8 +34,16 @@ type SessionRow = {
   id: string;
   sessionDate: string;
   durationMinutes: number;
+  sessionType: string;
   notes: string | null;
   status: string | null;
+  exercises: Array<{
+    exercise_name: string;
+    sets: number | null;
+    reps: number | null;
+    weight: string | null;
+    duration: string | null;
+  }>;
 };
 
 type PaymentRow = {
@@ -81,6 +89,8 @@ export default function ClientDetailScreen() {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
 
   // Payment request
   const [showPayReqModal, setShowPayReqModal] = useState(false);
@@ -162,10 +172,10 @@ export default function ClientDetailScreen() {
         .order('created_at', { ascending: false }),
       supabase
         .from('workout_sessions')
-        .select('id, session_date, duration_minutes, notes, status')
+        .select('id, session_date, duration_minutes, session_type, notes, status, exercises')
         .eq('client_id', id)
         .order('session_date', { ascending: false })
-        .limit(15),
+        .limit(200),
       supabase
         .from('payments')
         .select('id, amount, payment_method, notes, paid_at, transaction_ref, invoice_number')
@@ -201,8 +211,10 @@ export default function ClientDetailScreen() {
         id: row.id,
         sessionDate: row.session_date,
         durationMinutes: row.duration_minutes,
+        sessionType: row.session_type ?? 'gym',
         notes: row.notes ?? null,
         status: row.status ?? null,
+        exercises: (row.exercises as any[]) ?? [],
       })),
     );
 
@@ -567,36 +579,94 @@ export default function ClientDetailScreen() {
           )}
 
           {/* Session history */}
-          {sessions.length > 0 && (
-            <>
-              <Text style={[s.sectionTitle, { marginTop: 24 }]}>SESSION HISTORY</Text>
-              <View style={s.historyList}>
-                {sessions.map((sess) => {
-                  const d = new Date(sess.sessionDate);
-                  return (
-                    <View key={sess.id} style={s.historyRow}>
-                      <View style={s.historyDateCol}>
-                        <Text style={s.historyDay}>
-                          {d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}
-                        </Text>
-                        <Text style={s.historyYear}>{d.getFullYear()}</Text>
-                      </View>
-                      <View style={s.historyMid}>
+          <Text style={[s.sectionTitle, { marginTop: 24 }]}>
+            SESSION HISTORY{sessions.length > 0 ? ` (${sessions.length})` : ''}
+          </Text>
+          {sessions.length === 0 ? (
+            <View style={[s.historyList, { padding: 24, alignItems: 'center' }]}>
+              <Text style={s.grayText}>No sessions logged yet</Text>
+            </View>
+          ) : (
+            <View style={s.historyList}>
+              {sessions.map((sess) => {
+                const expanded = expandedSessionId === sess.id;
+                const d = new Date(sess.sessionDate + 'T00:00:00');
+                const STATUS_COLOR: Record<string, string> = {
+                  confirmed: '#4CAF50', pending: '#FF9800', absent: '#FF4D4D', no_show: '#FF4D4D',
+                };
+                const STATUS_LABEL: Record<string, string> = {
+                  confirmed: 'Done', pending: 'Pending', absent: 'Absent', no_show: 'No Show',
+                };
+                const statusColor = STATUS_COLOR[sess.status ?? ''] ?? colors.textSecondary;
+                return (
+                  <Pressable
+                    key={sess.id}
+                    style={s.historyRow}
+                    onPress={() => setExpandedSessionId(expanded ? null : sess.id)}
+                  >
+                    <View style={s.historyDateCol}>
+                      <Text style={s.historyDay}>
+                        {d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}
+                      </Text>
+                      <Text style={s.historyYear}>{d.getFullYear()}</Text>
+                    </View>
+                    <View style={s.historyMid}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
                         <Text style={s.historyDur}>{sess.durationMinutes} min</Text>
-                        {sess.notes
-                          ? <Text style={s.historyNotes} numberOfLines={1}>{sess.notes}</Text>
-                          : null}
+                        <Ionicons
+                          name={sess.sessionType === 'home' ? 'home-outline' : 'barbell-outline'}
+                          size={11}
+                          color={colors.textSecondary}
+                        />
+                        {sess.status && (
+                          <View style={[s.sessStatusPill, { backgroundColor: statusColor + '20', borderColor: statusColor + '60' }]}>
+                            <Text style={[s.sessStatusText, { color: statusColor }]}>
+                              {STATUS_LABEL[sess.status] ?? sess.status}
+                            </Text>
+                          </View>
+                        )}
                       </View>
-                      {sess.status === 'no_show' && (
-                        <View style={s.noShowBadge}>
-                          <Text style={s.noShowText}>NO SHOW</Text>
+                      {!expanded && sess.exercises.length > 0 && (
+                        <Text style={s.historyNotes} numberOfLines={1}>
+                          {sess.exercises.map((e) => e.exercise_name).join(', ')}
+                        </Text>
+                      )}
+                      {expanded && (
+                        <View style={{ marginTop: 8, gap: 4 }}>
+                          {sess.exercises.length > 0 ? (
+                            sess.exercises.map((ex, i) => (
+                              <View key={i}>
+                                <Text style={s.historyDur}>{ex.exercise_name}</Text>
+                                <Text style={s.historyNotes}>
+                                  {[
+                                    ex.sets ? `${ex.sets} sets` : null,
+                                    ex.reps ? `${ex.reps} reps` : null,
+                                    ex.weight ? `@ ${ex.weight}` : null,
+                                    ex.duration ?? null,
+                                  ].filter(Boolean).join('  ·  ')}
+                                </Text>
+                              </View>
+                            ))
+                          ) : (
+                            <Text style={s.historyNotes}>No exercises recorded</Text>
+                          )}
+                          {sess.notes ? (
+                            <Text style={[s.historyNotes, { fontStyle: 'italic', marginTop: 4 }]}>
+                              "{sess.notes}"
+                            </Text>
+                          ) : null}
                         </View>
                       )}
                     </View>
-                  );
-                })}
-              </View>
-            </>
+                    <Ionicons
+                      name={expanded ? 'chevron-up' : 'chevron-down'}
+                      size={14}
+                      color={colors.border}
+                    />
+                  </Pressable>
+                );
+              })}
+            </View>
           )}
 
           {/* Past packages */}
@@ -1064,12 +1134,10 @@ function makeStyles(c: ColorScheme) {
     historyMid: { flex: 1 },
     historyDur: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
     historyNotes: { ...Typography.caption, color: c.textSecondary },
-    noShowBadge: {
-      backgroundColor: c.accent + '18', borderRadius: 6,
-      paddingHorizontal: 7, paddingVertical: 3,
-      borderWidth: 1, borderColor: c.accent + '40',
+    sessStatusPill: {
+      borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2, borderWidth: 1,
     },
-    noShowText: { color: c.accent, fontSize: 10, fontWeight: '700' },
+    sessStatusText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.4 },
 
     // Past packages
     pastPkgRow: {
