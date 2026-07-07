@@ -348,7 +348,7 @@ export default function LogSessionScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { profile } = useAuth();
-  const params = useLocalSearchParams<{ clientId?: string; date?: string; mode?: string }>();
+  const params = useLocalSearchParams<{ clientId?: string; date?: string; mode?: string; exercises?: string; duration?: string; sessionType?: string }>();
   const { clients } = useClients();
   const { history: exerciseHistory } = useExerciseHistory();
   const { templates, markUsed } = useTemplates();
@@ -356,9 +356,28 @@ export default function LogSessionScreen() {
   const [selectedClientId, setSelectedClientId] = useState(params.clientId ?? '');
   const { getLastUsed } = useClientLastWeights(selectedClientId || null);
   const [sessionDate, setSessionDate] = useState(params.date ?? todayISO());
-  const [sessionType, setSessionType] = useState<'gym' | 'home'>('gym');
-  const [duration, setDuration] = useState('60');
-  const [exercises, setExercises] = useState<Exercise[]>([blankExercise()]);
+  const [sessionType, setSessionType] = useState<'gym' | 'home'>(params.sessionType === 'home' ? 'home' : 'gym');
+  const [duration, setDuration] = useState(params.duration ?? '60');
+  const [exercises, setExercises] = useState<Exercise[]>(() => {
+    if (params.exercises) {
+      try {
+        const parsed = JSON.parse(params.exercises) as Array<Record<string, unknown>>;
+        if (parsed.length > 0) {
+          return parsed.map((ex, i) => ({
+            id: String(i),
+            exercise_name: String(ex.exercise_name ?? ''),
+            sets: String(ex.sets ?? ''),
+            reps: String(ex.reps ?? ''),
+            weight: String(ex.weight ?? ''),
+            duration: String(ex.duration ?? ''),
+            notes: String(ex.notes ?? ''),
+            isSuperset: false,
+          }));
+        }
+      } catch {}
+    }
+    return [blankExercise()];
+  });
   const [sessionTime, setSessionTime] = useState(currentTimeStr());
   const [sessionNotes, setSessionNotes] = useState('');
   const [mode, setMode] = useState<'full' | 'quick'>(params.mode === 'quick' ? 'quick' : 'full');

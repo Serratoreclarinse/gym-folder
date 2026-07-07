@@ -79,6 +79,10 @@ export default function CoachRootLayout() {
         name="exercise-library"
         options={{ title: 'Exercise Library' }}
       />
+      <Stack.Screen
+        name="session-history"
+        options={{ title: 'Session History' }}
+      />
     </Stack>
     </View>
   );

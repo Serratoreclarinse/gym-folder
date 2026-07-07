@@ -70,6 +70,9 @@ export default function CoachSessionsScreen() {
           {sessions.length} {sessions.length === 1 ? 'session' : 'sessions'} logged
         </Text>
         <View style={styles.headerBtns}>
+          <Pressable style={styles.tplBtn} onPress={() => router.push('/(coach)/session-history')}>
+            <Ionicons name="time-outline" size={16} color={colors.accent} />
+          </Pressable>
           <Pressable style={styles.tplBtn} onPress={() => router.push('/(coach)/templates')}>
             <Ionicons name="copy-outline" size={16} color={colors.accent} />
           </Pressable>
