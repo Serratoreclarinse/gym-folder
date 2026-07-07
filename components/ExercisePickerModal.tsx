@@ -571,7 +571,7 @@ const af = StyleSheet.create({
     borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13,
     color: Colors.textPrimary, fontSize: 15,
   },
-  chipRow: { flexDirection: 'row', gap: 8 },
+  chipRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
   chip: {
     paddingHorizontal: 14, paddingVertical: 8,
     borderRadius: 20, borderWidth: 1.5, borderColor: Colors.border,

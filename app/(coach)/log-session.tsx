@@ -706,7 +706,7 @@ export default function LogSessionScreen() {
                     onPress={() => setSessionType(t)}
                   >
                     <Ionicons
-                      name={t === 'gym' ? 'barbell-outline' : 'home-outline'}
+                      name={t === 'gym' ? 'fitness-outline' : 'home-outline'}
                       size={16}
                       color={sessionType === t ? colors.bg : colors.textSecondary}
                     />
@@ -757,7 +757,7 @@ export default function LogSessionScreen() {
                     onPress={() => setSessionType(t)}
                   >
                     <Ionicons
-                      name={t === 'gym' ? 'barbell-outline' : 'home-outline'}
+                      name={t === 'gym' ? 'fitness-outline' : 'home-outline'}
                       size={16}
                       color={sessionType === t ? colors.bg : colors.textSecondary}
                     />
