@@ -770,19 +770,23 @@ export default function LogSessionScreen() {
             </View>
             <View style={styles.field}>
               <Text style={styles.label}>START TIME</Text>
-              <Pressable
-                style={styles.pickerBtn}
-                onPress={() => setShowTimePicker((v) => !v)}
-              >
-                <Text style={[styles.pickerBtnText, !sessionTime && { color: colors.textSecondary }]}>
-                  {sessionTime || '9:00 AM'}
-                </Text>
-                <Ionicons
-                  name={showTimePicker ? 'chevron-up' : 'chevron-down'}
-                  size={18}
-                  color={colors.textSecondary}
+              <View style={styles.pickerBtn}>
+                <TextInput
+                  style={[styles.pickerBtnText, { flex: 1 }]}
+                  value={sessionTime}
+                  onChangeText={(v) => { setSessionTime(v); setShowTimePicker(false); }}
+                  placeholder="e.g. 9:00 AM"
+                  placeholderTextColor={Colors.textSecondary}
+                  returnKeyType="done"
                 />
-              </Pressable>
+                <Pressable onPress={() => setShowTimePicker((v) => !v)} hitSlop={8}>
+                  <Ionicons
+                    name={showTimePicker ? 'chevron-up' : 'chevron-down'}
+                    size={18}
+                    color={Colors.textSecondary}
+                  />
+                </Pressable>
+              </View>
               {showTimePicker && (
                 <View style={[styles.dropdown, { maxHeight: 220 }]}>
                   <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
