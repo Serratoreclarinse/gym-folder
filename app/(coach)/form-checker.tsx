@@ -136,7 +136,7 @@ async function init() {
     poseLandmarker = await V.PoseLandmarker.createFromOptions(fs, {
       baseOptions: {
         modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
-        delegate: 'GPU',
+        delegate: 'CPU',
       },
       runningMode: 'VIDEO',
       numPoses: 1,
@@ -145,7 +145,7 @@ async function init() {
     statusEl.style.display = 'none';
     requestAnimationFrame(detectFrame);
   } catch(e) {
-    statusEl.innerHTML = '⚠️ Could not load model<br><span style="font-size:11px;opacity:0.7">Check your internet connection</span>';
+    statusEl.innerHTML = '⚠️ Could not load model<br><span style="font-size:11px;opacity:0.7">' + (e && e.message ? e.message : 'Check internet connection') + '</span>';
   }
 }
 
@@ -270,6 +270,7 @@ export default function FormCheckerScreen() {
         mediaPlaybackRequiresUserAction={false}
         mediaCapturePermissionGrantType="grant"
         originWhitelist={['*']}
+        mixedContentMode="always"
         onPermissionRequest={(e) => e.nativeEvent.request.grant(e.nativeEvent.request.resources)}
         scrollEnabled={false}
         bounces={false}
