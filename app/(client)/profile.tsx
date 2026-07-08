@@ -19,10 +19,18 @@ export default function ClientProfileScreen() {
   const [timeWindow, setTimeWindow] = useState(() => Math.floor(Date.now() / 300000));
   const [secondsLeft, setSecondsLeft] = useState(() => 300 - Math.floor((Date.now() % 300000) / 1000));
   const [editing, setEditing] = useState(false);
+  const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [instagram, setInstagram] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Change password
+  const [pwModal, setPwModal] = useState(false);
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [changingPw, setChangingPw] = useState(false);
+  const [pwSuccess, setPwSuccess] = useState(false);
 
   useEffect(() => {
     const tick = setInterval(() => {
@@ -72,6 +80,7 @@ export default function ClientProfileScreen() {
   };
 
   const handleStartEdit = () => {
+    setName(profile?.name ?? '');
     setPhone(profile?.phone ?? '');
     setWhatsapp(profile?.whatsapp ?? '');
     setInstagram(profile?.instagram ?? '');
@@ -82,6 +91,7 @@ export default function ClientProfileScreen() {
     if (!profile?.id) return;
     setSaving(true);
     const { error } = await supabase.from('profiles').update({
+      name: name.trim() || profile?.name,
       phone: phone.trim() || null,
       whatsapp: whatsapp.trim() || null,
       instagram: instagram.trim().replace(/^@/, '') || null,
@@ -90,6 +100,18 @@ export default function ClientProfileScreen() {
     if (error) { Alert.alert('Error', error.message); return; }
     await refreshProfile();
     setEditing(false);
+  };
+
+  const handleChangePassword = async () => {
+    if (newPw.length < 6) { Alert.alert('Too short', 'Password must be at least 6 characters.'); return; }
+    if (newPw !== confirmPw) { Alert.alert('Mismatch', 'Passwords do not match.'); return; }
+    setChangingPw(true);
+    const { error } = await supabase.auth.updateUser({ password: newPw });
+    setChangingPw(false);
+    if (error) { Alert.alert('Error', error.message); return; }
+    setPwSuccess(true);
+    setNewPw(''); setConfirmPw('');
+    setTimeout(() => { setPwModal(false); setPwSuccess(false); }, 1500);
   };
 
   const openLink = (url: string) => Linking.openURL(url).catch(() => {});
@@ -211,6 +233,7 @@ export default function ClientProfileScreen() {
 
       {editing ? (
         <View style={styles.editCard}>
+          <EditField icon="person-outline" label="NAME" value={name} onChangeText={setName} placeholder="Your full name" styles={styles} colors={colors} />
           <EditField icon="call-outline" label="PHONE" value={phone} onChangeText={setPhone} placeholder="+63 912 345 6789" keyboardType="phone-pad" styles={styles} colors={colors} />
           <EditField icon="logo-whatsapp" label="WHATSAPP" value={whatsapp} onChangeText={setWhatsapp} placeholder="+63 912 345 6789" keyboardType="phone-pad" iconColor="#25D366" styles={styles} colors={colors} />
           <EditField icon="logo-instagram" label="INSTAGRAM" value={instagram} onChangeText={setInstagram} placeholder="@yourhandle" iconColor="#E1306C" last styles={styles} colors={colors} />
@@ -278,12 +301,72 @@ export default function ClientProfileScreen() {
         />
       </View>
 
+      {/* Change Password */}
+      <Pressable
+        style={({ pressed }) => [styles.guideBtn, pressed && { opacity: 0.7 }, { marginBottom: 10 }]}
+        onPress={() => setPwModal(true)}
+      >
+        <Ionicons name="lock-closed-outline" size={16} color={colors.accent} />
+        <Text style={styles.guideBtnText}>Change Password</Text>
+        <Ionicons name="chevron-forward" size={14} color={colors.accent} style={{ marginLeft: 'auto' }} />
+      </Pressable>
+
       <Pressable
         style={({ pressed }) => [styles.signOutBtn, pressed && { opacity: 0.7 }]}
         onPress={handleSignOut}
       >
         <Text style={styles.signOutText}>Sign Out</Text>
       </Pressable>
+
+      {/* Change Password Modal */}
+      {pwModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Change Password</Text>
+              <Pressable onPress={() => { setPwModal(false); setNewPw(''); setConfirmPw(''); setPwSuccess(false); }}>
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+            {pwSuccess ? (
+              <View style={styles.pwSuccess}>
+                <Ionicons name="checkmark-circle" size={36} color="#4CAF50" />
+                <Text style={styles.pwSuccessText}>Password Changed!</Text>
+              </View>
+            ) : (
+              <>
+                <TextInput
+                  style={styles.modalInput}
+                  value={newPw}
+                  onChangeText={setNewPw}
+                  placeholder="New password (min 6 chars)"
+                  placeholderTextColor={colors.textSecondary}
+                  secureTextEntry
+                  autoFocus
+                />
+                <TextInput
+                  style={[styles.modalInput, { marginTop: 10 }]}
+                  value={confirmPw}
+                  onChangeText={setConfirmPw}
+                  placeholder="Confirm new password"
+                  placeholderTextColor={colors.textSecondary}
+                  secureTextEntry
+                  returnKeyType="done"
+                  onSubmitEditing={handleChangePassword}
+                />
+                <Pressable
+                  style={[styles.saveBtn, { borderRadius: 12, marginTop: 14 }, changingPw && { opacity: 0.6 }]}
+                  onPress={handleChangePassword}
+                  disabled={changingPw}
+                >
+                  <Text style={styles.saveBtnText}>{changingPw ? 'Saving…' : 'Update Password'}</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -423,5 +506,27 @@ function makeStyles(c: ColorScheme) {
       alignItems: 'center', borderWidth: 1, borderColor: c.danger, marginTop: 8,
     },
     signOutText: { color: c.danger, fontSize: 15, fontWeight: '700' },
+
+    modalOverlay: {
+      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+      backgroundColor: '#00000070', justifyContent: 'flex-end',
+    },
+    modalBox: {
+      backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+      padding: 24, gap: 12,
+    },
+    modalHandle: {
+      width: 36, height: 4, borderRadius: 2,
+      backgroundColor: c.border, alignSelf: 'center', marginBottom: 4,
+    },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    modalTitle: { fontSize: 18, fontWeight: '700', color: c.textPrimary },
+    modalInput: {
+      backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
+      borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
+      color: c.textPrimary, fontSize: 15,
+    },
+    pwSuccess: { alignItems: 'center', paddingVertical: 24, gap: 10 },
+    pwSuccessText: { fontSize: 18, fontWeight: '800', color: '#4CAF50' },
   });
 }
