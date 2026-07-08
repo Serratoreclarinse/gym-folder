@@ -165,7 +165,7 @@ export default function ClientProfileScreen() {
       {/* My Coach */}
       {coachInfo && (
         <>
-          <View style={[styles.sectionHeader, { marginTop: 4 }]}>
+          <View style={[styles.sectionHeader, { marginTop: 20 }]}>
             <Text style={styles.sectionLabel}>MY COACH</Text>
           </View>
           <View style={[styles.infoSection, { marginBottom: 24 }]}>
@@ -427,7 +427,7 @@ function EditField({
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
     scroll: { flex: 1, backgroundColor: c.bg },
-    content: { padding: 24, paddingBottom: 60, alignItems: 'center' },
+    content: { padding: 24, paddingBottom: 80, alignItems: 'center' },
     avatarWrap: { alignItems: 'center', marginTop: 20, marginBottom: 16 },
     avatarPressable: { position: 'relative' },
     avatar: {

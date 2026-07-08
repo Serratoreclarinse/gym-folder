@@ -321,7 +321,7 @@ function makeStyles(c: ColorScheme) {
 
     expandHint: { alignItems: 'center', marginTop: 10 },
 
-    reviewPanel: { marginTop: 16, borderTopWidth: 1, borderTopColor: c.border, paddingTop: 14 },
+    reviewPanel: { marginTop: 16, borderTopWidth: 1, borderTopColor: c.border, paddingTop: 14, gap: 16 },
     notesRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 12 },
     notesText: { ...Typography.caption, color: c.textSecondary, flex: 1, fontStyle: 'italic' },
     adminNotesLabel: { ...Typography.label, color: c.textSecondary, marginBottom: 6 },

@@ -215,7 +215,7 @@ function makeStyles(c: ColorScheme) {
 
     steps: {
       borderTopWidth: 1, borderTopColor: c.border,
-      paddingHorizontal: 16, paddingTop: 14, paddingBottom: 16, gap: 12,
+      paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16, gap: 12,
     },
     step: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
     stepNum: {

@@ -58,7 +58,7 @@ function ClientPickerModal({
               <Text style={ps.sheetBadgeText}>{clients.length}</Text>
             </View>
           </View>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 12 }}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
             {clients.map((c, i) => {
               const initials = c.name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
               const color = AVATAR_COLORS[i % AVATAR_COLORS.length];

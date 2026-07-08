@@ -463,7 +463,7 @@ function makeStyles(c: ColorScheme) {
   sectionTitle: { ...Typography.label, color: c.textSecondary, marginBottom: 16 },
 
   // Alerts
-  alertsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
+  alertsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 24, marginBottom: 16 },
   alertBadge: {
     backgroundColor: c.accent, borderRadius: 10,
     minWidth: 20, height: 20, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6,

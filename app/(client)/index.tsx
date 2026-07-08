@@ -593,7 +593,7 @@ export default function ClientProgressScreen() {
       {/* Additional upcoming sessions */}
       {upcomingScheduled.length > 1 && (
         <>
-          <Text style={[styles.sectionTitle, { marginTop: 4 }]}>UPCOMING SESSIONS</Text>
+          <Text style={[styles.sectionTitle, { marginTop: 20 }]}>UPCOMING SESSIONS</Text>
           {upcomingScheduled.slice(1).map((s) => {
             const secsUntil = Math.max(0, Math.floor((new Date(s.scheduled_at).getTime() - Date.now()) / 1000));
             const canCancel = secsUntil > 10800;
@@ -737,7 +737,7 @@ export default function ClientProgressScreen() {
 
       {/* Milestones */}
       {profile?.id && (
-        <View style={{ marginTop: 24 }}>
+        <View style={{ marginTop: 24, marginBottom: 16 }}>
           <MilestonesSection clientId={profile.id} />
         </View>
       )}

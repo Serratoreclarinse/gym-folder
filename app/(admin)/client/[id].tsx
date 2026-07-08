@@ -1090,7 +1090,7 @@ function makeStyles(c: ColorScheme) {
     pkgMeta: {
       backgroundColor: c.bg, borderRadius: 10,
       borderWidth: 1, borderColor: c.border,
-      paddingHorizontal: 14, paddingVertical: 4,
+      paddingHorizontal: 14, paddingVertical: 8,
     },
     pkgMetaRow: {
       flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -1181,7 +1181,7 @@ function makeStyles(c: ColorScheme) {
     },
     modalTitle: { ...Typography.subtitle, color: c.textPrimary, fontWeight: '700' },
     modalSub: { ...Typography.body, color: c.textSecondary, marginTop: -4 },
-    modalLabel: { ...Typography.label, color: c.textSecondary, marginBottom: -4 },
+    modalLabel: { ...Typography.label, color: c.textSecondary, marginBottom: 8 },
     modalInput: {
       backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
       borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13,

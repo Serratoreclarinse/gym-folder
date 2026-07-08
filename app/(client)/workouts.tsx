@@ -378,7 +378,7 @@ function makeStyles(c: ColorScheme) {
     noShowBadgeText: { color: '#FFA500', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
     noShowNote: { ...Typography.caption, color: '#FFA500', fontStyle: 'italic' },
 
-    exList:  { gap: 10 },
+    exList:  { gap: 12 },
     exRow:   { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
     exBullet: {
       width: 6, height: 6, borderRadius: 3,

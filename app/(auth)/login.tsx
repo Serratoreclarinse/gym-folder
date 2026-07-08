@@ -226,7 +226,7 @@ function makeStyles(c: ColorScheme) {
     textAlign: 'center',
   },
   fieldGroup: {
-    marginBottom: 14,
+    marginBottom: 16,
   },
   fieldLabel: {
     ...Typography.label,

@@ -974,7 +974,7 @@ function makeStyles(c: ColorScheme) {
     // Weekly check-in
     checkinHeader: {
       flexDirection: 'row', alignItems: 'center',
-      justifyContent: 'space-between', marginBottom: 12,
+      justifyContent: 'space-between', marginTop: 28, marginBottom: 12,
     },
     checkinCard: {
       backgroundColor: c.surface, borderRadius: 14,
