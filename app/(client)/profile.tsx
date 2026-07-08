@@ -1,4 +1,4 @@
-import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useEffect, useMemo, useState } from 'react';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -68,7 +68,7 @@ export default function ClientProfileScreen() {
       formData.append('file', { uri, name: fileName, type: 'image/jpeg' } as any);
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(fileName, formData, { upsert: true, contentType: 'multipart/form-data' });
+        .upload(fileName, formData, { upsert: true, contentType: 'image/jpeg' });
       if (uploadError) { Alert.alert('Upload failed', uploadError.message); return; }
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
       const urlWithBust = `${publicUrl}?t=${Date.now()}`;
@@ -319,7 +319,7 @@ export default function ClientProfileScreen() {
       </Pressable>
 
       {/* Change Password Modal */}
-      {pwModal && (
+      <Modal visible={pwModal} transparent animationType="slide" onRequestClose={() => { setPwModal(false); setNewPw(''); setConfirmPw(''); setPwSuccess(false); }}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
             <View style={styles.modalHandle} />
@@ -366,7 +366,7 @@ export default function ClientProfileScreen() {
             )}
           </View>
         </View>
-      )}
+      </Modal>
     </ScrollView>
   );
 }

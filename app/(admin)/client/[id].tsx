@@ -214,7 +214,7 @@ export default function ClientDetailScreen() {
         sessionType: row.session_type ?? 'gym',
         notes: row.notes ?? null,
         status: row.status ?? null,
-        exercises: (row.exercises as any[]) ?? [],
+        exercises: Array.isArray(row.exercises) ? row.exercises : (typeof row.exercises === 'string' ? (() => { try { return JSON.parse(row.exercises); } catch { return []; } })() : []),
       })),
     );
 

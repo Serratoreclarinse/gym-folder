@@ -205,10 +205,13 @@ export default function AdminDashboardScreen() {
       }
     }
 
-    // Payment alerts — clients with active package but NO payment on file
+    // Payment alerts — clients with active package but NO payment on file (one alert per client)
     const paidClientIds = new Set((allPaymentsRes.data ?? []).map((p: any) => p.client_id));
+    const noPayAlertedClients = new Set<string>();
     for (const pkg of (neverPaidRes.data ?? []) as any[]) {
       if (paidClientIds.has(pkg.client_id)) continue;
+      if (noPayAlertedClients.has(pkg.client_id)) continue;
+      noPayAlertedClients.add(pkg.client_id);
       const clientName = pkg.profiles?.name ?? 'Unknown Client';
       newAlerts.push({
         id: `nopay-${pkg.client_id}`,

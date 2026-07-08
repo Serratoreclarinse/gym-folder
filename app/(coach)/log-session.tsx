@@ -359,9 +359,10 @@ export default function LogSessionScreen() {
   const [sessionType, setSessionType] = useState<'gym' | 'home'>(params.sessionType === 'home' ? 'home' : 'gym');
   const [duration, setDuration] = useState(params.duration ?? '60');
   const [exercises, setExercises] = useState<Exercise[]>(() => {
-    if (params.exercises) {
+    const rawEx = Array.isArray(params.exercises) ? params.exercises[0] : params.exercises;
+    if (rawEx) {
       try {
-        const parsed = JSON.parse(params.exercises) as Array<Record<string, unknown>>;
+        const parsed = JSON.parse(rawEx) as Array<Record<string, unknown>>;
         if (parsed.length > 0) {
           return parsed.map((ex, i) => ({
             id: String(i),
@@ -374,7 +375,9 @@ export default function LogSessionScreen() {
             isSuperset: false,
           }));
         }
-      } catch {}
+      } catch {
+        Alert.alert('Restore Warning', 'Could not restore exercises from the previous session.');
+      }
     }
     return [blankExercise()];
   });

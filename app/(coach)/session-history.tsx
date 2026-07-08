@@ -83,7 +83,7 @@ export default function SessionHistoryScreen() {
         session_type: row.session_type ?? 'gym',
         status: row.status ?? 'confirmed',
         notes: row.notes ?? null,
-        exercises: (row.exercises as any[]) ?? [],
+        exercises: Array.isArray(row.exercises) ? row.exercises : (typeof row.exercises === 'string' ? (() => { try { return JSON.parse(row.exercises); } catch { return []; } })() : []),
       })),
     );
     setLoading(false);
