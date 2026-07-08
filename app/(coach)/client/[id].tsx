@@ -28,6 +28,7 @@ import { ClientFilesTab } from '@/components/ClientFilesTab';
 import { ClientGoalsTab } from '@/components/ClientGoalsTab';
 import { ClientPhotosTab } from '@/components/ClientPhotosTab';
 import { ClientMeasurementsTab } from '@/components/ClientMeasurementsTab';
+import { ClientCheckinsTab } from '@/components/ClientCheckinsTab';
 import { ColorScheme, Typography } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 import { sendPushNotification } from '@/lib/pushNotifications';
@@ -64,7 +65,7 @@ const METHOD_LABEL: Record<string, string> = {
   hsbc: 'HSBC Oman', bank_nizwa: 'Bank Nizwa', other: 'Other',
 };
 
-type Tab = 'overview' | 'sessions' | 'progress' | 'goals' | 'notes' | 'files' | 'photos' | 'measurements';
+type Tab = 'overview' | 'sessions' | 'progress' | 'goals' | 'notes' | 'files' | 'photos' | 'measurements' | 'checkins';
 
 const MAX_STRIKES = 3;
 
@@ -1211,7 +1212,7 @@ export default function ClientDetailScreen() {
         style={styles.tabBar}
         contentContainerStyle={styles.tabBarContent}
       >
-        {(['overview', 'sessions', 'progress', 'goals', 'notes', 'files', 'photos', 'measurements'] as Tab[]).map((tab) => (
+        {(['overview', 'sessions', 'progress', 'goals', 'notes', 'files', 'photos', 'measurements', 'checkins'] as Tab[]).map((tab) => (
           <Pressable
             key={tab}
             style={[styles.tabBtn, activeTab === tab && styles.tabBtnActive]}
@@ -1225,6 +1226,7 @@ export default function ClientDetailScreen() {
                 : tab === 'notes' ? 'Notes'
                 : tab === 'files' ? 'Files'
                 : tab === 'measurements' ? 'Body'
+                : tab === 'checkins' ? 'Check-ins'
                 : 'Photos'}
             </Text>
           </Pressable>
@@ -1240,6 +1242,7 @@ export default function ClientDetailScreen() {
       {activeTab === 'files' && <ClientFilesTab clientId={id} />}
       {activeTab === 'photos' && <ClientPhotosTab clientId={id} />}
       {activeTab === 'measurements' && <ClientMeasurementsTab clientId={id} />}
+      {activeTab === 'checkins' && <ClientCheckinsTab clientId={id} />}
     </ScrollView>
     </>
   );
