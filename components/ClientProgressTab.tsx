@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import Svg, { Circle, G, Line, Path, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '@/lib/supabase';
 import { useProgress, ProgressEntry, NewProgressEntry } from '@/hooks/useProgress';
 import { Colors, Typography } from '@/constants/theme';
 
@@ -369,6 +370,74 @@ export function ClientProgressTab({ clientId }: { clientId: string }) {
   const [editEntry, setEditEntry] = useState<ProgressEntry | null>(null);
   const [formKey, setFormKey] = useState(0);
 
+  // ── Strength chart state ─────────────────────────────────────────────────────
+  type StrengthSession = { date: string; exercises: Array<{ exercise_name: string; weight: string | null }> };
+  const [strengthSessions, setStrengthSessions] = useState<StrengthSession[]>([]);
+  const [selectedExercise, setSelectedExercise] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('workout_sessions')
+        .select('session_date, exercises')
+        .eq('client_id', clientId)
+        .order('session_date', { ascending: true })
+        .limit(500);
+      if (cancelled) return;
+      const parsed: StrengthSession[] = (data ?? []).map((row: any) => ({
+        date: row.session_date,
+        exercises: Array.isArray(row.exercises) ? row.exercises
+          : typeof row.exercises === 'string'
+            ? (() => { try { return JSON.parse(row.exercises); } catch { return []; } })()
+            : [],
+      }));
+      setStrengthSessions(parsed);
+      // Auto-select first exercise that has weight data
+      const names = new Set<string>();
+      for (const s of parsed) {
+        for (const ex of s.exercises) {
+          if (ex.exercise_name && !isNaN(parseFloat(ex.weight ?? ''))) names.add(ex.exercise_name);
+        }
+      }
+      const first = [...names][0];
+      if (first && !cancelled) setSelectedExercise(first);
+    })();
+    return () => { cancelled = true; };
+  }, [clientId]);
+
+  const exerciseNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const s of strengthSessions) {
+      for (const ex of s.exercises) {
+        if (ex.exercise_name && !isNaN(parseFloat(ex.weight ?? ''))) names.add(ex.exercise_name);
+      }
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [strengthSessions]);
+
+  const strengthChartData = useMemo(() => {
+    if (!selectedExercise) return [];
+    const byDate = new Map<string, number>();
+    for (const s of strengthSessions) {
+      for (const ex of s.exercises) {
+        if (ex.exercise_name !== selectedExercise) continue;
+        const w = parseFloat(ex.weight ?? '');
+        if (isNaN(w) || w <= 0) continue;
+        const prev = byDate.get(s.date) ?? 0;
+        if (w > prev) byDate.set(s.date, w);
+      }
+    }
+    return [...byDate.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, value]) => ({ date, value }));
+  }, [strengthSessions, selectedExercise]);
+
+  const strengthPR = strengthChartData.length > 0
+    ? strengthChartData.reduce((best, d) => d.value > best.value ? d : best)
+    : null;
+  // ─────────────────────────────────────────────────────────────────────────────
+
   const openForm = (entry: ProgressEntry | null) => {
     setEditEntry(entry);
     setFormKey((k) => k + 1);
@@ -588,6 +657,79 @@ export function ClientProgressTab({ clientId }: { clientId: string }) {
         <Text style={s.unitLabel}>{currentMetric.label} ({currentMetric.unit})</Text>
       </View>
 
+      {/* ── Strength Progress Chart ──────────────────────────────────────── */}
+      {exerciseNames.length > 0 && (
+        <>
+          <Text style={s.sectionTitle}>STRENGTH PROGRESS</Text>
+          <View style={s.chartCard}>
+            {/* Exercise selector */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginBottom: 12 }}
+              contentContainerStyle={{ gap: 6, paddingRight: 8 }}
+            >
+              {exerciseNames.map((name) => (
+                <Pressable
+                  key={name}
+                  style={[s.metricBtn, selectedExercise === name && s.metricBtnActive]}
+                  onPress={() => setSelectedExercise(name)}
+                >
+                  <Text style={[s.metricBtnText, selectedExercise === name && s.metricBtnTextActive]}
+                    numberOfLines={1}
+                  >
+                    {name}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+
+            {/* PR badge */}
+            {strengthPR && (
+              <View style={s.prRow}>
+                <Text style={s.prLabel}>🏆 Personal Record</Text>
+                <Text style={s.prValue}>{strengthPR.value} kg</Text>
+                <Text style={s.prDate}>
+                  {(() => {
+                    const [, mm, dd] = strengthPR.date.split('-');
+                    return `${mm}/${dd}`;
+                  })()}
+                </Text>
+              </View>
+            )}
+
+            {/* Chart */}
+            {strengthChartData.length < 2 ? (
+              <View style={s.chartPlaceholder}>
+                <Ionicons name="barbell-outline" size={32} color={Colors.border} />
+                <Text style={s.chartPlaceholderText}>
+                  {strengthChartData.length === 0
+                    ? 'No weight data for this exercise'
+                    : 'Log more sessions to see strength trend'}
+                </Text>
+              </View>
+            ) : (() => {
+              const vals = strengthChartData.map((d) => d.value);
+              const sMin = Math.min(...vals);
+              const sMax = Math.max(...vals);
+              const sPad = (sMax - sMin) < 1 ? 2 : (sMax - sMin) * 0.2;
+              return (
+                <View style={s.chartWrap}>
+                  <LineChart
+                    data={strengthChartData}
+                    width={chartWidth}
+                    yMin={sMin - sPad}
+                    yMax={sMax + sPad}
+                  />
+                </View>
+              );
+            })()}
+            <Text style={s.unitLabel}>Max weight per session (kg)</Text>
+          </View>
+        </>
+      )}
+      {/* ──────────────────────────────────────────────────────────────────── */}
+
       {/* History list */}
       <Text style={s.sectionTitle}>MEASUREMENT HISTORY</Text>
       {[...entries].reverse().map((entry) => {
@@ -733,6 +875,23 @@ const s = StyleSheet.create({
   },
   chartPlaceholderText: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center' },
   unitLabel: { ...Typography.label, color: Colors.textSecondary, textAlign: 'center', marginTop: 8, fontSize: 10 },
+
+  // Strength PR row
+  prRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.accent + '12',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.accent + '40',
+  },
+  prLabel: { fontSize: 11, fontWeight: '700', color: Colors.accent, flex: 1 },
+  prValue: { fontSize: 16, fontWeight: '800', color: Colors.accent },
+  prDate: { fontSize: 10, fontWeight: '600', color: Colors.textSecondary },
 
   // History
   sectionTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 12 },

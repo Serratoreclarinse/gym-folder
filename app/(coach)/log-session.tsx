@@ -512,6 +512,42 @@ export default function LogSessionScreen() {
         await scheduleSessionReminder(selectedClient?.name ?? 'Client', sessionDate, sessionTime.trim(), selectedClientId);
       }
 
+      // ── PR Detection ─────────────────────────────────────────────────────────
+      let prLine = '';
+      try {
+        const { data: pastSessions } = await supabase
+          .from('workout_sessions')
+          .select('exercises')
+          .eq('client_id', selectedClientId)
+          .neq('id', sessionData!.id);
+
+        const maxWeights = new Map<string, number>();
+        for (const sess of (pastSessions ?? [])) {
+          const exs: any[] = Array.isArray(sess.exercises) ? sess.exercises
+            : typeof sess.exercises === 'string'
+              ? (() => { try { return JSON.parse(sess.exercises); } catch { return []; } })()
+              : [];
+          for (const ex of exs) {
+            const w = parseFloat(ex.weight ?? '');
+            if (!ex.exercise_name || isNaN(w)) continue;
+            const key = ex.exercise_name.toLowerCase().trim();
+            if (w > (maxWeights.get(key) ?? 0)) maxWeights.set(key, w);
+          }
+        }
+
+        const prs: string[] = [];
+        for (const ex of validExercises) {
+          if (!ex.weight) continue;
+          const w = parseFloat(ex.weight);
+          if (isNaN(w) || w <= 0) continue;
+          const key = ex.exercise_name.toLowerCase().trim();
+          const prev = maxWeights.get(key) ?? null;
+          if (prev === null || w > prev) prs.push(`🏆 ${ex.exercise_name} — ${w} kg`);
+        }
+        if (prs.length > 0) prLine = '\n\n' + prs.join('\n');
+      } catch {}
+      // ─────────────────────────────────────────────────────────────────────────
+
       const sessionsLeft = pkg.sessions_remaining - 1;
       if (sessionsLeft > 0 && sessionsLeft <= 3) {
         await sendPushNotification(selectedClientId, {
@@ -543,8 +579,8 @@ export default function LogSessionScreen() {
         const hasExercises = validExercises.length > 0;
         if (hasExercises) {
           Alert.alert(
-            'Session Started!',
-            `Timer started for ${selectedClient?.name}. Would you like to do the exercises step by step?`,
+            'Session Started!' + (prLine ? ' 🏆' : ''),
+            `Timer started for ${selectedClient?.name}. Would you like to do the exercises step by step?${prLine}`,
             [
               {
                 text: 'Back to Dashboard',
@@ -573,15 +609,15 @@ export default function LogSessionScreen() {
           );
         } else {
           Alert.alert(
-            'Session Started!',
-            `Timer started for ${selectedClient?.name} (${duration} min). Check your Dashboard.`,
+            'Session Started!' + (prLine ? ' 🏆' : ''),
+            `Timer started for ${selectedClient?.name} (${duration} min). Check your Dashboard.${prLine}`,
             [{ text: 'OK', onPress: () => router.back() }]
           );
         }
       } else {
         Alert.alert(
-          'Session logged!',
-          `${selectedClient?.name}'s session recorded. Sessions remaining: ${pkg.sessions_remaining - 1}${existingActive ? '\n\nNote: Timer not started — a session is already active.' : ''}`,
+          'Session logged!' + (prLine ? ' 🏆' : ''),
+          `${selectedClient?.name}'s session recorded. Sessions remaining: ${pkg.sessions_remaining - 1}${existingActive ? '\n\nNote: Timer not started — a session is already active.' : ''}${prLine}`,
           [{ text: 'OK', onPress: () => router.back() }]
         );
       }
