@@ -299,13 +299,22 @@ export default function CoachDashboard() {
         <Text style={styles.logSessionText}>LOG SESSION</Text>
       </Pressable>
 
-      <Pressable
-        style={({ pressed }) => [styles.emergencyBtn, pressed && { opacity: 0.8 }]}
-        onPress={() => router.push({ pathname: '/(coach)/announcements', params: { preset: 'emergency' } } as any)}
-      >
-        <Ionicons name="warning-outline" size={16} color={colors.danger} />
-        <Text style={styles.emergencyBtnText}>EMERGENCY NOTICE</Text>
-      </Pressable>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Pressable
+          style={({ pressed }) => [styles.emergencyBtn, { flex: 1 }, pressed && { opacity: 0.8 }]}
+          onPress={() => router.push({ pathname: '/(coach)/announcements', params: { preset: 'emergency' } } as any)}
+        >
+          <Ionicons name="warning-outline" size={16} color={colors.danger} />
+          <Text style={styles.emergencyBtnText}>EMERGENCY NOTICE</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.emergencyBtn, { flex: 1 }, pressed && { opacity: 0.8 }]}
+          onPress={() => router.push('/(coach)/form-checker' as any)}
+        >
+          <Ionicons name="scan-outline" size={16} color={colors.accent} />
+          <Text style={[styles.emergencyBtnText, { color: colors.accent }]}>FORM CHECKER</Text>
+        </Pressable>
+      </View>
 
       {/* Resume paused workout */}
       {pausedWorkout && (

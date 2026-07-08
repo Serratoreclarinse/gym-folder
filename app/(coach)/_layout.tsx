@@ -83,6 +83,10 @@ export default function CoachRootLayout() {
         name="session-history"
         options={{ title: 'Session History' }}
       />
+      <Stack.Screen
+        name="form-checker"
+        options={{ headerShown: false }}
+      />
     </Stack>
     </View>
   );
