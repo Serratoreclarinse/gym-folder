@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/context/ThemeContext';
+import { NotificationBell } from '@/components/NotificationBell';
 
 export default function AdminTabsLayout() {
   const insets = useSafeAreaInsets();
@@ -40,6 +41,7 @@ export default function AdminTabsLayout() {
           headerTintColor: colors.textPrimary,
           headerTitleStyle: { fontWeight: '700', fontSize: 17 },
           headerShadowVisible: false,
+          headerRight: () => <NotificationBell path="/(admin)/notifications" />,
         }}
       >
         <Tabs.Screen

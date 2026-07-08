@@ -3,11 +3,14 @@ import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/context/ThemeContext';
+import { NotificationsProvider } from '@/context/NotificationsContext';
+import { NotificationBell } from '@/components/NotificationBell';
 
 export default function ClientLayout() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   return (
+    <NotificationsProvider>
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Image
         source={require('@/assets/images/logo.png')}
@@ -32,6 +35,7 @@ export default function ClientLayout() {
           headerTintColor: colors.textPrimary,
           headerTitleStyle: { fontWeight: '700', fontSize: 17 },
           headerShadowVisible: false,
+          headerRight: () => <NotificationBell path="/(client)/notifications" />,
         }}
       >
         <Tabs.Screen
@@ -73,7 +77,12 @@ export default function ClientLayout() {
           name="guide"
           options={{ href: null, title: 'User Guide' }}
         />
+        <Tabs.Screen
+          name="notifications"
+          options={{ href: null, title: 'Notifications' }}
+        />
       </Tabs>
     </View>
+    </NotificationsProvider>
   );
 }

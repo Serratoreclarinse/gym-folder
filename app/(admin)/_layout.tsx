@@ -1,10 +1,12 @@
 import { Image, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
+import { NotificationsProvider } from '@/context/NotificationsContext';
 
 export default function AdminRootLayout() {
   const { colors, isDark } = useTheme();
   return (
+    <NotificationsProvider>
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Image
         source={require('@/assets/images/logo.png')}
@@ -35,7 +37,9 @@ export default function AdminRootLayout() {
         <Stack.Screen name="client/[id]" options={{ title: 'Client Details' }} />
         <Stack.Screen name="recycle-bin" options={{ title: 'Recycle Bin' }} />
         <Stack.Screen name="invoice/[paymentId]" options={{ title: 'Invoice' }} />
+        <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
       </Stack>
     </View>
+    </NotificationsProvider>
   );
 }

@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActiveSessionProvider } from '@/context/ActiveSessionContext';
 import { FloatingSessionBar } from '@/components/FloatingSessionBar';
 import { useTheme } from '@/context/ThemeContext';
+import { NotificationBell } from '@/components/NotificationBell';
 
 export default function CoachTabsLayout() {
   const insets = useSafeAreaInsets();
@@ -35,6 +36,7 @@ export default function CoachTabsLayout() {
             headerTintColor: colors.textPrimary,
             headerTitleStyle: { fontWeight: '700', fontSize: 17 },
             headerShadowVisible: false,
+            headerRight: () => <NotificationBell path="/(coach)/notifications" />,
           }}
         >
           <Tabs.Screen

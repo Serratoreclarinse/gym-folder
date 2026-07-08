@@ -1,10 +1,12 @@
 import { Image, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
+import { NotificationsProvider } from '@/context/NotificationsContext';
 
 export default function CoachRootLayout() {
   const { colors, isDark } = useTheme();
   return (
+    <NotificationsProvider>
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Image
         source={require('@/assets/images/logo.png')}
@@ -87,7 +89,12 @@ export default function CoachRootLayout() {
         name="form-checker"
         options={{ headerShown: false }}
       />
+      <Stack.Screen
+        name="notifications"
+        options={{ title: 'Notifications' }}
+      />
     </Stack>
     </View>
+    </NotificationsProvider>
   );
 }
