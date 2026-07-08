@@ -5,6 +5,7 @@ import { useClientData, type ClientPackage } from '@/hooks/useClientData';
 import { useClientAnnouncements } from '@/hooks/useClientAnnouncements';
 import { useClientBookingRequests } from '@/hooks/useBookingRequests';
 import { ErrorBanner } from '@/components/ErrorBanner';
+import { MilestonesSection } from '@/components/MilestonesSection';
 import { supabase } from '@/lib/supabase';
 import { registerPushToken, sendPushNotification } from '@/lib/pushNotifications';
 import * as Notifications from 'expo-notifications';
@@ -733,6 +734,13 @@ export default function ClientProgressScreen() {
           </View>
         );
       })()}
+
+      {/* Milestones */}
+      {profile?.id && (
+        <View style={{ marginTop: 24 }}>
+          <MilestonesSection clientId={profile.id} />
+        </View>
+      )}
 
       {/* Recent workouts */}
       <Text style={[styles.sectionTitle, { marginTop: 28 }]}>RECENT WORKOUTS</Text>

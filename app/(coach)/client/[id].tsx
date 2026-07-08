@@ -29,6 +29,7 @@ import { ClientGoalsTab } from '@/components/ClientGoalsTab';
 import { ClientPhotosTab } from '@/components/ClientPhotosTab';
 import { ClientMeasurementsTab } from '@/components/ClientMeasurementsTab';
 import { ClientCheckinsTab } from '@/components/ClientCheckinsTab';
+import { MilestonesSection } from '@/components/MilestonesSection';
 import { ColorScheme, Typography } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 import { sendPushNotification } from '@/lib/pushNotifications';
@@ -755,6 +756,11 @@ export default function ClientDetailScreen() {
           )}
         </View>
       )}
+
+      {/* Milestones */}
+      <View style={{ marginTop: 20, marginBottom: 4 }}>
+        <MilestonesSection clientId={id} />
+      </View>
 
       {/* Strikes section */}
       <View style={[styles.sectionRow, { marginTop: 20 }]}>
