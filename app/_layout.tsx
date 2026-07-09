@@ -20,23 +20,26 @@ import {
   Inter_600SemiBold,
 } from '@expo-google-fonts/inter';
 
-function AnimatedSplash({ onDone }: { onDone: () => void }) {
+function AnimatedSplash() {
   const fadeAnim  = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
+  const [gone, setGone] = useState(false);
 
   useEffect(() => {
     Animated.spring(scaleAnim, { toValue: 1, friction: 7, useNativeDriver: true }).start();
 
     const t = setTimeout(() => {
       Animated.timing(fadeAnim, { toValue: 0, duration: 350, useNativeDriver: true })
-        .start(() => onDone());
+        .start(() => setGone(true));
     }, 900);
 
     return () => clearTimeout(t);
   }, []);
 
+  if (gone) return null;
+
   return (
-    <Animated.View style={[styles.splash, { opacity: fadeAnim }]}>
+    <Animated.View style={[styles.splash, { opacity: fadeAnim }]} pointerEvents="none">
       <Animated.Text style={[styles.splashText, { transform: [{ scale: scaleAnim }] }]}>
         ELEVATƎ
       </Animated.Text>
@@ -132,8 +135,6 @@ export default function RootLayout() {
   useAuthDeepLink();
   useAutoUpdate();
 
-  const [splashDone, setSplashDone] = useState(false);
-
   const [fontsLoaded] = useFonts({
     Montserrat_600SemiBold,
     Montserrat_700Bold,
@@ -154,9 +155,9 @@ export default function RootLayout() {
           <ThemedStatusBar />
           <AuthNavigation />
           <Slot />
-          {!splashDone && <AnimatedSplash onDone={() => setSplashDone(true)} />}
         </AuthProvider>
       </ThemeProvider>
+      <AnimatedSplash />
     </View>
   );
 }
