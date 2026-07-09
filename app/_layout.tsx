@@ -1,6 +1,7 @@
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Slot, useRouter, useSegments } from 'expo-router';
+import { DarkTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react'; // useState kept for AuthNavigation
 import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as Updates from 'expo-updates';
@@ -23,20 +24,16 @@ import {
 function AnimatedSplash() {
   const fadeAnim  = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
-  const [gone, setGone] = useState(false);
 
   useEffect(() => {
     Animated.spring(scaleAnim, { toValue: 1, friction: 7, useNativeDriver: true }).start();
 
     const t = setTimeout(() => {
-      Animated.timing(fadeAnim, { toValue: 0, duration: 350, useNativeDriver: true })
-        .start(() => setGone(true));
+      Animated.timing(fadeAnim, { toValue: 0, duration: 350, useNativeDriver: true }).start();
     }, 900);
 
     return () => clearTimeout(t);
   }, []);
-
-  if (gone) return null;
 
   return (
     <Animated.View style={[styles.splash, { opacity: fadeAnim }]} pointerEvents="none">
@@ -149,16 +146,18 @@ export default function RootLayout() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#0A0A0A' }}>
-      <ThemeProvider>
-        <AuthProvider>
-          <ThemedStatusBar />
-          <AuthNavigation />
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0A0A0A' }, animation: 'none' }} />
-        </AuthProvider>
-      </ThemeProvider>
-      <AnimatedSplash />
-    </View>
+    <NavThemeProvider value={DarkTheme}>
+      <View style={{ flex: 1, backgroundColor: '#0A0A0A' }}>
+        <ThemeProvider>
+          <AuthProvider>
+            <ThemedStatusBar />
+            <AuthNavigation />
+            <Slot />
+          </AuthProvider>
+        </ThemeProvider>
+        <AnimatedSplash />
+      </View>
+    </NavThemeProvider>
   );
 }
 
