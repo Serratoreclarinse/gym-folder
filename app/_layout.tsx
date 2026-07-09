@@ -1,9 +1,8 @@
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Platform, View } from 'react-native';
 import * as Linking from 'expo-linking';
-import * as SplashScreen from 'expo-splash-screen';
 import * as Updates from 'expo-updates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
@@ -20,39 +19,6 @@ import {
   Inter_500Medium,
   Inter_600SemiBold,
 } from '@expo-google-fonts/inter';
-
-SplashScreen.preventAutoHideAsync().catch(() => {});
-
-// ── Animated JS splash shown after fonts load ─────────────────────────────────
-function AnimatedSplash({ onDone }: { onDone: () => void }) {
-  const fadeAnim  = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.85)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim,  { toValue: 1, duration: 350, useNativeDriver: true }),
-      Animated.spring(scaleAnim, { toValue: 1, friction: 7,   useNativeDriver: true }),
-    ]).start();
-
-    const t = setTimeout(() => {
-      Animated.timing(fadeAnim, { toValue: 0, duration: 350, useNativeDriver: true })
-        .start(() => onDone());
-    }, 900);
-
-    return () => clearTimeout(t);
-  }, []);
-
-  return (
-    <Animated.View style={[styles.splash, { opacity: fadeAnim }]}>
-      <Animated.Text
-        style={[styles.splashText, { transform: [{ scale: scaleAnim }] }]}
-      >
-        ELEVATƎ
-      </Animated.Text>
-      <Text style={styles.splashSub}>Personal Training</Text>
-    </Animated.View>
-  );
-}
 
 function useAuthDeepLink() {
   useEffect(() => {
@@ -93,8 +59,8 @@ function AuthNavigation() {
     const inAdminGroup  = segments[0] === '(admin)';
     const onResetScreen = segments[1] === 'reset-password';
 
-    // Show onboarding on first ever launch
-    if (!onboardingDone && !inOnboarding) {
+    // Onboarding only on mobile first launch
+    if (Platform.OS !== 'web' && !onboardingDone && !inOnboarding) {
       router.replace('/onboarding');
       return;
     }
@@ -109,13 +75,9 @@ function AuthNavigation() {
     if (!session) {
       if (!inAuthGroup) router.replace('/(auth)/login');
     } else if (profile) {
-      if (profile.role === 'coach' && !inCoachGroup) {
-        router.replace('/(coach)');
-      } else if (profile.role === 'client' && !inClientGroup) {
-        router.replace('/(client)');
-      } else if (profile.role === 'admin' && !inAdminGroup) {
-        router.replace('/(admin)');
-      }
+      if      (profile.role === 'coach'  && !inCoachGroup)  router.replace('/(coach)');
+      else if (profile.role === 'client' && !inClientGroup) router.replace('/(client)');
+      else if (profile.role === 'admin'  && !inAdminGroup)  router.replace('/(admin)');
     }
   }, [session, profile, loading, needsPasswordReset, segments, onboardingDone, onboardingChecked]);
 
@@ -137,9 +99,7 @@ function useAutoUpdate() {
           await Updates.fetchUpdateAsync();
           await Updates.reloadAsync();
         }
-      } catch {
-        // silently ignore — update applies on next launch if this fails
-      }
+      } catch { /* silently ignore */ }
     })();
   }, []);
 }
@@ -147,8 +107,6 @@ function useAutoUpdate() {
 export default function RootLayout() {
   useAuthDeepLink();
   useAutoUpdate();
-
-  const [splashDone, setSplashDone] = useState(false);
 
   const [fontsLoaded] = useFonts({
     Montserrat_600SemiBold,
@@ -159,46 +117,18 @@ export default function RootLayout() {
     Inter_600SemiBold,
   });
 
-  useEffect(() => {
-    if (fontsLoaded) {
-      SplashScreen.hideAsync().catch(() => {});
-    }
-  }, [fontsLoaded]);
-
+  // Same as original — native splash covers the loading period
   if (!fontsLoaded && Platform.OS !== 'web') return null;
 
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <ThemedStatusBar />
-        <AuthNavigation />
-        <Slot />
-        {!splashDone && <AnimatedSplash onDone={() => setSplashDone(true)} />}
-      </AuthProvider>
-    </ThemeProvider>
+    <View style={{ flex: 1, backgroundColor: '#0A0A0A' }}>
+      <ThemeProvider>
+        <AuthProvider>
+          <ThemedStatusBar />
+          <AuthNavigation />
+          <Slot />
+        </AuthProvider>
+      </ThemeProvider>
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  splash:     {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#0A0A0A',
-    justifyContent:  'center',
-    alignItems:      'center',
-    gap:             8,
-    zIndex:          9999,
-  },
-  splashText: {
-    fontSize:    42,
-    fontWeight:  '800',
-    color:       '#FFFFFF',
-    letterSpacing: 5,
-  },
-  splashSub:  {
-    fontSize:    13,
-    fontWeight:  '500',
-    color:       '#666666',
-    letterSpacing: 3,
-    textTransform: 'uppercase',
-  },
-});
