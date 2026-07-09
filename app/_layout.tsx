@@ -3,7 +3,6 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
 import * as Linking from 'expo-linking';
-import * as SplashScreen from 'expo-splash-screen';
 import * as Updates from 'expo-updates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
@@ -21,17 +20,12 @@ import {
   Inter_600SemiBold,
 } from '@expo-google-fonts/inter';
 
-SplashScreen.preventAutoHideAsync().catch(() => {});
-
 function AnimatedSplash({ onDone }: { onDone: () => void }) {
-  const fadeAnim  = useRef(new Animated.Value(0)).current;
+  const fadeAnim  = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim,  { toValue: 1, duration: 350, useNativeDriver: true }),
-      Animated.spring(scaleAnim, { toValue: 1, friction: 7,   useNativeDriver: true }),
-    ]).start();
+    Animated.spring(scaleAnim, { toValue: 1, friction: 7, useNativeDriver: true }).start();
 
     const t = setTimeout(() => {
       Animated.timing(fadeAnim, { toValue: 0, duration: 350, useNativeDriver: true })
@@ -148,10 +142,6 @@ export default function RootLayout() {
     Inter_500Medium,
     Inter_600SemiBold,
   });
-
-  useEffect(() => {
-    if (fontsLoaded) SplashScreen.hideAsync().catch(() => {});
-  }, [fontsLoaded]);
 
   if (!fontsLoaded && Platform.OS !== 'web') {
     return <View style={{ flex: 1, backgroundColor: '#0A0A0A' }} />;
