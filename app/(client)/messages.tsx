@@ -38,14 +38,6 @@ export default function ClientMessagesScreen() {
   const s = useMemo(() => makeStyles(colors), [colors]);
 
   const { messages, loading, sendMessage, myId } = useChat(coachId);
-
-  if (!coachId) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator />
-      </View>
-    );
-  }
   const [text, setText] = useState('');
   const listRef = useRef<FlatList>(null);
 
@@ -61,6 +53,16 @@ export default function ClientMessagesScreen() {
     setText('');
   };
 
+  if (!coachId) {
+    return (
+      <View style={s.noCoach}>
+        <Ionicons name="chatbubbles-outline" size={48} color={colors.border} />
+        <Text style={s.noCoachText}>No active package found.</Text>
+        <Text style={s.noCoachSub}>Chat becomes available once your coach activates your package.</Text>
+      </View>
+    );
+  }
+
   const items: ({ type: 'day'; label: string } | { type: 'msg'; id: string; msg: (typeof messages)[0] })[] = [];
   let lastDay = '';
   for (const msg of messages) {
@@ -70,16 +72,6 @@ export default function ClientMessagesScreen() {
       lastDay = day;
     }
     items.push({ type: 'msg', id: msg.id, msg });
-  }
-
-  if (!coachId) {
-    return (
-      <View style={s.noCoach}>
-        <Ionicons name="chatbubbles-outline" size={48} color={colors.border} />
-        <Text style={s.noCoachText}>No active package found.</Text>
-        <Text style={s.noCoachSub}>Chat becomes available once your coach activates your package.</Text>
-      </View>
-    );
   }
 
   return (

@@ -21,7 +21,7 @@ type ClientPayment = { id: string; amount: number; payment_method: string; paid_
 type ClientGoal = { id: string; title: string; description: string | null; target_date: string | null; status: 'active' | 'achieved' | 'dropped' };
 
 export default function ClientProfileScreen() {
-  const { profile, signOut, refreshProfile } = useAuth();
+  const { user, profile, signOut, refreshProfile } = useAuth();
   const { colors, isDark, toggleTheme } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { coachInfo } = useClientData();
