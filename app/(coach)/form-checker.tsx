@@ -67,7 +67,6 @@ html, body { width:100vw; height:100vh; overflow:hidden; background:#000; }
 <div id="status">Loading AI model...<br><span style="font-size:11px;opacity:0.65">First load takes ~5 seconds</span></div>
 <div id="fps"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js" crossorigin="anonymous"></script>
 <script>
 var video     = document.getElementById('video');
 var canvas    = document.getElementById('canvas');
@@ -130,6 +129,7 @@ async function init() {
     statusEl.style.display = 'block';
 
     var V = window.vision;
+    if (!V || !V.FilesetResolver) throw new Error('MediaPipe library not loaded');
     var fs = await V.FilesetResolver.forVisionTasks(
       'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
     );
@@ -223,7 +223,12 @@ window.setFocusJoints = function(joints) {
   focusJoints = joints;
 };
 
-init();
+window._onVisionReady = function() { init(); };
+</script>
+<script
+  src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js"
+  onload="window._onVisionReady()"
+  onerror="document.getElementById('status').innerHTML='⚠️ Could not load AI library<br><span style=\\'font-size:11px;opacity:0.7\\'>Check internet connection</span>'">
 </script>
 </body>
 </html>`;

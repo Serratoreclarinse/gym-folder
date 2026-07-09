@@ -288,7 +288,7 @@ export default function AdminDashboardScreen() {
     >
       <View style={[s.inner, isDesktop && s.innerDesktop]}>
         <View style={s.header}>
-          <Text style={[s.brand, isDesktop && s.brandDesktop]}>ELEVATE</Text>
+          <Text style={[s.brand, isDesktop && s.brandDesktop]}>ELEVATƎ</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <Pressable onPress={toggleTheme} style={s.themeBtn} hitSlop={8}>
               <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={16} color={colors.textSecondary} />

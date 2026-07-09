@@ -114,6 +114,7 @@ export default function CoachDashboard() {
   const { activeSession, nextSession, extendSession, endSession, cancelSession, refetch: refetchTimer } = useActiveSessionContext();
   const [pausedWorkout, setPausedWorkout] = useState<any | null>(null);
   const [showPicker, setShowPicker] = useState(false);
+  const [monthEarnings, setMonthEarnings] = useState<number | null>(null);
   const [incomingTransfers, setIncomingTransfers] = useState<{
     id: string; client_name: string; from_coach_id: string; from_coach_name: string;
     package_type: string; sessions_remaining: number; notes: string | null;
@@ -184,11 +185,24 @@ export default function CoachDashboard() {
     ]);
   };
 
+  const fetchEarnings = useCallback(async () => {
+    if (!profile?.id) return;
+    const now   = new Date();
+    const start = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    const { data } = await supabase
+      .from('payments')
+      .select('amount')
+      .eq('coach_id', profile.id)
+      .gte('paid_at', start);
+    const total = (data ?? []).reduce((s: number, r: any) => s + (r.amount ?? 0), 0);
+    setMonthEarnings(total);
+  }, [profile?.id]);
+
   const refreshing = cLoading || sLoading;
-  const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers(); };
+  const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers(); fetchEarnings(); };
 
   useFocusEffect(useCallback(() => {
-    refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers();
+    refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers(); fetchEarnings();
     AsyncStorage.getItem('@elevat3/paused_workout').then((data) => {
       if (data) {
         const w = JSON.parse(data);
@@ -289,6 +303,22 @@ export default function CoachDashboard() {
         </View>
       </View>
     </View>
+
+      {/* Earnings this month */}
+      {monthEarnings !== null && (
+        <Pressable
+          style={({ pressed }) => [styles.earningsCard, pressed && { opacity: 0.85 }]}
+          onPress={() => router.push('/(coach)/revenue')}
+        >
+          <View>
+            <Text style={styles.earningsLabel}>EARNINGS THIS MONTH</Text>
+            <Text style={styles.earningsValue}>
+              OMR {monthEarnings.toFixed(3).replace(/\.?0+$/, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+            </Text>
+          </View>
+          <Ionicons name="trending-up-outline" size={28} color={colors.accent} />
+        </Pressable>
+      )}
 
       {/* Quick actions */}
       <Pressable
@@ -628,6 +658,9 @@ function makeStyles(c: ColorScheme) {
     statValue: { ...Typography.title, color: c.textPrimary, fontSize: 22, fontWeight: '800' },
     statLabel: { ...Typography.caption, color: c.textSecondary, marginTop: 2 },
     statDiv: { width: 1, height: 32, backgroundColor: c.border },
+    earningsCard:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: c.accent + '30', padding: 16, marginBottom: 8 },
+    earningsLabel: { ...Typography.label, color: c.textSecondary, marginBottom: 4, fontSize: 10 },
+    earningsValue: { fontSize: 22, fontWeight: '800', color: c.accent },
     logSessionBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
       backgroundColor: c.accent, borderRadius: 14, paddingVertical: 16,

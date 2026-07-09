@@ -11,6 +11,15 @@ import { Typography } from '@/constants/theme';
 import type { ColorScheme } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 
+const PAY_METHOD_LABEL: Record<string, string> = {
+  cash: 'Cash', bank_muscat: 'Bank Muscat', nbo: 'NBO', oab: 'OAB',
+  bank_dhofar: 'Bank Dhofar', ahli_bank: 'Ahli Bank', sohar: 'Sohar Intl',
+  hsbc: 'HSBC Oman', bank_nizwa: 'Bank Nizwa', other: 'Other',
+};
+
+type ClientPayment = { id: string; amount: number; payment_method: string; paid_at: string; notes: string | null };
+type ClientGoal = { id: string; title: string; description: string | null; target_date: string | null; status: 'active' | 'achieved' | 'dropped' };
+
 export default function ClientProfileScreen() {
   const { profile, signOut, refreshProfile } = useAuth();
   const { colors, isDark, toggleTheme } = useTheme();
@@ -24,6 +33,25 @@ export default function ClientProfileScreen() {
   const [whatsapp, setWhatsapp] = useState('');
   const [instagram, setInstagram] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Goals + payments
+  const [goals, setGoals] = useState<ClientGoal[]>([]);
+  const [clientPayments, setClientPayments] = useState<ClientPayment[]>([]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase.from('client_goals').select('id, title, description, target_date, status')
+      .eq('client_id', user.id).order('created_at', { ascending: false })
+      .then(({ data }) => setGoals((data ?? []) as ClientGoal[]));
+    supabase.from('payments').select('id, amount, payment_method, paid_at, notes')
+      .eq('client_id', user.id).order('paid_at', { ascending: false }).limit(20)
+      .then(({ data }) => setClientPayments((data ?? []) as ClientPayment[]));
+  }, [user?.id]);
+
+  const markGoalAchieved = async (id: string) => {
+    await supabase.from('client_goals').update({ status: 'achieved' }).eq('id', id);
+    setGoals((prev) => prev.map((g) => g.id === id ? { ...g, status: 'achieved' } : g));
+  };
 
   // Change password
   const [pwModal, setPwModal] = useState(false);
@@ -220,6 +248,48 @@ export default function ClientProfileScreen() {
         </>
       )}
 
+      {/* Goals */}
+      {goals.length > 0 && (
+        <>
+          <View style={[styles.sectionHeader, { marginTop: 4 }]}>
+            <Text style={styles.sectionLabel}>MY GOALS</Text>
+          </View>
+          <View style={[styles.infoSection, { marginBottom: 24 }]}>
+            {goals.map((goal, i) => {
+              const achieved = goal.status === 'achieved';
+              const dropped = goal.status === 'dropped';
+              const color = achieved ? '#4CAF50' : dropped ? colors.textSecondary : colors.accent;
+              return (
+                <Pressable
+                  key={goal.id}
+                  style={[styles.goalRow, i < goals.length - 1 && styles.goalRowBorder]}
+                  onPress={() => { if (!achieved && !dropped) markGoalAchieved(goal.id); }}
+                >
+                  <Ionicons
+                    name={achieved ? 'checkmark-circle' : dropped ? 'close-circle-outline' : 'radio-button-off-outline'}
+                    size={20} color={color}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.goalTitle, achieved && { textDecorationLine: 'line-through', color: colors.textSecondary }]}>
+                      {goal.title}
+                    </Text>
+                    {goal.target_date && !achieved && !dropped && (
+                      <Text style={styles.goalDate}>
+                        Target: {new Date(goal.target_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </Text>
+                    )}
+                  </View>
+                  {!achieved && !dropped && (
+                    <Text style={styles.goalTapHint}>Tap to achieve</Text>
+                  )}
+                  {achieved && <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />}
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      )}
+
       {/* Contact & Social */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionLabel}>CONTACT & SOCIAL</Text>
@@ -276,6 +346,32 @@ export default function ClientProfileScreen() {
             colors={colors}
           />
         </View>
+      )}
+
+      {/* Payment History */}
+      {clientPayments.length > 0 && (
+        <>
+          <View style={[styles.sectionHeader, { marginTop: 4 }]}>
+            <Text style={styles.sectionLabel}>PAYMENT HISTORY</Text>
+          </View>
+          <View style={[styles.infoSection, { marginBottom: 24 }]}>
+            {clientPayments.map((pay, i) => (
+              <View key={pay.id} style={[styles.payRow, i < clientPayments.length - 1 && styles.payRowBorder]}>
+                <Ionicons name="cash-outline" size={18} color="#4CAF50" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.payAmount}>
+                    OMR {Number(pay.amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                  </Text>
+                  <Text style={styles.payMeta}>
+                    {new Date(pay.paid_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {' · '}{PAY_METHOD_LABEL[pay.payment_method] ?? pay.payment_method}
+                  </Text>
+                  {pay.notes ? <Text style={styles.payNotes}>"{pay.notes}"</Text> : null}
+                </View>
+              </View>
+            ))}
+          </View>
+        </>
       )}
 
       <Pressable
@@ -459,6 +555,18 @@ function makeStyles(c: ColorScheme) {
     qrSub: { ...Typography.caption, color: c.textSecondary, marginBottom: 12 },
     qrWrap: { padding: 16, backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: c.border },
     qrExpiry: { ...Typography.caption, color: c.textSecondary, marginTop: 10, textAlign: 'center' },
+
+    goalRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14 },
+    goalRowBorder: { borderBottomWidth: 1, borderBottomColor: c.border },
+    goalTitle: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
+    goalDate: { ...Typography.caption, color: c.textSecondary },
+    goalTapHint: { ...Typography.caption, color: c.accent, fontSize: 10, fontWeight: '700' },
+
+    payRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14 },
+    payRowBorder: { borderBottomWidth: 1, borderBottomColor: c.border },
+    payAmount: { ...Typography.body, color: '#4CAF50', fontWeight: '800', marginBottom: 2 },
+    payMeta: { ...Typography.caption, color: c.textSecondary },
+    payNotes: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic', marginTop: 2 },
 
     sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 10 },
     sectionLabel: { ...Typography.label, color: c.textSecondary },

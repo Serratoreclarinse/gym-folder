@@ -1,9 +1,11 @@
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
 import * as Linking from 'expo-linking';
+import * as SplashScreen from 'expo-splash-screen';
 import * as Updates from 'expo-updates';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
 import { supabase } from '@/lib/supabase';
@@ -19,6 +21,39 @@ import {
   Inter_600SemiBold,
 } from '@expo-google-fonts/inter';
 
+SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// ── Animated JS splash shown after fonts load ─────────────────────────────────
+function AnimatedSplash({ onDone }: { onDone: () => void }) {
+  const fadeAnim  = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.85)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim,  { toValue: 1, duration: 350, useNativeDriver: true }),
+      Animated.spring(scaleAnim, { toValue: 1, friction: 7,   useNativeDriver: true }),
+    ]).start();
+
+    const t = setTimeout(() => {
+      Animated.timing(fadeAnim, { toValue: 0, duration: 350, useNativeDriver: true })
+        .start(() => onDone());
+    }, 900);
+
+    return () => clearTimeout(t);
+  }, []);
+
+  return (
+    <Animated.View style={[styles.splash, { opacity: fadeAnim }]}>
+      <Animated.Text
+        style={[styles.splashText, { transform: [{ scale: scaleAnim }] }]}
+      >
+        ELEVATƎ
+      </Animated.Text>
+      <Text style={styles.splashSub}>Personal Training</Text>
+    </Animated.View>
+  );
+}
+
 function useAuthDeepLink() {
   useEffect(() => {
     const handleUrl = async (url: string) => {
@@ -33,22 +68,38 @@ function useAuthDeepLink() {
   }, []);
 }
 
-// Stays mounted for the entire app lifetime — watches auth state and navigates.
-// This avoids the bug where index.tsx was unmounted after redirecting to login
-// and could no longer react to SIGNED_IN events.
 function AuthNavigation() {
   const { session, profile, loading, needsPasswordReset } = useAuth();
   const segments = useSegments();
-  const router = useRouter();
+  const router   = useRouter();
+
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
+  const [onboardingDone,    setOnboardingDone]    = useState(false);
 
   useEffect(() => {
-    if (loading) return;
+    AsyncStorage.getItem('onboarding_done').then((val) => {
+      setOnboardingDone(val === 'true');
+      setOnboardingChecked(true);
+    });
+  }, []);
 
-    const inAuthGroup = segments[0] === '(auth)';
-    const onResetScreen = segments[1] === 'reset-password';
-    const inCoachGroup = segments[0] === '(coach)';
+  useEffect(() => {
+    if (!onboardingChecked) return;
+
+    const inOnboarding  = segments[0] === 'onboarding';
+    const inAuthGroup   = segments[0] === '(auth)';
+    const inCoachGroup  = segments[0] === '(coach)';
     const inClientGroup = segments[0] === '(client)';
-    const inAdminGroup = segments[0] === '(admin)';
+    const inAdminGroup  = segments[0] === '(admin)';
+    const onResetScreen = segments[1] === 'reset-password';
+
+    // Show onboarding on first ever launch
+    if (!onboardingDone && !inOnboarding) {
+      router.replace('/onboarding');
+      return;
+    }
+
+    if (loading) return;
 
     if (needsPasswordReset) {
       if (!onResetScreen) router.replace('/(auth)/reset-password');
@@ -66,7 +117,7 @@ function AuthNavigation() {
         router.replace('/(admin)');
       }
     }
-  }, [session, profile, loading, needsPasswordReset, segments]);
+  }, [session, profile, loading, needsPasswordReset, segments, onboardingDone, onboardingChecked]);
 
   return null;
 }
@@ -97,6 +148,8 @@ export default function RootLayout() {
   useAuthDeepLink();
   useAutoUpdate();
 
+  const [splashDone, setSplashDone] = useState(false);
+
   const [fontsLoaded] = useFonts({
     Montserrat_600SemiBold,
     Montserrat_700Bold,
@@ -106,7 +159,12 @@ export default function RootLayout() {
     Inter_600SemiBold,
   });
 
-  // On web (Vercel static build), fonts load via CSS — don't block render
+  useEffect(() => {
+    if (fontsLoaded) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded]);
+
   if (!fontsLoaded && Platform.OS !== 'web') return null;
 
   return (
@@ -115,7 +173,32 @@ export default function RootLayout() {
         <ThemedStatusBar />
         <AuthNavigation />
         <Slot />
+        {!splashDone && <AnimatedSplash onDone={() => setSplashDone(true)} />}
       </AuthProvider>
     </ThemeProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  splash:     {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#0A0A0A',
+    justifyContent:  'center',
+    alignItems:      'center',
+    gap:             8,
+    zIndex:          9999,
+  },
+  splashText: {
+    fontSize:    42,
+    fontWeight:  '800',
+    color:       '#FFFFFF',
+    letterSpacing: 5,
+  },
+  splashSub:  {
+    fontSize:    13,
+    fontWeight:  '500',
+    color:       '#666666',
+    letterSpacing: 3,
+    textTransform: 'uppercase',
+  },
+});

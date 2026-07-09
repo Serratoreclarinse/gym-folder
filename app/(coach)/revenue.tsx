@@ -211,7 +211,7 @@ function buildCSV(payments: Payment[], periodLabel: string): string {
 
   const vatTotal = paidTotal * VAT_RATE;
 
-  const header = `ELEVATE Revenue Report – ${periodLabel}\nGenerated: ${now}\n\n`;
+  const header = `ELEVATƎ Revenue Report – ${periodLabel}\nGenerated: ${now}\n\n`;
   const cols = 'DATE,CLIENT,PACKAGE,AMOUNT (OMR),VAT 5% (OMR),METHOD,STATUS,NOTES\n';
   const rows = payments
     .slice()

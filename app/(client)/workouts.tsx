@@ -1,6 +1,8 @@
 import { Alert, Modal, RefreshControl, ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
 import { useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as StoreReview from 'expo-store-review';
 import { useClientData, type ClientSession } from '@/hooks/useClientData';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -144,6 +146,19 @@ export default function ClientWorkoutsScreen() {
   const [submittingRating, setSubmittingRating] = useState(false);
 
   const [ratingExpiredSession, setRatingExpiredSession] = useState<ClientSession | null>(null);
+
+  // ── In-app review prompt (once, after 3+ sessions) ───────────
+  useEffect(() => {
+    if (sessions.length < 3) return;
+    (async () => {
+      const prompted = await AsyncStorage.getItem('@elevat3/review_prompted');
+      if (prompted) return;
+      const available = await StoreReview.isAvailableAsync();
+      if (!available) return;
+      await AsyncStorage.setItem('@elevat3/review_prompted', 'true');
+      StoreReview.requestReview();
+    })();
+  }, [sessions.length]);
 
   useEffect(() => {
     if (sessions.length === 0) return;

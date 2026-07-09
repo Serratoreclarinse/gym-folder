@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator, Pressable, RefreshControl,
@@ -18,6 +18,16 @@ type CoachRow = {
   activeClients: number;
 };
 
+type AvailStatus = 'available' | 'busy' | 'blocked' | 'day_off' | 'outside_hours';
+
+const AVAIL_CONFIG: Record<AvailStatus, { label: string; icon: string; color: string }> = {
+  available:     { label: 'Available',      icon: 'checkmark-circle',  color: '#22c55e' },
+  busy:          { label: 'Busy',           icon: 'close-circle',      color: '#ef4444' },
+  blocked:       { label: 'Blocked',        icon: 'lock-closed',       color: '#f97316' },
+  day_off:       { label: 'Day Off',        icon: 'moon-outline',      color: '#94a3b8' },
+  outside_hours: { label: 'Outside Hours',  icon: 'time-outline',      color: '#94a3b8' },
+};
+
 function initials(name: string) {
   return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
 }
@@ -31,6 +41,14 @@ export default function AdminCoachesScreen() {
   const [coaches, setCoaches] = useState<CoachRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+
+  // Availability search state
+  const [findMode, setFindMode] = useState(false);
+  const [targetDate, setTargetDate] = useState('');
+  const [targetTime, setTargetTime] = useState('');
+  const [availMap, setAvailMap] = useState<Map<string, AvailStatus>>(new Map());
+  const [avLoading, setAvLoading] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,11 +84,101 @@ export default function AdminCoachesScreen() {
     return () => { supabase.removeChannel(channel); };
   }, [load]);
 
+  // Trigger availability search with debounce
+  useEffect(() => {
+    if (!findMode) { setAvailMap(new Map()); return; }
+    if (!targetDate.match(/^\d{4}-\d{2}-\d{2}$/) || !targetTime.match(/^\d{2}:\d{2}$/)) {
+      setAvailMap(new Map());
+      return;
+    }
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => runAvailSearch(), 500);
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+  }, [findMode, targetDate, targetTime, coaches]);
+
+  const runAvailSearch = async () => {
+    if (!targetDate || !targetTime) return;
+    setAvLoading(true);
+
+    const [year, month, day] = targetDate.split('-').map(Number);
+    const [hour, minute] = targetTime.split(':').map(Number);
+    const dow = new Date(year, month - 1, day).getDay();
+    const targetMinutes = hour * 60 + minute;
+
+    const dayStart = `${targetDate}T00:00:00`;
+    const dayEnd   = `${targetDate}T23:59:59`;
+
+    const [avRes, bdRes, sessRes] = await Promise.all([
+      supabase.from('coach_availability')
+        .select('coach_id, is_active, start_time, end_time')
+        .eq('day_of_week', dow)
+        .eq('is_active', true),
+      supabase.from('coach_blocked_dates')
+        .select('coach_id')
+        .eq('date', targetDate),
+      supabase.from('scheduled_sessions')
+        .select('coach_id, scheduled_at, duration_minutes')
+        .gte('scheduled_at', dayStart)
+        .lte('scheduled_at', dayEnd),
+    ]);
+
+    const workingMap = new Map(
+      (avRes.data ?? []).map((a: any) => [a.coach_id, a]),
+    );
+    const blockedSet = new Set((bdRes.data ?? []).map((b: any) => b.coach_id));
+    const busySet = new Set<string>();
+
+    for (const sess of sessRes.data ?? [] as any[]) {
+      const d = new Date(sess.scheduled_at);
+      const sessMin = d.getHours() * 60 + d.getMinutes();
+      const dur = sess.duration_minutes ?? 60;
+      if (sessMin <= targetMinutes && targetMinutes < sessMin + dur) {
+        busySet.add(sess.coach_id);
+      }
+    }
+
+    const result = new Map<string, AvailStatus>();
+    for (const coach of coaches) {
+      const avail = workingMap.get(coach.id) as any;
+      if (!avail) {
+        result.set(coach.id, 'day_off');
+      } else if (blockedSet.has(coach.id)) {
+        result.set(coach.id, 'blocked');
+      } else {
+        const [sh, sm] = (avail.start_time as string).split(':').map(Number);
+        const [eh, em] = (avail.end_time   as string).split(':').map(Number);
+        const startMin = sh * 60 + sm;
+        const endMin   = eh * 60 + em;
+        if (targetMinutes < startMin || targetMinutes >= endMin) {
+          result.set(coach.id, 'outside_hours');
+        } else if (busySet.has(coach.id)) {
+          result.set(coach.id, 'busy');
+        } else {
+          result.set(coach.id, 'available');
+        }
+      }
+    }
+
+    setAvailMap(result);
+    setAvLoading(false);
+  };
+
   const filtered = coaches.filter(
     (c) => !search
       || c.name.toLowerCase().includes(search.toLowerCase())
       || c.email.toLowerCase().includes(search.toLowerCase()),
   );
+
+  // In find mode, sort available coaches first
+  const sorted = findMode && availMap.size > 0
+    ? [...filtered].sort((a, b) => {
+        const order: Record<AvailStatus, number> = {
+          available: 0, busy: 1, blocked: 2, outside_hours: 3, day_off: 4,
+        };
+        return (order[availMap.get(a.id) ?? 'day_off'] ?? 4)
+             - (order[availMap.get(b.id) ?? 'day_off'] ?? 4);
+      })
+    : filtered;
 
   return (
     <View style={s.root}>
@@ -92,6 +200,16 @@ export default function AdminCoachesScreen() {
               </Pressable>
             )}
           </View>
+          <Pressable
+            style={[s.iconBtn, findMode && s.iconBtnActive]}
+            onPress={() => setFindMode((v) => !v)}
+          >
+            <Ionicons
+              name="calendar-outline"
+              size={18}
+              color={findMode ? colors.bg : colors.textSecondary}
+            />
+          </Pressable>
           <Pressable style={s.trashBtn} onPress={() => router.push('/(admin)/recycle-bin' as any)}>
             <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
           </Pressable>
@@ -100,6 +218,53 @@ export default function AdminCoachesScreen() {
             {isDesktop && <Text style={s.addBtnText}>Add Coach</Text>}
           </Pressable>
         </View>
+
+        {/* Availability search panel */}
+        {findMode && (
+          <View style={[s.findPanel, isDesktop && s.findPanelDesktop]}>
+            <View style={s.findPanelInner}>
+              <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+              <Text style={s.findLabel}>Find Available Coach</Text>
+              {avLoading && <ActivityIndicator size="small" color={colors.accent} style={{ marginLeft: 'auto' }} />}
+            </View>
+            <View style={s.findRow}>
+              <View style={s.findField}>
+                <Text style={s.findFieldLabel}>DATE</Text>
+                <TextInput
+                  style={s.findInput}
+                  value={targetDate}
+                  onChangeText={setTargetDate}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={colors.textSecondary}
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={10}
+                />
+              </View>
+              <View style={s.findField}>
+                <Text style={s.findFieldLabel}>TIME</Text>
+                <TextInput
+                  style={s.findInput}
+                  value={targetTime}
+                  onChangeText={setTargetTime}
+                  placeholder="HH:MM"
+                  placeholderTextColor={colors.textSecondary}
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={5}
+                />
+              </View>
+            </View>
+            {availMap.size > 0 && (
+              <View style={s.legendRow}>
+                {(['available', 'busy', 'blocked', 'day_off'] as AvailStatus[]).map((k) => (
+                  <View key={k} style={s.legendItem}>
+                    <View style={[s.legendDot, { backgroundColor: AVAIL_CONFIG[k].color }]} />
+                    <Text style={s.legendText}>{AVAIL_CONFIG[k].label}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
       </View>
 
       {loading ? (
@@ -110,7 +275,7 @@ export default function AdminCoachesScreen() {
           refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />}
         >
           <View style={[s.listInner, isDesktop && s.listInnerDesktop]}>
-            {filtered.length === 0 ? (
+            {sorted.length === 0 ? (
               <View style={s.empty}>
                 <Ionicons name="people-outline" size={52} color={colors.border} />
                 <Text style={s.emptyTitle}>{search ? 'No coaches match' : 'No coaches yet'}</Text>
@@ -124,50 +289,77 @@ export default function AdminCoachesScreen() {
                   <Text style={[s.thCell, { flex: 2 }]}>EMAIL</Text>
                   <Text style={[s.thCell, { flex: 1 }]}>PHONE</Text>
                   <Text style={[s.thCell, { flex: 1, textAlign: 'right' }]}>CLIENTS</Text>
+                  {findMode && availMap.size > 0 && (
+                    <Text style={[s.thCell, { width: 120, textAlign: 'right' }]}>STATUS</Text>
+                  )}
                 </View>
-                {filtered.map((coach, i) => (
-                  <Pressable
-                    key={coach.id}
-                    style={[s.tableRow, s.tableDataRow, i % 2 === 1 && s.tableRowAlt]}
-                    onPress={() => router.push(`/(admin)/coach/${coach.id}` as any)}
-                  >
-                    <View style={[s.tdCell, { flex: 2 }]}>
-                      <View style={s.nameRow}>
-                        <View style={s.avatarSm}>
-                          <Text style={s.avatarSmText}>{initials(coach.name)}</Text>
+                {sorted.map((coach, i) => {
+                  const avStatus = availMap.get(coach.id);
+                  const cfg = avStatus ? AVAIL_CONFIG[avStatus] : null;
+                  return (
+                    <Pressable
+                      key={coach.id}
+                      style={[s.tableRow, s.tableDataRow, i % 2 === 1 && s.tableRowAlt]}
+                      onPress={() => router.push(`/(admin)/coach/${coach.id}` as any)}
+                    >
+                      <View style={[s.tdCell, { flex: 2 }]}>
+                        <View style={s.nameRow}>
+                          <View style={s.avatarSm}>
+                            <Text style={s.avatarSmText}>{initials(coach.name)}</Text>
+                          </View>
+                          <Text style={s.tdName}>{coach.name}</Text>
                         </View>
-                        <Text style={s.tdName}>{coach.name}</Text>
                       </View>
-                    </View>
-                    <Text style={[s.tdText, { flex: 2 }]}>{coach.email}</Text>
-                    <Text style={[s.tdText, { flex: 1 }]}>{coach.phone ?? '—'}</Text>
-                    <Text style={[s.tdNum, { flex: 1, textAlign: 'right' }]}>{coach.activeClients}</Text>
-                  </Pressable>
-                ))}
+                      <Text style={[s.tdText, { flex: 2 }]}>{coach.email}</Text>
+                      <Text style={[s.tdText, { flex: 1 }]}>{coach.phone ?? '—'}</Text>
+                      <Text style={[s.tdNum, { flex: 1, textAlign: 'right' }]}>{coach.activeClients}</Text>
+                      {findMode && availMap.size > 0 && (
+                        <View style={[s.tdCell, { width: 120, justifyContent: 'flex-end' }]}>
+                          {cfg ? (
+                            <View style={[s.statusChip, { backgroundColor: cfg.color + '18', borderColor: cfg.color + '40' }]}>
+                              <Ionicons name={cfg.icon as any} size={12} color={cfg.color} />
+                              <Text style={[s.statusChipText, { color: cfg.color }]}>{cfg.label}</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      )}
+                    </Pressable>
+                  );
+                })}
               </View>
             ) : (
               /* ── Mobile cards ── */
-              filtered.map((coach) => (
-                <Pressable
-                  key={coach.id}
-                  style={s.coachCard}
-                  onPress={() => router.push(`/(admin)/coach/${coach.id}` as any)}
-                >
-                  <View style={s.avatar}>
-                    <Text style={s.avatarText}>{initials(coach.name)}</Text>
-                  </View>
-                  <View style={s.info}>
-                    <Text style={s.name}>{coach.name}</Text>
-                    <Text style={s.email}>{coach.email}</Text>
-                    {coach.phone ? <Text style={s.phone}>{coach.phone}</Text> : null}
-                  </View>
-                  <View style={s.statCol}>
-                    <Text style={s.statNum}>{coach.activeClients}</Text>
-                    <Text style={s.statLbl}>clients</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={colors.border} style={{ marginLeft: 4 }} />
-                </Pressable>
-              ))
+              sorted.map((coach) => {
+                const avStatus = availMap.get(coach.id);
+                const cfg = avStatus ? AVAIL_CONFIG[avStatus] : null;
+                return (
+                  <Pressable
+                    key={coach.id}
+                    style={s.coachCard}
+                    onPress={() => router.push(`/(admin)/coach/${coach.id}` as any)}
+                  >
+                    <View style={s.avatar}>
+                      <Text style={s.avatarText}>{initials(coach.name)}</Text>
+                    </View>
+                    <View style={s.info}>
+                      <Text style={s.name}>{coach.name}</Text>
+                      <Text style={s.email}>{coach.email}</Text>
+                      {coach.phone ? <Text style={s.phone}>{coach.phone}</Text> : null}
+                      {cfg && (
+                        <View style={[s.statusChip, { backgroundColor: cfg.color + '18', borderColor: cfg.color + '40', alignSelf: 'flex-start', marginTop: 6 }]}>
+                          <Ionicons name={cfg.icon as any} size={12} color={cfg.color} />
+                          <Text style={[s.statusChipText, { color: cfg.color }]}>{cfg.label}</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={s.statCol}>
+                      <Text style={s.statNum}>{coach.activeClients}</Text>
+                      <Text style={s.statLbl}>clients</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.border} style={{ marginLeft: 4 }} />
+                  </Pressable>
+                );
+              })
             )}
           </View>
         </ScrollView>
@@ -202,6 +394,64 @@ function makeStyles(c: ColorScheme) {
       padding: 10, borderRadius: 10,
       borderWidth: 1, borderColor: c.border,
       backgroundColor: c.surface, justifyContent: 'center', alignItems: 'center',
+    },
+    iconBtn: {
+      padding: 10, borderRadius: 10,
+      borderWidth: 1, borderColor: c.border,
+      backgroundColor: c.surface, justifyContent: 'center', alignItems: 'center',
+    },
+    iconBtnActive: {
+      backgroundColor: c.accent,
+      borderColor: c.accent,
+    },
+
+    // Find available panel
+    findPanel: {
+      marginTop: 12, gap: 10,
+    },
+    findPanelDesktop: {
+      maxWidth: 960, alignSelf: 'center', width: '100%',
+    },
+    findPanelInner: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+    },
+    findLabel: {
+      ...Typography.label, color: c.accent, fontWeight: '700', fontSize: 12, letterSpacing: 0.5,
+    },
+    findRow: {
+      flexDirection: 'row', gap: 10,
+    },
+    findField: { flex: 1 },
+    findFieldLabel: {
+      ...Typography.label, color: c.textSecondary, fontSize: 10, letterSpacing: 0.8, marginBottom: 4,
+    },
+    findInput: {
+      backgroundColor: c.surface, borderRadius: 10,
+      borderWidth: 1, borderColor: c.border,
+      paddingHorizontal: 12, paddingVertical: 10,
+      color: c.textPrimary, fontSize: 15,
+    },
+    legendRow: {
+      flexDirection: 'row', flexWrap: 'wrap', gap: 12,
+    },
+    legendItem: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+    },
+    legendDot: {
+      width: 8, height: 8, borderRadius: 4,
+    },
+    legendText: {
+      ...Typography.caption, color: c.textSecondary, fontSize: 11,
+    },
+
+    // Status chip
+    statusChip: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      borderRadius: 8, borderWidth: 1,
+      paddingHorizontal: 8, paddingVertical: 3,
+    },
+    statusChipText: {
+      fontSize: 11, fontWeight: '700',
     },
 
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },

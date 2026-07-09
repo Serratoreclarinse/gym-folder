@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useClientData, type ClientPackage } from '@/hooks/useClientData';
 import { useClientAnnouncements } from '@/hooks/useClientAnnouncements';
@@ -201,6 +202,7 @@ function computeStreak(sessions: { session_date: string; status: string | null }
 }
 
 export default function ClientProgressScreen() {
+  const router = useRouter();
   const { profile, user } = useAuth();
   const firstName = profile?.name?.split(' ')[0] ?? 'there';
   const { pkg, sessions, coachInfo, nextScheduled, upcomingScheduled, loading, error, refetch } = useClientData();
@@ -758,7 +760,12 @@ export default function ClientProgressScreen() {
             </View>
           ))}
           {sessions.length > 3 && (
-            <Text style={styles.viewAllHint}>See all {sessions.length} sessions in Workouts tab</Text>
+            <Pressable
+              onPress={() => router.push('/(client)/session-history')}
+              style={styles.viewAllBtn}
+            >
+              <Text style={styles.viewAllBtnText}>View all {sessions.length} sessions →</Text>
+            </Pressable>
           )}
         </View>
       )}
@@ -975,6 +982,17 @@ function makeStyles(c: ColorScheme) {
       paddingVertical: 12,
       borderTopWidth: 1,
       borderTopColor: c.border,
+    },
+    viewAllBtn: {
+      alignItems: 'center',
+      paddingVertical: 12,
+      borderTopWidth: 1,
+      borderTopColor: c.border,
+    },
+    viewAllBtnText: {
+      ...Typography.caption,
+      color: c.accent,
+      fontWeight: '700',
     },
 
     // Coach card

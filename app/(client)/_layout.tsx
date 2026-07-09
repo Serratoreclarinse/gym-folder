@@ -81,6 +81,10 @@ export default function ClientLayout() {
           name="notifications"
           options={{ href: null, title: 'Notifications' }}
         />
+        <Tabs.Screen
+          name="session-history"
+          options={{ href: null, title: 'Session History' }}
+        />
       </Tabs>
     </View>
     </NotificationsProvider>
