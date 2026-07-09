@@ -1,4 +1,4 @@
-import { Slot, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
@@ -154,7 +154,7 @@ export default function RootLayout() {
         <AuthProvider>
           <ThemedStatusBar />
           <AuthNavigation />
-          <Slot />
+          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0A0A0A' }, animation: 'none' }} />
         </AuthProvider>
       </ThemeProvider>
       <AnimatedSplash />
