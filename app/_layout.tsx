@@ -117,8 +117,9 @@ export default function RootLayout() {
     Inter_600SemiBold,
   });
 
-  // Same as original — native splash covers the loading period
-  if (!fontsLoaded && Platform.OS !== 'web') return null;
+  if (!fontsLoaded && Platform.OS !== 'web') {
+    return <View style={{ flex: 1, backgroundColor: '#0A0A0A' }} />;
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: '#0A0A0A' }}>
