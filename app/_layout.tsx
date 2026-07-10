@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Appearance, Modal, Platform, StyleSheet, Text, View } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as Updates from 'expo-updates';
+import * as SystemUI from 'expo-system-ui';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
@@ -21,9 +22,13 @@ import {
   Inter_600SemiBold,
 } from '@expo-google-fonts/inter';
 
-// Force Expo Router's NavigationContainer to use DarkTheme backdrop so any
-// transition gaps are dark instead of the system-default white.
+// Force dark theme at every layer:
+// - Appearance.setColorScheme: makes React Navigation use DarkTheme on Android
+//   (iOS ignores this call — it's a documented no-op on that platform)
+// - SystemUI.setBackgroundColorAsync: paints the native root UIView dark on iOS
+//   so the NavigationContainer backdrop is never white during transitions
 Appearance.setColorScheme('dark');
+SystemUI.setBackgroundColorAsync('#0A0A0A');
 
 const AppNavTheme = {
   ...DarkTheme,
@@ -47,7 +52,9 @@ function AnimatedSplash({ shouldFade }: { shouldFade: boolean }) {
     if (shouldFade && !hasFaded.current) {
       hasFaded.current = true;
       Animated.timing(fadeAnim, { toValue: 0, duration: 350, useNativeDriver: true }).start(() => {
-        setVisible(false);
+        // Small delay so the opacity=0 frame is committed before the Modal
+        // window is dismissed — prevents a 1-frame white flash on iOS.
+        setTimeout(() => setVisible(false), 50);
       });
     }
   }, [shouldFade]);
@@ -62,7 +69,7 @@ function AnimatedSplash({ shouldFade }: { shouldFade: boolean }) {
       animationType="none"
       onRequestClose={() => {}}
     >
-      <Animated.View style={[styles.splash, { opacity: fadeAnim }]}>
+      <Animated.View style={[StyleSheet.absoluteFill, styles.splash, { opacity: fadeAnim }]}>
         <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
           <Text style={styles.splashText}>ELEVATƎ</Text>
         </Animated.View>
@@ -226,7 +233,6 @@ export default function RootLayout() {
 
 const styles = StyleSheet.create({
   splash: {
-    flex:            1,
     backgroundColor: '#0A0A0A',
     justifyContent:  'center',
     alignItems:      'center',
