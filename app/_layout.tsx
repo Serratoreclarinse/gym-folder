@@ -125,7 +125,7 @@ export default function RootLayout() {
   useAuthDeepLink();
   useAutoUpdate();
 
-  const [fontsLoaded, fontError] = useFonts({
+  useFonts({
     Montserrat_600SemiBold,
     Montserrat_700Bold,
     Montserrat_800ExtraBold,
@@ -137,15 +137,13 @@ export default function RootLayout() {
   return (
     <NavThemeProvider value={AppNavTheme}>
       <View style={{ flex: 1, backgroundColor: '#0A0A0A' }}>
-        {(fontsLoaded || fontError || Platform.OS === 'web') && (
-          <ThemeProvider>
-            <AuthProvider>
-              <ThemedStatusBar />
-              <AuthNavigation />
-              <Slot />
-            </AuthProvider>
-          </ThemeProvider>
-        )}
+        <ThemeProvider>
+          <AuthProvider>
+            <ThemedStatusBar />
+            <AuthNavigation />
+            <Slot />
+          </AuthProvider>
+        </ThemeProvider>
       </View>
     </NavThemeProvider>
   );
