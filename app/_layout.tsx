@@ -22,13 +22,9 @@ import {
   Inter_600SemiBold,
 } from '@expo-google-fonts/inter';
 
-// Force dark theme at every layer:
-// - Appearance.setColorScheme: makes React Navigation use DarkTheme on Android
-//   (iOS ignores this call — it's a documented no-op on that platform)
-// - SystemUI.setBackgroundColorAsync: paints the native root UIView dark on iOS
-//   so the NavigationContainer backdrop is never white during transitions
+// Android: force React Navigation's NavigationContainer to use DarkTheme
+// (iOS ignores Appearance.setColorScheme — it's a documented no-op there)
 Appearance.setColorScheme('dark');
-SystemUI.setBackgroundColorAsync('#0A0A0A');
 
 const AppNavTheme = {
   ...DarkTheme,
@@ -179,6 +175,13 @@ function ThemedStatusBar() {
 export default function RootLayout() {
   useAuthDeepLink();
   useAutoUpdate();
+
+  // iOS: paint the native root UIView dark so the NavigationContainer backdrop
+  // is never white during transitions. Must run in useEffect (not module level)
+  // so the native bridge is fully initialized before the call.
+  useEffect(() => {
+    SystemUI.setBackgroundColorAsync('#0A0A0A');
+  }, []);
 
   const [splashDone, setSplashDone] = useState(false);
   const routingReadyRef = useRef(false);
