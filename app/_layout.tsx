@@ -37,9 +37,9 @@ function AnimatedSplash() {
 
   return (
     <Animated.View style={[styles.splash, { opacity: fadeAnim }]} pointerEvents="none">
-      <Animated.Text style={[styles.splashText, { transform: [{ scale: scaleAnim }] }]}>
-        ELEVATƎ
-      </Animated.Text>
+      <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+        <Text style={styles.splashText}>ELEVATƎ</Text>
+      </Animated.View>
       <Text style={styles.splashSub}>Personal Training</Text>
     </Animated.View>
   );
@@ -141,20 +141,19 @@ export default function RootLayout() {
     Inter_600SemiBold,
   });
 
-  if (!fontsLoaded && Platform.OS !== 'web') {
-    return <View style={{ flex: 1, backgroundColor: '#0A0A0A' }} />;
-  }
-
   return (
     <NavThemeProvider value={DarkTheme}>
       <View style={{ flex: 1, backgroundColor: '#0A0A0A' }}>
-        <ThemeProvider>
-          <AuthProvider>
-            <ThemedStatusBar />
-            <AuthNavigation />
-            <Slot />
-          </AuthProvider>
-        </ThemeProvider>
+        {(fontsLoaded || Platform.OS === 'web') && (
+          <ThemeProvider>
+            <AuthProvider>
+              <ThemedStatusBar />
+              <AuthNavigation />
+              <Slot />
+            </AuthProvider>
+          </ThemeProvider>
+        )}
+        {/* Splash renders immediately — covers the font-loading gap AND auth wait */}
         <AnimatedSplash />
       </View>
     </NavThemeProvider>
