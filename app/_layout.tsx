@@ -1,8 +1,8 @@
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { DarkTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
-import { Appearance, Platform, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as Updates from 'expo-updates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -21,16 +21,30 @@ import {
   Inter_600SemiBold,
 } from '@expo-google-fonts/inter';
 
-// Android: force React Navigation's NavigationContainer to use DarkTheme
-// (iOS ignores Appearance.setColorScheme — it's a documented no-op there)
-Appearance.setColorScheme('dark');
+function AnimatedSplash() {
+  const fadeAnim  = useRef(new Animated.Value(1)).current;
+  const scaleAnim = useRef(new Animated.Value(0.85)).current;
 
-const AppNavTheme = {
-  ...DarkTheme,
-  colors: { ...DarkTheme.colors, background: '#0A0A0A', card: '#0A0A0A' },
-};
+  useEffect(() => {
+    Animated.spring(scaleAnim, { toValue: 1, friction: 7, useNativeDriver: true }).start();
 
-// ─── Deep-link handler ───────────────────────────────────────────────────────
+    const t = setTimeout(() => {
+      Animated.timing(fadeAnim, { toValue: 0, duration: 350, useNativeDriver: true }).start();
+    }, 900);
+
+    return () => clearTimeout(t);
+  }, []);
+
+  return (
+    <Animated.View style={[styles.splash, { opacity: fadeAnim }]} pointerEvents="none">
+      <Animated.Text style={[styles.splashText, { transform: [{ scale: scaleAnim }] }]}>
+        ELEVATƎ
+      </Animated.Text>
+      <Text style={styles.splashSub}>Personal Training</Text>
+    </Animated.View>
+  );
+}
+
 function useAuthDeepLink() {
   useEffect(() => {
     const handleUrl = async (url: string) => {
@@ -45,7 +59,6 @@ function useAuthDeepLink() {
   }, []);
 }
 
-// ─── OTA update checker ──────────────────────────────────────────────────────
 function useAutoUpdate() {
   useEffect(() => {
     if (__DEV__) return;
@@ -61,7 +74,6 @@ function useAutoUpdate() {
   }, []);
 }
 
-// ─── Auth-based routing ──────────────────────────────────────────────────────
 function AuthNavigation() {
   const { session, profile, loading, needsPasswordReset } = useAuth();
   const segments = useSegments();
@@ -95,37 +107,32 @@ function AuthNavigation() {
     if (loading) return;
 
     if (needsPasswordReset) {
-      if (!onResetScreen) {
-        router.replace('/(auth)/reset-password');
-        return;
-      }
-    } else if (!session) {
-      if (!inAuthGroup) {
-        router.replace('/(auth)/login');
-        return;
-      }
+      if (!onResetScreen) router.replace('/(auth)/reset-password');
+      return;
+    }
+
+    if (!session) {
+      if (!inAuthGroup) router.replace('/(auth)/login');
     } else if (profile) {
-      if (profile.role === 'coach'  && !inCoachGroup)  { router.replace('/(coach)');  return; }
-      if (profile.role === 'client' && !inClientGroup) { router.replace('/(client)'); return; }
-      if (profile.role === 'admin'  && !inAdminGroup)  { router.replace('/(admin)');  return; }
+      if      (profile.role === 'coach'  && !inCoachGroup)  router.replace('/(coach)');
+      else if (profile.role === 'client' && !inClientGroup) router.replace('/(client)');
+      else if (profile.role === 'admin'  && !inAdminGroup)  router.replace('/(admin)');
     }
   }, [session, profile, loading, needsPasswordReset, segments, onboardingDone, onboardingChecked]);
 
   return null;
 }
 
-// ─── Status bar ──────────────────────────────────────────────────────────────
 function ThemedStatusBar() {
   const { isDark } = useTheme();
   return <StatusBar style={isDark ? 'light' : 'dark'} />;
 }
 
-// ─── Root layout ─────────────────────────────────────────────────────────────
 export default function RootLayout() {
   useAuthDeepLink();
   useAutoUpdate();
 
-  useFonts({
+  const [fontsLoaded] = useFonts({
     Montserrat_600SemiBold,
     Montserrat_700Bold,
     Montserrat_800ExtraBold,
@@ -134,8 +141,12 @@ export default function RootLayout() {
     Inter_600SemiBold,
   });
 
+  if (!fontsLoaded && Platform.OS !== 'web') {
+    return <View style={{ flex: 1, backgroundColor: '#0A0A0A' }} />;
+  }
+
   return (
-    <NavThemeProvider value={AppNavTheme}>
+    <NavThemeProvider value={DarkTheme}>
       <View style={{ flex: 1, backgroundColor: '#0A0A0A' }}>
         <ThemeProvider>
           <AuthProvider>
@@ -144,7 +155,32 @@ export default function RootLayout() {
             <Slot />
           </AuthProvider>
         </ThemeProvider>
+        <AnimatedSplash />
       </View>
     </NavThemeProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  splash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#0A0A0A',
+    justifyContent:  'center',
+    alignItems:      'center',
+    gap:             8,
+    zIndex:          9999,
+  },
+  splashText: {
+    fontSize:      42,
+    fontWeight:    '800',
+    color:         '#FFFFFF',
+    letterSpacing: 5,
+  },
+  splashSub: {
+    fontSize:      13,
+    fontWeight:    '500',
+    color:         '#666666',
+    letterSpacing: 3,
+    textTransform: 'uppercase',
+  },
+});
