@@ -21,6 +21,7 @@ export default function CoachRootLayout() {
           headerTitleStyle: { fontWeight: '700', fontSize: 17 },
           headerShadowVisible: false,
           contentStyle: { backgroundColor: colors.bg },
+          sceneStyle: { backgroundColor: colors.bg },
           animation: 'slide_from_right',
         }}
       >

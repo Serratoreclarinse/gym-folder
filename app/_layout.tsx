@@ -1,8 +1,8 @@
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { DarkTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, useState } from 'react'; // useState kept for AuthNavigation
-import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Appearance, Modal, Platform, StyleSheet, Text, View } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as Updates from 'expo-updates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -21,30 +21,58 @@ import {
   Inter_600SemiBold,
 } from '@expo-google-fonts/inter';
 
-function AnimatedSplash() {
+// Force Expo Router's NavigationContainer to use DarkTheme backdrop so any
+// transition gaps are dark instead of the system-default white.
+Appearance.setColorScheme('dark');
+
+const AppNavTheme = {
+  ...DarkTheme,
+  colors: { ...DarkTheme.colors, background: '#0A0A0A', card: '#0A0A0A' },
+};
+
+// ─── Animated splash ─────────────────────────────────────────────────────────
+// Uses a React Native Modal so it renders at the OS level — above the Expo
+// Router NavigationContainer and all native navigation views. No z-index battle.
+function AnimatedSplash({ shouldFade }: { shouldFade: boolean }) {
   const fadeAnim  = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
+  const hasFaded  = useRef(false);
+  const [visible, setVisible] = useState(true);
 
   useEffect(() => {
     Animated.spring(scaleAnim, { toValue: 1, friction: 7, useNativeDriver: true }).start();
-
-    const t = setTimeout(() => {
-      Animated.timing(fadeAnim, { toValue: 0, duration: 350, useNativeDriver: true }).start();
-    }, 900);
-
-    return () => clearTimeout(t);
   }, []);
 
+  useEffect(() => {
+    if (shouldFade && !hasFaded.current) {
+      hasFaded.current = true;
+      Animated.timing(fadeAnim, { toValue: 0, duration: 350, useNativeDriver: true }).start(() => {
+        setVisible(false);
+      });
+    }
+  }, [shouldFade]);
+
+  if (!visible) return null;
+
   return (
-    <Animated.View style={[styles.splash, { opacity: fadeAnim }]} pointerEvents="none">
-      <Animated.Text style={[styles.splashText, { transform: [{ scale: scaleAnim }] }]}>
-        ELEVATƎ
-      </Animated.Text>
-      <Text style={styles.splashSub}>Personal Training</Text>
-    </Animated.View>
+    <Modal
+      visible={visible}
+      transparent
+      statusBarTranslucent
+      animationType="none"
+      onRequestClose={() => {}}
+    >
+      <Animated.View style={[styles.splash, { opacity: fadeAnim }]}>
+        <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+          <Text style={styles.splashText}>ELEVATƎ</Text>
+        </Animated.View>
+        <Text style={styles.splashSub}>Personal Training</Text>
+      </Animated.View>
+    </Modal>
   );
 }
 
+// ─── Deep-link handler ───────────────────────────────────────────────────────
 function useAuthDeepLink() {
   useEffect(() => {
     const handleUrl = async (url: string) => {
@@ -59,13 +87,31 @@ function useAuthDeepLink() {
   }, []);
 }
 
-function AuthNavigation() {
+// ─── OTA update checker ──────────────────────────────────────────────────────
+function useAutoUpdate() {
+  useEffect(() => {
+    if (__DEV__) return;
+    (async () => {
+      try {
+        const check = await Updates.checkForUpdateAsync();
+        if (check.isAvailable) {
+          await Updates.fetchUpdateAsync();
+          await Updates.reloadAsync();
+        }
+      } catch { /* silently ignore */ }
+    })();
+  }, []);
+}
+
+// ─── Auth-based routing ──────────────────────────────────────────────────────
+function AuthNavigation({ onNavigated }: { onNavigated: () => void }) {
   const { session, profile, loading, needsPasswordReset } = useAuth();
   const segments = useSegments();
   const router   = useRouter();
 
   const [onboardingChecked, setOnboardingChecked] = useState(false);
   const [onboardingDone,    setOnboardingDone]    = useState(false);
+  const navigatedOnce = useRef(false);
 
   useEffect(() => {
     AsyncStorage.getItem('onboarding_done').then((val) => {
@@ -92,45 +138,64 @@ function AuthNavigation() {
     if (loading) return;
 
     if (needsPasswordReset) {
-      if (!onResetScreen) router.replace('/(auth)/reset-password');
-      return;
+      if (!onResetScreen) {
+        router.replace('/(auth)/reset-password');
+        return;
+      }
+    } else if (!session) {
+      if (!inAuthGroup) {
+        router.replace('/(auth)/login');
+        return;
+      }
+    } else if (profile) {
+      if (profile.role === 'coach'  && !inCoachGroup)  { router.replace('/(coach)');  return; }
+      if (profile.role === 'client' && !inClientGroup) { router.replace('/(client)'); return; }
+      if (profile.role === 'admin'  && !inAdminGroup)  { router.replace('/(admin)');  return; }
     }
 
-    if (!session) {
-      if (!inAuthGroup) router.replace('/(auth)/login');
-    } else if (profile) {
-      if      (profile.role === 'coach'  && !inCoachGroup)  router.replace('/(coach)');
-      else if (profile.role === 'client' && !inClientGroup) router.replace('/(client)');
-      else if (profile.role === 'admin'  && !inAdminGroup)  router.replace('/(admin)');
+    if (!navigatedOnce.current) {
+      navigatedOnce.current = true;
+      onNavigated();
     }
   }, [session, profile, loading, needsPasswordReset, segments, onboardingDone, onboardingChecked]);
 
   return null;
 }
 
+// ─── Status bar ──────────────────────────────────────────────────────────────
 function ThemedStatusBar() {
   const { isDark } = useTheme();
   return <StatusBar style={isDark ? 'light' : 'dark'} />;
 }
 
-function useAutoUpdate() {
-  useEffect(() => {
-    if (__DEV__) return;
-    (async () => {
-      try {
-        const check = await Updates.checkForUpdateAsync();
-        if (check.isAvailable) {
-          await Updates.fetchUpdateAsync();
-          await Updates.reloadAsync();
-        }
-      } catch { /* silently ignore */ }
-    })();
-  }, []);
-}
-
+// ─── Root layout ─────────────────────────────────────────────────────────────
 export default function RootLayout() {
   useAuthDeepLink();
   useAutoUpdate();
+
+  const [splashDone, setSplashDone] = useState(false);
+  const routingReadyRef = useRef(false);
+  const minTimeReadyRef = useRef(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      minTimeReadyRef.current = true;
+      if (routingReadyRef.current) setSplashDone(true);
+    }, 1500);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => setSplashDone(true), 5000);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleNavigated = useCallback(() => {
+    setTimeout(() => {
+      routingReadyRef.current = true;
+      if (minTimeReadyRef.current) setSplashDone(true);
+    }, 600);
+  }, []);
 
   const [fontsLoaded] = useFonts({
     Montserrat_600SemiBold,
@@ -141,34 +206,31 @@ export default function RootLayout() {
     Inter_600SemiBold,
   });
 
-  if (!fontsLoaded && Platform.OS !== 'web') {
-    return <View style={{ flex: 1, backgroundColor: '#0A0A0A' }} />;
-  }
-
   return (
-    <NavThemeProvider value={DarkTheme}>
+    <NavThemeProvider value={AppNavTheme}>
       <View style={{ flex: 1, backgroundColor: '#0A0A0A' }}>
-        <ThemeProvider>
-          <AuthProvider>
-            <ThemedStatusBar />
-            <AuthNavigation />
-            <Slot />
-          </AuthProvider>
-        </ThemeProvider>
-        <AnimatedSplash />
+        {(fontsLoaded || Platform.OS === 'web') && (
+          <ThemeProvider>
+            <AuthProvider>
+              <ThemedStatusBar />
+              <AuthNavigation onNavigated={handleNavigated} />
+              <Slot />
+            </AuthProvider>
+          </ThemeProvider>
+        )}
       </View>
+      <AnimatedSplash shouldFade={splashDone} />
     </NavThemeProvider>
   );
 }
 
 const styles = StyleSheet.create({
   splash: {
-    ...StyleSheet.absoluteFillObject,
+    flex:            1,
     backgroundColor: '#0A0A0A',
     justifyContent:  'center',
     alignItems:      'center',
     gap:             8,
-    zIndex:          9999,
   },
   splashText: {
     fontSize:      42,

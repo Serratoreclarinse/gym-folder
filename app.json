@@ -22,7 +22,8 @@
         "NSCameraUsageDescription": "ELEVATƎ uses your camera to scan QR codes and to check your exercise form.",
         "NSMicrophoneUsageDescription": "ELEVATƎ uses the microphone during video-based form checking.",
         "NSPhotoLibraryUsageDescription": "ELEVATƎ reads your photo library to upload progress photos.",
-        "NSPhotoLibraryAddUsageDescription": "ELEVATƎ saves progress photos to your photo library."
+        "NSPhotoLibraryAddUsageDescription": "ELEVATƎ saves progress photos to your photo library.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
