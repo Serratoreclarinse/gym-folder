@@ -1,11 +1,10 @@
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { DarkTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Appearance, Platform, View } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as Updates from 'expo-updates';
-import * as SystemUI from 'expo-system-ui';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
@@ -126,11 +125,7 @@ export default function RootLayout() {
   useAuthDeepLink();
   useAutoUpdate();
 
-  useEffect(() => {
-    SystemUI.setBackgroundColorAsync('#0A0A0A');
-  }, []);
-
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Montserrat_600SemiBold,
     Montserrat_700Bold,
     Montserrat_800ExtraBold,
@@ -142,7 +137,7 @@ export default function RootLayout() {
   return (
     <NavThemeProvider value={AppNavTheme}>
       <View style={{ flex: 1, backgroundColor: '#0A0A0A' }}>
-        {(fontsLoaded || Platform.OS === 'web') && (
+        {(fontsLoaded || fontError || Platform.OS === 'web') && (
           <ThemeProvider>
             <AuthProvider>
               <ThemedStatusBar />
