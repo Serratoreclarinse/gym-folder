@@ -125,12 +125,15 @@ export default function AdminPaymentsScreen() {
       .select('client_id, id, client:profiles!packages_client_id_fkey(name)')
       .eq('coach_id', coach.id)
       .eq('status', 'active');
+    const seen = new Set<string>();
     setClients(
-      (data ?? []).map((r: any) => ({
-        id: r.client_id,
-        name: r.client?.name ?? '—',
-        package_id: r.id,
-      })),
+      (data ?? []).reduce((acc: ClientOption[], r: any) => {
+        if (!seen.has(r.client_id)) {
+          seen.add(r.client_id);
+          acc.push({ id: r.client_id, name: r.client?.name ?? '—', package_id: r.id });
+        }
+        return acc;
+      }, []),
     );
     setLoadingClients(false);
   };
