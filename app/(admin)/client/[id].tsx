@@ -26,8 +26,22 @@ type Pkg = {
   status: 'active' | 'expired';
   startDate: string;
   durationWeeks: number | null;
+  extendedDays: number;
   coachId: string;
   coachName: string;
+};
+
+type FreezeRequest = {
+  id: string;
+  packageId: string;
+  coachId: string;
+  coachName: string;
+  freezeStart: string;
+  freezeEnd: string;
+  daysFrozen: number;
+  reason: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  requestedAt: string;
 };
 
 type SessionRow = {
@@ -120,6 +134,11 @@ export default function ClientDetailScreen() {
   const [renewing, setRenewing] = useState(false);
   const [deactivating, setDeactivating] = useState(false);
 
+  // Freeze requests
+  const [freezes, setFreezes] = useState<FreezeRequest[]>([]);
+  const [approvingFreezeId, setApprovingFreezeId] = useState<string | null>(null);
+  const [rejectingFreezeId, setRejectingFreezeId] = useState<string | null>(null);
+
   // Assign package modal (first-time, no previous package)
   const [assignModal, setAssignModal] = useState(false);
   const [coaches, setCoaches] = useState<{ id: string; name: string }[]>([]);
@@ -159,13 +178,13 @@ export default function ClientDetailScreen() {
     if (!id) return;
     setLoading(true);
 
-    const [profileRes, pkgsRes, sessRes, payRes] = await Promise.all([
+    const [profileRes, pkgsRes, sessRes, payRes, freezeRes] = await Promise.all([
       supabase.from('profiles').select('id, name, email, phone').eq('id', id).single(),
       supabase
         .from('packages')
         .select(`
           id, package_type, total_sessions, sessions_used, sessions_remaining,
-          status, start_date, duration_weeks, coach_id,
+          status, start_date, duration_weeks, extended_days, coach_id,
           coach:profiles!packages_coach_id_fkey(name)
         `)
         .eq('client_id', id)
@@ -182,6 +201,15 @@ export default function ClientDetailScreen() {
         .eq('client_id', id)
         .order('paid_at', { ascending: false })
         .limit(10),
+      supabase
+        .from('package_freezes')
+        .select(`
+          id, package_id, coach_id, freeze_start, freeze_end, reason, status, requested_at,
+          coach:profiles!package_freezes_coach_id_fkey(name)
+        `)
+        .eq('client_id', id)
+        .in('status', ['pending', 'approved'])
+        .order('requested_at', { ascending: false }),
     ]);
 
     if (profileRes.data) {
@@ -201,9 +229,30 @@ export default function ClientDetailScreen() {
         status: row.status,
         startDate: row.start_date,
         durationWeeks: row.duration_weeks ?? null,
+        extendedDays: row.extended_days ?? 0,
         coachId: row.coach_id,
         coachName: (row.coach as { name: string } | null)?.name ?? 'Unknown',
       })),
+    );
+
+    setFreezes(
+      (freezeRes.data ?? []).map((row: any) => {
+        const start = new Date(row.freeze_start);
+        const end   = new Date(row.freeze_end);
+        const days  = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+        return {
+          id: row.id,
+          packageId: row.package_id,
+          coachId: row.coach_id,
+          coachName: (row.coach as { name: string } | null)?.name ?? 'Unknown',
+          freezeStart: row.freeze_start,
+          freezeEnd: row.freeze_end,
+          daysFrozen: days,
+          reason: row.reason ?? null,
+          status: row.status,
+          requestedAt: row.requested_at,
+        };
+      }),
     );
 
     setSessions(
@@ -357,6 +406,47 @@ export default function ClientDetailScreen() {
     setPayReqAmount('');
     setPayReqNotes('');
     setTimeout(() => { setShowPayReqModal(false); setPayReqSent(false); }, 1500);
+  };
+
+  const handleApproveFreeze = async (freeze: FreezeRequest) => {
+    if (!activePkg) return;
+    const msg = `Approve ${freeze.daysFrozen}-day freeze for ${client?.name ?? 'this client'}? End date will extend by ${freeze.daysFrozen} days.`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(msg)) return;
+    }
+    setApprovingFreezeId(freeze.id);
+    const newExtended = activePkg.extendedDays + freeze.daysFrozen;
+    const [pkgErr, frzErr] = await Promise.all([
+      supabase.from('packages').update({ extended_days: newExtended }).eq('id', activePkg.id).then(r => r.error),
+      supabase.from('package_freezes').update({ status: 'approved', reviewed_at: new Date().toISOString() }).eq('id', freeze.id).then(r => r.error),
+    ]);
+    setApprovingFreezeId(null);
+    if (pkgErr || frzErr) {
+      const msg2 = (pkgErr ?? frzErr)!.message;
+      if (Platform.OS === 'web') window.alert('Error: ' + msg2);
+      else Alert.alert('Error', msg2);
+      return;
+    }
+    await sendPushNotification(id!, {
+      title: '❄️ Freeze Approved',
+      body: `Your package freeze (${freeze.freezeStart} → ${freeze.freezeEnd}) has been approved. End date extended by ${freeze.daysFrozen} days.`,
+    });
+    load();
+  };
+
+  const handleRejectFreeze = async (freeze: FreezeRequest) => {
+    const msg = `Reject freeze request for ${client?.name ?? 'this client'}?`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(msg)) return;
+    }
+    setRejectingFreezeId(freeze.id);
+    await supabase.from('package_freezes').update({ status: 'rejected', reviewed_at: new Date().toISOString() }).eq('id', freeze.id);
+    setRejectingFreezeId(null);
+    await sendPushNotification(id!, {
+      title: 'Freeze Request Update',
+      body: `Your freeze request (${freeze.freezeStart} → ${freeze.freezeEnd}) was not approved.`,
+    });
+    load();
   };
 
   if (loading) {
@@ -523,7 +613,7 @@ export default function ClientDetailScreen() {
                 )}
                 {activePkg.durationWeeks && activePkg.startDate && (() => {
                   const end = new Date(activePkg.startDate);
-                  end.setDate(end.getDate() + activePkg.durationWeeks * 7);
+                  end.setDate(end.getDate() + activePkg.durationWeeks * 7 + activePkg.extendedDays);
                   const daysLeft = Math.round((end.getTime() - Date.now()) / 86400000);
                   const endLabel = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                   const expired = daysLeft < 0;
@@ -547,6 +637,62 @@ export default function ClientDetailScreen() {
                   <Text style={s.pkgMetaValue}>{activePkg.coachName}</Text>
                 </View>
               </View>
+
+              {/* Freeze requests */}
+              {freezes.filter(f => f.packageId === activePkg.id).map((freeze) => (
+                <View key={freeze.id} style={[
+                  s.freezeCard,
+                  freeze.status === 'approved' && { borderColor: '#64B5F650', backgroundColor: '#64B5F608' },
+                ]}>
+                  <View style={s.freezeHeader}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="snow-outline" size={15} color="#64B5F6" />
+                      <Text style={s.freezeTitle}>
+                        {freeze.status === 'pending' ? 'Freeze Request' : 'Freeze Approved'}
+                      </Text>
+                      <View style={[
+                        s.freezeStatusPill,
+                        freeze.status === 'approved'
+                          ? { backgroundColor: '#64B5F620', borderColor: '#64B5F650' }
+                          : { backgroundColor: '#FF980020', borderColor: '#FF980050' },
+                      ]}>
+                        <Text style={[s.freezeStatusText, { color: freeze.status === 'approved' ? '#64B5F6' : '#FF9800' }]}>
+                          {freeze.status.toUpperCase()}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                  <Text style={s.freezeDateRange}>
+                    {fmtDate(freeze.freezeStart)} → {fmtDate(freeze.freezeEnd)} · {freeze.daysFrozen} days
+                  </Text>
+                  {freeze.reason && <Text style={s.freezeReason}>"{freeze.reason}"</Text>}
+                  <Text style={s.freezeCoach}>Requested by {freeze.coachName}</Text>
+                  {freeze.status === 'pending' && (
+                    <View style={s.freezeActions}>
+                      <Pressable
+                        style={[s.freezeApproveBtn, approvingFreezeId === freeze.id && { opacity: 0.5 }]}
+                        onPress={() => handleApproveFreeze(freeze)}
+                        disabled={!!approvingFreezeId || !!rejectingFreezeId}
+                      >
+                        <Ionicons name="checkmark-outline" size={14} color="#000" />
+                        <Text style={s.freezeApproveBtnText}>
+                          {approvingFreezeId === freeze.id ? 'Approving…' : 'Approve'}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        style={[s.freezeRejectBtn, rejectingFreezeId === freeze.id && { opacity: 0.5 }]}
+                        onPress={() => handleRejectFreeze(freeze)}
+                        disabled={!!approvingFreezeId || !!rejectingFreezeId}
+                      >
+                        <Ionicons name="close-outline" size={14} color={colors.accent} />
+                        <Text style={s.freezeRejectBtnText}>
+                          {rejectingFreezeId === freeze.id ? 'Rejecting…' : 'Reject'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
+              ))}
 
               {/* Actions */}
               <View style={s.pkgActions}>
@@ -1099,6 +1245,30 @@ function makeStyles(c: ColorScheme) {
     pkgMetaLabel: { ...Typography.caption, color: c.textSecondary },
     pkgMetaValue: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
     endBadge: { fontSize: 10, fontWeight: '800', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+
+    // Freeze cards
+    freezeCard: {
+      borderWidth: 1, borderColor: '#FF980050', backgroundColor: '#FF980008',
+      borderRadius: 12, padding: 12, marginTop: 12,
+    },
+    freezeHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+    freezeTitle: { ...Typography.body, color: c.textPrimary, fontWeight: '700', fontSize: 13 },
+    freezeStatusPill: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+    freezeStatusText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+    freezeDateRange: { ...Typography.body, color: c.textPrimary, fontWeight: '600', fontSize: 13, marginBottom: 2 },
+    freezeReason: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic', marginBottom: 2 },
+    freezeCoach: { ...Typography.caption, color: c.textSecondary, marginBottom: 10 },
+    freezeActions: { flexDirection: 'row', gap: 8 },
+    freezeApproveBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+      backgroundColor: '#64B5F6', borderRadius: 8, paddingVertical: 8,
+    },
+    freezeApproveBtnText: { color: '#000', fontSize: 12, fontWeight: '800' },
+    freezeRejectBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+      borderWidth: 1, borderColor: c.accent + '50', borderRadius: 8, paddingVertical: 8,
+    },
+    freezeRejectBtnText: { color: c.accent, fontSize: 12, fontWeight: '700' },
 
     pkgActions: { flexDirection: 'row', gap: 8 },
     actionPrimary: {

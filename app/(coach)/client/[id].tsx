@@ -297,6 +297,13 @@ export default function ClientDetailScreen() {
   const [transferNotes, setTransferNotes] = useState('');
   const [transferring, setTransferring] = useState(false);
 
+  // Freeze request
+  const [showFreezeModal, setShowFreezeModal] = useState(false);
+  const [freezeStart, setFreezeStart] = useState('');
+  const [freezeEnd, setFreezeEnd] = useState('');
+  const [freezeReason, setFreezeReason] = useState('');
+  const [submittingFreeze, setSubmittingFreeze] = useState(false);
+
   type Payment = { id: string; amount: number; payment_method: string; notes: string | null; paid_at: string };
   const [clientPayments, setClientPayments] = useState<Payment[]>([]);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -451,6 +458,35 @@ export default function ClientDetailScreen() {
           : `You now have ${newCount} of ${MAX_STRIKES} strikes.`,
       });
     }
+  };
+
+  const handleRequestFreeze = async () => {
+    if (!pkg || !profile?.id || !id) return;
+    if (!freezeStart || !freezeEnd) {
+      Alert.alert('Missing dates', 'Enter both a start and end date.');
+      return;
+    }
+    if (freezeStart >= freezeEnd) {
+      Alert.alert('Invalid range', 'End date must be after start date.');
+      return;
+    }
+    setSubmittingFreeze(true);
+    const { error } = await supabase.from('package_freezes').insert({
+      package_id: pkg.id,
+      client_id: id,
+      coach_id: profile.id,
+      freeze_start: freezeStart,
+      freeze_end: freezeEnd,
+      reason: freezeReason.trim() || null,
+      status: 'pending',
+    });
+    setSubmittingFreeze(false);
+    if (error) { Alert.alert('Error', error.message); return; }
+    setShowFreezeModal(false);
+    setFreezeStart('');
+    setFreezeEnd('');
+    setFreezeReason('');
+    Alert.alert('Submitted', 'Freeze request sent to admin for approval.');
   };
 
   const handleFreeSession = () => {
@@ -663,6 +699,14 @@ export default function ClientDetailScreen() {
         <Pressable style={styles.freeSessionBtn} onPress={handleFreeSession}>
           <Ionicons name="gift-outline" size={16} color="#4CAF50" />
           <Text style={styles.freeSessionBtnText}>Give Free Session</Text>
+        </Pressable>
+      )}
+
+      {/* Request Freeze */}
+      {pkg && pkg.duration_weeks && (
+        <Pressable style={styles.freezeBtn} onPress={() => setShowFreezeModal(true)}>
+          <Ionicons name="snow-outline" size={16} color="#64B5F6" />
+          <Text style={styles.freezeBtnText}>Request Freeze</Text>
         </Pressable>
       )}
 
@@ -1161,6 +1205,69 @@ export default function ClientDetailScreen() {
       </View>
     </Modal>
 
+    {/* ── Freeze Request Modal ── */}
+    <Modal visible={showFreezeModal} transparent animationType="slide" onRequestClose={() => setShowFreezeModal(false)}>
+      <View style={styles.transferOverlay}>
+        <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowFreezeModal(false)} />
+        <View style={styles.transferSheet}>
+          <View style={styles.transferHandle} />
+          <View style={styles.transferHead}>
+            <Text style={styles.transferTitle}>REQUEST FREEZE</Text>
+            <Pressable onPress={() => setShowFreezeModal(false)}>
+              <Ionicons name="close" size={22} color={colors.textSecondary} />
+            </Pressable>
+          </View>
+          <Text style={styles.transferSub}>
+            Package end date will be extended by the number of frozen days.
+          </Text>
+
+          <Text style={styles.transferNotesLabel}>FREEZE START (YYYY-MM-DD)</Text>
+          <TextInput
+            style={styles.renewInput}
+            value={freezeStart}
+            onChangeText={setFreezeStart}
+            placeholder="e.g. 2026-07-20"
+            placeholderTextColor={colors.textSecondary}
+            keyboardType="numbers-and-punctuation"
+            autoCapitalize="none"
+          />
+
+          <Text style={styles.transferNotesLabel}>FREEZE END (YYYY-MM-DD)</Text>
+          <TextInput
+            style={styles.renewInput}
+            value={freezeEnd}
+            onChangeText={setFreezeEnd}
+            placeholder="e.g. 2026-08-03"
+            placeholderTextColor={colors.textSecondary}
+            keyboardType="numbers-and-punctuation"
+            autoCapitalize="none"
+          />
+
+          <Text style={styles.transferNotesLabel}>REASON — optional</Text>
+          <TextInput
+            style={styles.transferNotesInput}
+            value={freezeReason}
+            onChangeText={setFreezeReason}
+            placeholder="e.g. vacation, medical leave…"
+            placeholderTextColor={colors.textSecondary}
+            multiline
+            numberOfLines={2}
+          />
+
+          <Pressable
+            style={[styles.transferSubmitBtn, { backgroundColor: '#64B5F6' }, submittingFreeze && { opacity: 0.45 }]}
+            onPress={handleRequestFreeze}
+            disabled={submittingFreeze}
+          >
+            <Ionicons name="snow-outline" size={16} color="#000" />
+            <Text style={[styles.transferSubmitText, { color: '#000' }]}>
+              {submittingFreeze ? 'Submitting…' : 'Submit Request'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+
     {/* Payment detail modal */}
     <Modal visible={!!selectedPayment} transparent animationType="slide" onRequestClose={() => setSelectedPayment(null)}>
       <Pressable style={styles.modalOverlay} onPress={() => setSelectedPayment(null)}>
@@ -1337,6 +1444,14 @@ function makeStyles(c: ColorScheme) {
     backgroundColor: '#4CAF5010',
   },
   freeSessionBtnText: { color: '#4CAF50', fontSize: 13, fontWeight: '700' },
+
+  freezeBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    borderRadius: 13, paddingVertical: 12, marginTop: -18, marginBottom: 28,
+    borderWidth: 1, borderColor: '#64B5F650',
+    backgroundColor: '#64B5F610',
+  },
+  freezeBtnText: { color: '#64B5F6', fontSize: 13, fontWeight: '700' },
 
   // Section
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },

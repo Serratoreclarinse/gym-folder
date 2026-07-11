@@ -80,7 +80,7 @@ export default function AdminDashboardScreen() {
 
     const [coachRes, clientRes, pkgRes, sessRes, revMonthRes, revAllRes,
            lowPkgRes, coachAlertRes, neverPaidRes, allPaymentsRes,
-           ratingsRes, pendingTransferRes] = await Promise.all([
+           ratingsRes, pendingTransferRes, pendingFreezeRes] = await Promise.all([
       supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'coach').is('deactivated_at', null),
       supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'client').is('deactivated_at', null),
       supabase.from('packages').select('id', { count: 'exact', head: true }).eq('status', 'active'),
@@ -120,6 +120,11 @@ export default function AdminDashboardScreen() {
         .from('client_transfers')
         .select('id, client_id, from_coach_id, profiles!client_transfers_client_id_fkey(name)')
         .eq('status', 'pending_admin'),
+      // Pending freeze requests
+      supabase
+        .from('package_freezes')
+        .select('id, client_id, freeze_start, freeze_end, profiles!package_freezes_client_id_fkey(name)')
+        .eq('status', 'pending'),
     ]);
 
     const revenueThisMonth = (revMonthRes.data ?? []).reduce((s, r: any) => s + Number(r.amount), 0);
@@ -237,6 +242,19 @@ export default function AdminDashboardScreen() {
       });
     }
 
+    // Pending freeze alerts
+    for (const fz of (pendingFreezeRes.data ?? []) as any[]) {
+      const clientName = fz.profiles?.name ?? 'Unknown Client';
+      newAlerts.push({
+        id: `freeze-${fz.id}`,
+        level: 'notice',
+        icon: 'snow-outline',
+        title: `Freeze Request — ${clientName}`,
+        subtitle: `${fz.freeze_start} → ${fz.freeze_end} · pending approval`,
+        route: `/(admin)/client/${fz.client_id}`,
+      });
+    }
+
     // Sort: critical first
     newAlerts.sort((a, b) => {
       const order = { critical: 0, warning: 1, notice: 2 };
@@ -275,6 +293,7 @@ export default function AdminDashboardScreen() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' },          () => load(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'client_transfers' },  () => load(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'session_ratings' },   () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'package_freezes' },   () => load(true))
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [load]);
