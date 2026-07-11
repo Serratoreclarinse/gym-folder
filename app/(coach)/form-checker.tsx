@@ -16,43 +16,43 @@ const FORM_CHECKER_URL = 'https://serratoreclarinse.github.io/gym-folder/form-ch
 
 const PRESETS = [
   // ── Lower body ──────────────────────────────────────────────────
-  { key: 'squat',        label: 'Squat',        icon: 'fitness-outline',          focus: [23,24,25,26,27,28] },
-  { key: 'deadlift',     label: 'Deadlift',     icon: 'barbell-outline',          focus: [11,12,23,24,25,26] },
-  { key: 'rdl',          label: 'RDL',          icon: 'barbell-outline',          focus: [11,12,23,24,25,26,27,28] },
-  { key: 'lunge',        label: 'Lunge',        icon: 'walk-outline',             focus: [23,24,25,26,27,28] },
-  { key: 'bulgariansplit', label: 'Bulg. Split',icon: 'walk-outline',             focus: [23,24,25,26,27,28] },
-  { key: 'stepup',       label: 'Step Up',      icon: 'trending-up-outline',      focus: [23,24,25,26,27,28] },
-  { key: 'hipthrust',    label: 'Hip Thrust',   icon: 'body-outline',             focus: [23,24,25,26,27,28] },
-  { key: 'glutebridge',  label: 'Glute Bridge', icon: 'body-outline',             focus: [23,24,25,26,27,28] },
-  { key: 'hiphinge',     label: 'Hip Hinge',    icon: 'refresh-outline',          focus: [11,12,23,24,25,26] },
-  { key: 'goodmorning',  label: 'Good Morning', icon: 'sunny-outline',            focus: [11,12,23,24,25,26] },
-  { key: 'calfraise',    label: 'Calf Raise',   icon: 'trending-up-outline',      focus: [25,26,27,28,29,30,31,32] },
-  { key: 'sidelunge',    label: 'Side Lunge',   icon: 'swap-horizontal-outline',  focus: [23,24,25,26,27,28] },
+  { key: 'squat',          label: 'Squat',         icon: 'fitness-outline',          angle: 'side',  focus: [23,24,25,26,27,28] },
+  { key: 'deadlift',       label: 'Deadlift',       icon: 'barbell-outline',          angle: 'side',  focus: [11,12,23,24,25,26] },
+  { key: 'rdl',            label: 'RDL',            icon: 'barbell-outline',          angle: 'side',  focus: [11,12,23,24,25,26,27,28] },
+  { key: 'lunge',          label: 'Lunge',          icon: 'walk-outline',             angle: 'side',  focus: [23,24,25,26,27,28] },
+  { key: 'bulgariansplit', label: 'Bulg. Split',    icon: 'walk-outline',             angle: 'side',  focus: [23,24,25,26,27,28] },
+  { key: 'stepup',         label: 'Step Up',        icon: 'trending-up-outline',      angle: 'side',  focus: [23,24,25,26,27,28] },
+  { key: 'hipthrust',      label: 'Hip Thrust',     icon: 'body-outline',             angle: 'side',  focus: [23,24,25,26,27,28] },
+  { key: 'glutebridge',    label: 'Glute Bridge',   icon: 'body-outline',             angle: 'side',  focus: [23,24,25,26,27,28] },
+  { key: 'hiphinge',       label: 'Hip Hinge',      icon: 'refresh-outline',          angle: 'side',  focus: [11,12,23,24,25,26] },
+  { key: 'goodmorning',    label: 'Good Morning',   icon: 'sunny-outline',            angle: 'side',  focus: [11,12,23,24,25,26] },
+  { key: 'calfraise',      label: 'Calf Raise',     icon: 'trending-up-outline',      angle: 'side',  focus: [25,26,27,28,29,30,31,32] },
+  { key: 'sidelunge',      label: 'Side Lunge',     icon: 'swap-horizontal-outline',  angle: 'front', focus: [23,24,25,26,27,28] },
   // ── Upper push ─────────────────────────────────────────────────
-  { key: 'pushup',       label: 'Push-up',      icon: 'body-outline',             focus: [11,12,13,14,15,16] },
-  { key: 'benchpress',   label: 'Bench Press',  icon: 'barbell-outline',          focus: [11,12,13,14,15,16] },
-  { key: 'ohpress',      label: 'OH Press',     icon: 'arrow-up-outline',         focus: [11,12,13,14,15,16] },
-  { key: 'dips',         label: 'Dips',         icon: 'chevron-down-outline',     focus: [11,12,13,14,15,16] },
-  { key: 'chestfly',     label: 'Chest Fly',    icon: 'resize-outline',           focus: [11,12,13,14,15,16] },
+  { key: 'pushup',         label: 'Push-up',        icon: 'body-outline',             angle: 'side',  focus: [11,12,13,14,15,16] },
+  { key: 'benchpress',     label: 'Bench Press',    icon: 'barbell-outline',          angle: 'side',  focus: [11,12,13,14,15,16] },
+  { key: 'ohpress',        label: 'OH Press',       icon: 'arrow-up-outline',         angle: 'front', focus: [11,12,13,14,15,16] },
+  { key: 'dips',           label: 'Dips',           icon: 'chevron-down-outline',     angle: 'side',  focus: [11,12,13,14,15,16] },
+  { key: 'chestfly',       label: 'Chest Fly',      icon: 'resize-outline',           angle: 'side',  focus: [11,12,13,14,15,16] },
   // ── Upper pull ─────────────────────────────────────────────────
-  { key: 'pullup',       label: 'Pull-up',      icon: 'chevron-up-outline',       focus: [11,12,13,14,15,16] },
-  { key: 'latpulldown',  label: 'Lat Pulldown', icon: 'arrow-down-outline',       focus: [11,12,13,14,15,16] },
-  { key: 'row',          label: 'Bent Row',     icon: 'git-pull-request-outline', focus: [11,12,13,14] },
-  { key: 'seatedrow',    label: 'Seated Row',   icon: 'arrow-forward-outline',    focus: [11,12,13,14] },
-  { key: 'facepull',     label: 'Face Pull',    icon: 'arrow-back-outline',       focus: [11,12,13,14] },
+  { key: 'pullup',         label: 'Pull-up',        icon: 'chevron-up-outline',       angle: 'front', focus: [11,12,13,14,15,16] },
+  { key: 'latpulldown',    label: 'Lat Pulldown',   icon: 'arrow-down-outline',       angle: 'side',  focus: [11,12,13,14,15,16] },
+  { key: 'row',            label: 'Bent Row',       icon: 'git-pull-request-outline', angle: 'side',  focus: [11,12,13,14] },
+  { key: 'seatedrow',      label: 'Seated Row',     icon: 'arrow-forward-outline',    angle: 'side',  focus: [11,12,13,14] },
+  { key: 'facepull',       label: 'Face Pull',      icon: 'arrow-back-outline',       angle: 'front', focus: [11,12,13,14] },
   // ── Shoulders ──────────────────────────────────────────────────
-  { key: 'lateralraise', label: 'Lateral Raise',icon: 'swap-horizontal-outline',  focus: [11,12,13,14] },
-  { key: 'frontraise',   label: 'Front Raise',  icon: 'arrow-up-outline',         focus: [11,12,13,14,15,16] },
+  { key: 'lateralraise',   label: 'Lateral Raise',  icon: 'swap-horizontal-outline',  angle: 'front', focus: [11,12,13,14] },
+  { key: 'frontraise',     label: 'Front Raise',    icon: 'arrow-up-outline',         angle: 'side',  focus: [11,12,13,14,15,16] },
   // ── Arms ───────────────────────────────────────────────────────
-  { key: 'bicepcurl',    label: 'Bicep Curl',   icon: 'hand-right-outline',       focus: [13,14,15,16] },
-  { key: 'hammercurl',   label: 'Hammer Curl',  icon: 'hand-right-outline',       focus: [13,14,15,16] },
-  { key: 'tricepext',    label: 'Tricep Ext.',  icon: 'hand-left-outline',        focus: [13,14,15,16] },
+  { key: 'bicepcurl',      label: 'Bicep Curl',     icon: 'hand-right-outline',       angle: 'side',  focus: [13,14,15,16] },
+  { key: 'hammercurl',     label: 'Hammer Curl',    icon: 'hand-right-outline',       angle: 'side',  focus: [13,14,15,16] },
+  { key: 'tricepext',      label: 'Tricep Ext.',    icon: 'hand-left-outline',        angle: 'side',  focus: [13,14,15,16] },
   // ── Core ───────────────────────────────────────────────────────
-  { key: 'plank',        label: 'Plank',        icon: 'remove-outline',           focus: [11,12,23,24] },
-  { key: 'sideplank',    label: 'Side Plank',   icon: 'remove-outline',           focus: [11,12,23,24] },
-  { key: 'deadbug',      label: 'Dead Bug',     icon: 'bug-outline',              focus: [11,12,13,14,15,16,23,24,25,26] },
+  { key: 'plank',          label: 'Plank',          icon: 'remove-outline',           angle: 'side',  focus: [11,12,23,24] },
+  { key: 'sideplank',      label: 'Side Plank',     icon: 'remove-outline',           angle: 'front', focus: [11,12,23,24] },
+  { key: 'deadbug',        label: 'Dead Bug',       icon: 'bug-outline',              angle: 'side',  focus: [11,12,13,14,15,16,23,24,25,26] },
   // ── Free ───────────────────────────────────────────────────────
-  { key: 'free',         label: 'Free',         icon: 'grid-outline',             focus: [] },
+  { key: 'free',           label: 'Free',           icon: 'grid-outline',             angle: '',      focus: [] },
 ];
 
 export default function FormCheckerScreen() {
@@ -64,7 +64,7 @@ export default function FormCheckerScreen() {
   function handlePreset(p: typeof PRESETS[0]) {
     setPreset(p);
     webViewRef.current?.injectJavaScript(
-      `window.setExercise(${JSON.stringify(p.key)}, ${JSON.stringify(p.focus)}); true;`
+      `window.setExercise(${JSON.stringify(p.key)}, ${JSON.stringify(p.focus)}, ${JSON.stringify(p.angle)}); true;`
     );
   }
 
