@@ -56,6 +56,18 @@ function addDays(date: Date, n: number): Date {
   return d;
 }
 
+function buildMonthGrid(firstOfMonth: Date): (Date | null)[] {
+  const year = firstOfMonth.getFullYear();
+  const month = firstOfMonth.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDay = firstOfMonth.getDay(); // 0=Sun
+  const startOffset = firstDay === 0 ? 6 : firstDay - 1; // shift to Mon=0
+  const cells: (Date | null)[] = Array(startOffset).fill(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, month, d));
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
+
 function initials(name: string): string {
   return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
 }
@@ -133,6 +145,13 @@ export default function CalendarScreen() {
   const [leaveType, setLeaveType] = useState<'leave' | 'meeting' | 'other'>('leave');
   const [leaveNotes, setLeaveNotes] = useState('');
   const [addingLeave, setAddingLeave] = useState(false);
+
+  // Month picker dropdown
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
 
   const { sessions, loading, refetch } = useSessions();
   const {
@@ -524,19 +543,130 @@ export default function CalendarScreen() {
           <Pressable
             style={styles.navBtn}
             hitSlop={12}
-            onPress={() => setWeekStart((w) => addDays(w, -7))}
+            onPress={() => {
+              const newW = addDays(weekStart, -7);
+              setWeekStart(newW);
+              if (showMonthPicker) setCalendarMonth(new Date(newW.getFullYear(), newW.getMonth(), 1));
+            }}
           >
             <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
           </Pressable>
-          <Text style={styles.weekLabel}>{weekLabel}</Text>
+          <Pressable
+            style={styles.weekLabelBtn}
+            onPress={() => {
+              setCalendarMonth(new Date(weekStart.getFullYear(), weekStart.getMonth(), 1));
+              setShowMonthPicker(v => !v);
+            }}
+          >
+            <Text style={styles.weekLabel}>{weekLabel}</Text>
+            <Ionicons
+              name={showMonthPicker ? 'chevron-up' : 'chevron-down'}
+              size={13}
+              color={colors.accent}
+            />
+          </Pressable>
           <Pressable
             style={styles.navBtn}
             hitSlop={12}
-            onPress={() => setWeekStart((w) => addDays(w, 7))}
+            onPress={() => {
+              const newW = addDays(weekStart, 7);
+              setWeekStart(newW);
+              if (showMonthPicker) setCalendarMonth(new Date(newW.getFullYear(), newW.getMonth(), 1));
+            }}
           >
             <Ionicons name="chevron-forward" size={22} color={colors.textPrimary} />
           </Pressable>
         </View>
+
+        {/* ── Month picker dropdown ────────────────────────────── */}
+        {showMonthPicker && (() => {
+          const cells = buildMonthGrid(calendarMonth);
+          const rows: (Date | null)[][] = [];
+          for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
+          const weekEndISO = toISO(addDays(weekStart, 6));
+          return (
+            <View style={styles.calDropdown}>
+              {/* Month header */}
+              <View style={styles.calMonthNav}>
+                <Pressable
+                  hitSlop={12}
+                  onPress={() => setCalendarMonth(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+                >
+                  <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
+                </Pressable>
+                <Text style={styles.calMonthLabel}>
+                  {calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                </Text>
+                <Pressable
+                  hitSlop={12}
+                  onPress={() => setCalendarMonth(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+                >
+                  <Ionicons name="chevron-forward" size={20} color={colors.textPrimary} />
+                </Pressable>
+              </View>
+
+              {/* Day-of-week headers */}
+              <View style={styles.calDayHeaders}>
+                {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(d => (
+                  <Text key={d} style={styles.calDayHeader}>{d}</Text>
+                ))}
+              </View>
+
+              {/* Grid rows */}
+              {rows.map((row, rowIdx) => {
+                const isCurrentWeek = row.some(d => {
+                  if (!d) return false;
+                  const iso = toISO(d);
+                  return iso >= toISO(weekStart) && iso <= weekEndISO;
+                });
+                return (
+                  <View key={rowIdx} style={[styles.calRow, isCurrentWeek && styles.calRowHighlight]}>
+                    {row.map((date, cellIdx) => {
+                      if (!date) return <View key={cellIdx} style={styles.calCell} />;
+                      const iso = toISO(date);
+                      const isSelected = iso === selectedDate;
+                      const isToday = iso === todayISO;
+                      const isBlocked = isDateBlocked(iso);
+                      const hasSession = ((byDate[iso]?.length ?? 0) + (scheduledByDate[iso]?.length ?? 0)) > 0;
+                      return (
+                        <Pressable
+                          key={cellIdx}
+                          style={styles.calCell}
+                          onPress={() => {
+                            setSelectedDate(iso);
+                            setWeekStart(getMonday(date));
+                            setShowMonthPicker(false);
+                          }}
+                        >
+                          <View style={[
+                            styles.calDayBubble,
+                            isSelected && { backgroundColor: colors.accent },
+                            isToday && !isSelected && styles.calDayBubbleToday,
+                          ]}>
+                            <Text style={[
+                              styles.calCellNum,
+                              isSelected && { color: colors.bg, fontWeight: '800' },
+                              isToday && !isSelected && { color: colors.accent, fontWeight: '800' },
+                              isBlocked && !isSelected && { color: colors.danger },
+                            ]}>
+                              {date.getDate()}
+                            </Text>
+                          </View>
+                          {(hasSession || isBlocked) && (
+                            <View style={[
+                              styles.calDot,
+                              { backgroundColor: isBlocked ? colors.danger : colors.accent, opacity: isSelected ? 0 : 1 },
+                            ]} />
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                );
+              })}
+            </View>
+          );
+        })()}
 
         {/* ── Day strip ───────────────────────────────────────── */}
         <View style={styles.dayStrip}>
@@ -1116,6 +1246,83 @@ function makeStyles(c: ColorScheme) {
       justifyContent: 'center', alignItems: 'center',
     },
     weekLabel: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    weekLabelBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      paddingVertical: 6,
+    },
+
+    // Month picker dropdown
+    calDropdown: {
+      backgroundColor: c.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: c.border,
+      marginBottom: 16,
+      padding: 12,
+    },
+    calMonthNav: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 10,
+      paddingHorizontal: 2,
+    },
+    calMonthLabel: {
+      ...Typography.body,
+      color: c.textPrimary,
+      fontWeight: '700',
+    },
+    calDayHeaders: {
+      flexDirection: 'row',
+      marginBottom: 4,
+    },
+    calDayHeader: {
+      flex: 1,
+      textAlign: 'center',
+      fontSize: 10,
+      fontWeight: '700',
+      color: c.textSecondary,
+      letterSpacing: 0.3,
+    },
+    calRow: {
+      flexDirection: 'row',
+      marginBottom: 2,
+    },
+    calRowHighlight: {
+      backgroundColor: c.accent + '16',
+      borderRadius: 10,
+    },
+    calCell: {
+      flex: 1,
+      alignItems: 'center',
+      paddingVertical: 2,
+    },
+    calDayBubble: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    calDayBubbleToday: {
+      borderWidth: 1.5,
+      borderColor: c.accent,
+    },
+    calCellNum: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: c.textPrimary,
+    },
+    calDot: {
+      width: 4,
+      height: 4,
+      borderRadius: 2,
+      marginTop: 2,
+    },
 
     // Day strip
     dayStrip: {
