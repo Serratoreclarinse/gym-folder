@@ -115,6 +115,7 @@ export default function CoachDashboard() {
   const [pausedWorkout, setPausedWorkout] = useState<any | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [monthEarnings, setMonthEarnings] = useState<number | null>(null);
+  const [atRiskClients, setAtRiskClients] = useState<{ id: string; name: string; daysSince: number }[]>([]);
   const [incomingTransfers, setIncomingTransfers] = useState<{
     id: string; client_name: string; from_coach_id: string; from_coach_name: string;
     package_type: string; sessions_remaining: number; notes: string | null;
@@ -198,11 +199,50 @@ export default function CoachDashboard() {
     setMonthEarnings(total);
   }, [profile?.id]);
 
+  const fetchAtRisk = useCallback(async () => {
+    if (!profile?.id) return;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 14);
+    const cutoffISO = cutoff.toISOString().split('T')[0];
+
+    const [sessRes, pkgRes] = await Promise.all([
+      supabase
+        .from('workout_sessions')
+        .select('client_id, session_date')
+        .eq('coach_id', profile.id)
+        .gte('session_date', new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0]),
+      supabase
+        .from('packages')
+        .select('client_id, start_date, client:profiles!packages_client_id_fkey(name)')
+        .eq('coach_id', profile.id)
+        .eq('status', 'active'),
+    ]);
+
+    const lastSess = new Map<string, string>();
+    for (const row of sessRes.data ?? []) {
+      const prev = lastSess.get(row.client_id);
+      if (!prev || row.session_date > prev) lastSess.set(row.client_id, row.session_date);
+    }
+
+    const today = new Date();
+    const riskMap = new Map<string, { id: string; name: string; daysSince: number }>();
+    for (const pkg of pkgRes.data ?? []) {
+      const clientId = pkg.client_id;
+      const lastDate = lastSess.get(clientId);
+      const refDate  = lastDate ?? pkg.start_date;
+      const days     = Math.floor((today.getTime() - new Date(refDate).getTime()) / 86400000);
+      if (days >= 14 && !riskMap.has(clientId)) {
+        riskMap.set(clientId, { id: clientId, name: (pkg.client as any)?.name ?? '—', daysSince: days });
+      }
+    }
+    setAtRiskClients([...riskMap.values()].sort((a, b) => b.daysSince - a.daysSince));
+  }, [profile?.id]);
+
   const refreshing = cLoading || sLoading;
-  const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers(); fetchEarnings(); };
+  const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers(); fetchEarnings(); fetchAtRisk(); };
 
   useFocusEffect(useCallback(() => {
-    refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers(); fetchEarnings();
+    refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers(); fetchEarnings(); fetchAtRisk();
     AsyncStorage.getItem('@elevat3/paused_workout').then((data) => {
       if (data) {
         const w = JSON.parse(data);
@@ -329,13 +369,13 @@ export default function CoachDashboard() {
         <Text style={styles.logSessionText}>LOG SESSION</Text>
       </Pressable>
 
-      <View style={{ flexDirection: 'row', gap: 8 }}>
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
         <Pressable
           style={({ pressed }) => [styles.emergencyBtn, { flex: 1 }, pressed && { opacity: 0.8 }]}
           onPress={() => router.push({ pathname: '/(coach)/announcements', params: { preset: 'emergency' } } as any)}
         >
-          <Ionicons name="warning-outline" size={16} color={colors.danger} />
-          <Text style={styles.emergencyBtnText}>EMERGENCY NOTICE</Text>
+          <Ionicons name="warning-outline" size={14} color={colors.danger} />
+          <Text style={styles.emergencyBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>EMERGENCY NOTICE</Text>
         </Pressable>
         <Pressable
           style={({ pressed }) => [styles.emergencyBtn, { flex: 1 }, pressed && { opacity: 0.8 }]}
@@ -586,6 +626,40 @@ export default function CoachDashboard() {
         </>
       )}
 
+      {/* At-Risk Clients */}
+      {atRiskClients.length > 0 && (
+        <>
+          <View style={styles.strikeSectionHeader}>
+            <Text style={styles.sectionTitle}>AT-RISK CLIENTS</Text>
+            <View style={[styles.strikeBadge, { backgroundColor: '#FF980020', borderColor: '#FF980060' }]}>
+              <Text style={[styles.strikeBadgeText, { color: '#FF9800' }]}>{atRiskClients.length}</Text>
+            </View>
+          </View>
+          {atRiskClients.map((c) => {
+            const ini = c.name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
+            return (
+              <Pressable
+                key={c.id}
+                style={({ pressed }) => [styles.strikeAlertCard, { borderColor: '#FF980050' }, pressed && { opacity: 0.75 }]}
+                onPress={() => router.push(`/(coach)/client/${c.id}`)}
+              >
+                <View style={[styles.strikeAvatar, { backgroundColor: '#FF980018', borderColor: '#FF980040' }]}>
+                  <Text style={[styles.strikeAvatarText, { color: '#FF9800' }]}>{ini}</Text>
+                </View>
+                <View style={styles.strikeAlertInfo}>
+                  <Text style={styles.strikeAlertName}>{c.name}</Text>
+                  <Text style={[styles.strikeAlertDate, { color: '#FF9800' }]}>
+                    No session in {c.daysSince} day{c.daysSince !== 1 ? 's' : ''}
+                  </Text>
+                </View>
+                <Ionicons name="alert-circle-outline" size={20} color="#FF9800" />
+              </Pressable>
+            );
+          })}
+          <View style={{ height: 8 }} />
+        </>
+      )}
+
       {/* Waitlist notice */}
       {waitlistCount > 0 && (
         <Pressable style={styles.waitlistNotice} onPress={() => router.push('/(coach)/(tabs)/calendar')}>
@@ -758,10 +832,10 @@ function makeStyles(c: ColorScheme) {
     // Emergency button
     emergencyBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-      backgroundColor: c.danger + '15', borderRadius: 14, paddingVertical: 13, marginBottom: 20,
+      backgroundColor: c.danger + '15', borderRadius: 14, paddingVertical: 13,
       borderWidth: 1, borderColor: c.danger + '50',
     },
-    emergencyBtnText: { color: c.danger, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+    emergencyBtnText: { color: c.danger, fontSize: 12, fontWeight: '800', letterSpacing: 0.5, flexShrink: 1 },
 
     // Pinned announcement banner
     pinnedBanner: {

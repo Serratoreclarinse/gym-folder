@@ -658,6 +658,11 @@ export default function LogSessionScreen() {
 
   return (
     <View style={styles.root}>
+      <View style={styles.closeRow}>
+        <Pressable onPress={() => router.back()} hitSlop={12}>
+          <Ionicons name="close" size={24} color={colors.textSecondary} />
+        </Pressable>
+      </View>
     <KeyboardAvoidingView style={styles.kav} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
@@ -1091,6 +1096,7 @@ export default function LogSessionScreen() {
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
   root: { flex: 1, backgroundColor: c.bg },
+  closeRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border },
   kav: { flex: 1, backgroundColor: c.bg },
   scroll: { flex: 1, backgroundColor: c.bg },
   content: { padding: 20, paddingBottom: 60 },

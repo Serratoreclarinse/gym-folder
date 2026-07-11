@@ -109,6 +109,8 @@ export default function CoachDetailScreen() {
   const [clients, setClients] = useState<ActiveClient[]>([]);
   const [sessionsThisMonth, setSessionsThisMonth] = useState(0);
   const [revenueThisMonth, setRevenueThisMonth] = useState(0);
+  const [avgRating, setAvgRating] = useState<number | null>(null);
+  const [retentionRate, setRetentionRate] = useState<number | null>(null);
   const [upcomingSessions, setUpcomingSessions] = useState<UpcomingSession[]>([]);
   const [blockedDates, setBlockedDates] = useState<BlockedDate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -160,7 +162,7 @@ export default function CoachDetailScreen() {
     monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
     const today = new Date().toISOString().split('T')[0];
 
-    const [profileRes, pkgsRes, sessRes, revRes, schedRes, blockRes, payRes] = await Promise.all([
+    const [profileRes, pkgsRes, sessRes, revRes, schedRes, blockRes, payRes, ratingsRes, allPkgsRes] = await Promise.all([
       supabase.from('profiles').select('id, name, email, phone, birthday, visa_expiry').eq('id', id).single(),
       supabase
         .from('packages')
@@ -185,6 +187,14 @@ export default function CoachDetailScreen() {
         .order('date').limit(30),
       supabase
         .from('payments').select('amount, client_id').eq('coach_id', id),
+      supabase
+        .from('workout_sessions')
+        .select('session_ratings(rating)')
+        .eq('coach_id', id),
+      supabase
+        .from('packages')
+        .select('client_id, status')
+        .eq('coach_id', id),
     ]);
 
     if (profileRes.data) {
@@ -215,6 +225,18 @@ export default function CoachDetailScreen() {
 
     setSessionsThisMonth(sessRes.count ?? 0);
     setRevenueThisMonth((revRes.data ?? []).reduce((sum, r: any) => sum + Number(r.amount), 0));
+
+    // Avg rating
+    const allRatings: number[] = [];
+    for (const sess of ratingsRes.data ?? []) {
+      for (const r of (sess as any).session_ratings ?? []) allRatings.push(r.rating);
+    }
+    setAvgRating(allRatings.length > 0 ? allRatings.reduce((s, r) => s + r, 0) / allRatings.length : null);
+
+    // Retention rate: unique clients with active pkg / all unique clients ever
+    const allUniqueClients  = new Set((allPkgsRes.data ?? []).map((p: any) => p.client_id));
+    const activeUniqueClients = new Set((allPkgsRes.data ?? []).filter((p: any) => p.status === 'active').map((p: any) => p.client_id));
+    setRetentionRate(allUniqueClients.size > 0 ? Math.round((activeUniqueClients.size / allUniqueClients.size) * 100) : null);
 
     setUpcomingSessions(
       (schedRes.data ?? []).map((row: any) => ({
@@ -426,6 +448,21 @@ export default function CoachDetailScreen() {
                 OMR {revenueThisMonth.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               </Text>
               <Text style={s.statLbl}>Revenue · {monthName}</Text>
+            </View>
+          </View>
+          <View style={s.statsRow}>
+            <View style={s.statBox}>
+              <Text style={[s.statVal, { color: '#FF9800' }]}>
+                {avgRating !== null ? `${avgRating.toFixed(1)} ★` : '—'}
+              </Text>
+              <Text style={s.statLbl}>Avg Rating</Text>
+            </View>
+            <View style={s.statDivider} />
+            <View style={s.statBox}>
+              <Text style={[s.statVal, { color: '#2196F3' }]}>
+                {retentionRate !== null ? `${retentionRate}%` : '—'}
+              </Text>
+              <Text style={s.statLbl}>Client Retention</Text>
             </View>
           </View>
 

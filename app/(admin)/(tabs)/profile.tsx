@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Image, Modal, Platform,
+  ActivityIndicator, Alert, Image, Linking, Modal, Platform,
   Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -247,6 +248,19 @@ export default function AdminProfileScreen() {
           <Text style={s.signOutText}>Sign Out</Text>
         </Pressable>
 
+        {/* ── Bug report ── */}
+        <Pressable
+          style={({ pressed }) => [s.bugReportBtn, pressed && { opacity: 0.7 }]}
+          onPress={() => Linking.openURL(
+            `mailto:hr@jhe-group.com?subject=${encodeURIComponent('Bug Report - ELEVATƎ App v' + (Constants.expoConfig?.version ?? '1.0.0'))}&body=${encodeURIComponent('Describe the bug:\n\n')}`
+          )}
+        >
+          <Ionicons name="bug-outline" size={16} color="#888" />
+          <Text style={s.bugReportText}>Report a Bug</Text>
+        </Pressable>
+
+        <Text style={s.versionText}>v{Constants.expoConfig?.version ?? '1.0.0'}</Text>
+
         <View style={{ height: 40 }} />
       </ScrollView>
 
@@ -406,6 +420,12 @@ function makeStyles(c: ColorScheme) {
       paddingVertical: 15,
     },
     signOutText: { fontSize: 15, fontWeight: '700', color: '#FF4D4D' },
+    bugReportBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      marginTop: 12, paddingVertical: 10,
+    },
+    bugReportText: { color: c.textSecondary, fontSize: 13 },
+    versionText: { textAlign: 'center', color: c.textSecondary, fontSize: 12, marginTop: 4, opacity: 0.6 },
 
     // Modal
     overlay: { flex: 1, backgroundColor: '#00000070', justifyContent: 'flex-end' },

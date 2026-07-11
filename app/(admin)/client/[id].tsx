@@ -15,6 +15,7 @@ type ClientProfile = {
   name: string;
   email: string;
   phone: string | null;
+  referred_by: string | null;
 };
 
 type Pkg = {
@@ -179,7 +180,7 @@ export default function ClientDetailScreen() {
     setLoading(true);
 
     const [profileRes, pkgsRes, sessRes, payRes, freezeRes] = await Promise.all([
-      supabase.from('profiles').select('id, name, email, phone').eq('id', id).single(),
+      supabase.from('profiles').select('id, name, email, phone, referred_by').eq('id', id).single(),
       supabase
         .from('packages')
         .select(`
@@ -516,6 +517,12 @@ export default function ClientDetailScreen() {
                     <View style={s.coachPill}>
                       <Ionicons name="person-circle-outline" size={13} color={colors.textSecondary} />
                       <Text style={s.coachPillText}>{activePkg.coachName}</Text>
+                    </View>
+                  )}
+                  {client.referred_by && (
+                    <View style={[s.coachPill, { marginTop: 4 }]}>
+                      <Ionicons name="git-branch-outline" size={13} color={colors.textSecondary} />
+                      <Text style={s.coachPillText}>Referred by {client.referred_by}</Text>
                     </View>
                   )}
                 </>

@@ -2,6 +2,7 @@ import { Alert, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Switch
 import { useEffect, useMemo, useState } from 'react';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import QRCode from 'react-native-qrcode-svg';
 import { supabase } from '@/lib/supabase';
@@ -414,6 +415,19 @@ export default function ClientProfileScreen() {
         <Text style={styles.signOutText}>Sign Out</Text>
       </Pressable>
 
+      {/* Bug report */}
+      <Pressable
+        style={({ pressed }) => [styles.bugReportBtn, pressed && { opacity: 0.7 }]}
+        onPress={() => Linking.openURL(
+          `mailto:hr@jhe-group.com?subject=${encodeURIComponent('Bug Report - ELEVATƎ App v' + (Constants.expoConfig?.version ?? '1.0.0'))}&body=${encodeURIComponent('Describe the bug:\n\n')}`
+        )}
+      >
+        <Ionicons name="bug-outline" size={16} color={colors.textSecondary} />
+        <Text style={styles.bugReportText}>Report a Bug</Text>
+      </Pressable>
+
+      <Text style={styles.versionText}>v{Constants.expoConfig?.version ?? '1.0.0'}</Text>
+
       {/* Change Password Modal */}
       <Modal visible={pwModal} transparent animationType="slide" onRequestClose={() => { setPwModal(false); setNewPw(''); setConfirmPw(''); setPwSuccess(false); }}>
         <View style={styles.modalOverlay}>
@@ -614,6 +628,12 @@ function makeStyles(c: ColorScheme) {
       alignItems: 'center', borderWidth: 1, borderColor: c.danger, marginTop: 8,
     },
     signOutText: { color: c.danger, fontSize: 15, fontWeight: '700' },
+    bugReportBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      marginTop: 12, paddingVertical: 10,
+    },
+    bugReportText: { color: c.textSecondary, fontSize: 13 },
+    versionText: { textAlign: 'center', color: c.textSecondary, fontSize: 12, marginTop: 4, marginBottom: 20, opacity: 0.6 },
 
     modalOverlay: {
       position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,

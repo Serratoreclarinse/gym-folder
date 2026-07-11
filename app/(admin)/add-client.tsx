@@ -45,6 +45,7 @@ export default function AdminAddClientScreen() {
   const [pkgType, setPkgType] = useState<PackageType>('1hr');
   const [totalSessions, setTotalSessions] = useState('');
   const [durationWeeks, setDurationWeeks] = useState('');
+  const [referredBy, setReferredBy] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successData, setSuccessData] = useState<{ clientName: string; email: string; password?: string } | null>(null);
@@ -97,13 +98,24 @@ export default function AdminAddClientScreen() {
         setErrorMsg(data?.error ?? error?.message ?? 'Something went wrong');
         return;
       }
+      // Save referral info if provided
+      if (referredBy.trim()) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('email', email.trim().toLowerCase())
+          .single();
+        if (prof?.id) {
+          await supabase.from('profiles').update({ referred_by: referredBy.trim() }).eq('id', prof.id);
+        }
+      }
       setSuccessData({
         clientName: name.trim(),
         email: email.trim().toLowerCase(),
         password: data.temp_password ?? undefined,
       });
       setName(''); setEmail(''); setPhone('');
-      setTotalSessions(''); setDurationWeeks('');
+      setTotalSessions(''); setDurationWeeks(''); setReferredBy('');
       setSelectedCoachId(''); setEmailTouched(false);
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to create client');
@@ -194,6 +206,7 @@ export default function AdminAddClientScreen() {
           s={s}
         />
         <Field label="Phone" value={phone} onChange={setPhone} placeholder="+968 1234 5678" keyboard="phone-pad" colors={colors} s={s} />
+        <Field label="Referred By (optional)" value={referredBy} onChange={setReferredBy} placeholder="Name of person who referred this client" colors={colors} s={s} />
 
         {/* Package */}
         <Text style={[s.sectionTitle, { marginTop: 24 }]}>PACKAGE</Text>

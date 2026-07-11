@@ -138,6 +138,12 @@ export default function ScheduleSessionScreen() {
   };
 
   return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={styles.closeRow}>
+        <Pressable onPress={() => router.back()} hitSlop={12}>
+          <Ionicons name="close" size={24} color={colors.textSecondary} />
+        </Pressable>
+      </View>
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
@@ -294,11 +300,13 @@ export default function ScheduleSessionScreen() {
       </Pressable>
       <View style={{ height: 48 }} />
     </ScrollView>
+    </View>
   );
 }
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
+    closeRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border },
     scroll: { flex: 1, backgroundColor: c.bg },
     content: { padding: 20 },
     title: {
