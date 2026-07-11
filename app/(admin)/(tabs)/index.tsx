@@ -72,8 +72,8 @@ export default function AdminDashboardScreen() {
   const [ratings, setRatings] = useState<RatingItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     const ms = monthStart();
 
     const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
@@ -263,6 +263,20 @@ export default function AdminDashboardScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // Real-time: silently re-fetch whenever any watched table changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-dashboard')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' },          () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'packages' },          () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'workout_sessions' },  () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' },          () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_transfers' },  () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'session_ratings' },   () => load(true))
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [load]);
 
   if (loading && !stats) {
     return (
