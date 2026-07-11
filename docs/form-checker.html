@@ -31,6 +31,27 @@ html, body { width:100vw; height:100vh; overflow:hidden; background:#000; }
   font-size:10px; background:rgba(0,0,0,0.35);
   padding:3px 7px; border-radius:6px;
 }
+#feedback {
+  position:absolute; top:90px; right:10px;
+  display:flex; flex-direction:column; gap:5px;
+  pointer-events:none; max-width:160px; z-index:10;
+}
+.fc-item {
+  display:flex; align-items:center; gap:6px;
+  background:rgba(0,0,0,0.72); border-radius:8px;
+  padding:5px 9px; border-left:3px solid;
+}
+.fc-item.good { border-color:#4CAF50; }
+.fc-item.warn { border-color:#FF9800; }
+.fc-item.bad  { border-color:#F44336; }
+.fc-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.good .fc-dot { background:#4CAF50; }
+.warn .fc-dot { background:#FF9800; }
+.bad  .fc-dot { background:#F44336; }
+.fc-text {
+  color:#fff; font-family:-apple-system,sans-serif;
+  font-size:11px; font-weight:600; line-height:1.2;
+}
 </style>
 </head>
 <body>
@@ -38,21 +59,24 @@ html, body { width:100vw; height:100vh; overflow:hidden; background:#000; }
 <canvas id="canvas"></canvas>
 <div id="status">Downloading AI model...<br><span style="font-size:11px;opacity:0.65">~15 MB · first load only</span></div>
 <div id="fps"></div>
+<div id="feedback"></div>
 
 <script>
-var video     = document.getElementById('video');
-var canvas    = document.getElementById('canvas');
-var ctx       = canvas.getContext('2d');
-var statusEl  = document.getElementById('status');
-var fpsEl     = document.getElementById('fps');
+var video      = document.getElementById('video');
+var canvas     = document.getElementById('canvas');
+var ctx        = canvas.getContext('2d');
+var statusEl   = document.getElementById('status');
+var fpsEl      = document.getElementById('fps');
+var feedbackEl = document.getElementById('feedback');
 
-var poseLandmarker = null;
-var lastVideoTime  = -1;
-var frozen         = false;
-var facing         = 'environment';
-var fpsCount       = 0;
-var lastFpsTs      = performance.now();
-var focusJoints    = [];
+var poseLandmarker  = null;
+var lastVideoTime   = -1;
+var frozen          = false;
+var facing          = 'environment';
+var fpsCount        = 0;
+var lastFpsTs       = performance.now();
+var focusJoints     = [];
+var currentExercise = 'squat';
 
 var COLORS = {
   torso: 'rgba(100,181,246,0.9)',
@@ -72,6 +96,255 @@ var SEGS = [
 ];
 var KEY_IDX = [11,12,13,14,15,16,23,24,25,26,27,28,29,30,31,32];
 
+// ── Angle helpers ──────────────────────────────────────────────
+function getAngle(a, b, c) {
+  // Angle at vertex b (a-b-c) in degrees
+  if (!a || !b || !c) return null;
+  if ((a.visibility||1) < 0.4 || (b.visibility||1) < 0.4 || (c.visibility||1) < 0.4) return null;
+  var v1x = a.x-b.x, v1y = a.y-b.y;
+  var v2x = c.x-b.x, v2y = c.y-b.y;
+  var dot = v1x*v2x + v1y*v2y;
+  var mag = Math.sqrt((v1x*v1x+v1y*v1y)*(v2x*v2x+v2y*v2y));
+  if (mag < 1e-6) return null;
+  return Math.acos(Math.max(-1, Math.min(1, dot/mag))) * 180 / Math.PI;
+}
+
+function bodyAngle(top, bottom) {
+  // Degrees from vertical (0=upright, 90=horizontal)
+  if (!top || !bottom) return null;
+  if ((top.visibility||1) < 0.4 || (bottom.visibility||1) < 0.4) return null;
+  var dx = bottom.x - top.x;
+  var dy = bottom.y - top.y;
+  if (Math.abs(dy) < 1e-6) return 90;
+  return Math.atan2(Math.abs(dx), Math.abs(dy)) * 180 / Math.PI;
+}
+
+function pickBest(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  return (a.visibility||1) >= (b.visibility||1) ? a : b;
+}
+
+function avgAngle(a1, b1, c1, a2, b2, c2) {
+  var x = getAngle(a1, b1, c1);
+  var y = getAngle(a2, b2, c2);
+  if (x !== null && y !== null) return (x+y)/2;
+  return x !== null ? x : y;
+}
+
+// ── Form analysis ──────────────────────────────────────────────
+function analyzePose(lm, exercise) {
+  if (!lm || lm.length < 29) return [];
+
+  var checks = [];
+  function good(msg) { checks.push({status:'good', msg:msg}); }
+  function warn(msg) { checks.push({status:'warn', msg:msg}); }
+  function bad(msg)  { checks.push({status:'bad',  msg:msg}); }
+
+  var ls=lm[11], rs=lm[12];
+  var le=lm[13], re=lm[14];
+  var lw=lm[15], rw=lm[16];
+  var lh=lm[23], rh=lm[24];
+  var lk=lm[25], rk=lm[26];
+  var la=lm[27], ra=lm[28];
+
+  var shoulder = pickBest(ls, rs);
+  var hip      = pickBest(lh, rh);
+  var knee     = pickBest(lk, rk);
+  var ankle    = pickBest(la, ra);
+  var elbow    = pickBest(le, re);
+  var wrist    = pickBest(lw, rw);
+
+  // ── SQUAT family ───────────────────────────────────────────────
+  if (['squat','lunge','bulgariansplit','stepup','sidelunge'].indexOf(exercise) !== -1) {
+    var kneeA = avgAngle(lh,lk,la, rh,rk,ra) || getAngle(hip, knee, ankle);
+    if (kneeA !== null) {
+      if (kneeA > 155) {
+        // Standing — no feedback until they start squatting
+      } else if (kneeA <= 90) {
+        good('Deep squat');
+      } else if (kneeA <= 115) {
+        good('Good depth');
+      } else {
+        warn('Squat deeper');
+      }
+
+      var torso = bodyAngle(shoulder, hip);
+      if (torso !== null && kneeA < 155) {
+        if (torso < 35)      good('Torso upright');
+        else if (torso < 55) warn('Slight forward lean');
+        else                 bad('Chest up — too much lean');
+      }
+    }
+  }
+
+  // ── HIP HINGE family ───────────────────────────────────────────
+  else if (['deadlift','rdl','hiphinge','goodmorning'].indexOf(exercise) !== -1) {
+    var hipFlex = getAngle(shoulder, hip, knee);
+    var isLight = exercise === 'rdl' || exercise === 'goodmorning';
+    if (hipFlex !== null) {
+      if (hipFlex < 155) {
+        var backLean = bodyAngle(shoulder, hip);
+        if (backLean !== null) {
+          if (isLight) {
+            if (backLean >= 15 && backLean <= 70) good('Good hip hinge');
+            else if (backLean < 15)               warn('Hinge deeper at hips');
+            else                                  warn('Lean forward more');
+          } else {
+            if (backLean >= 20 && backLean <= 55) good('Back position OK');
+            else if (backLean < 20)               warn('Chest up — hinge more');
+            else                                  bad('Back too low/rounded');
+          }
+        }
+        if (isLight) {
+          var kA = getAngle(hip, knee, ankle);
+          if (kA !== null) {
+            if (kA > 150)       good('Legs straight');
+            else if (kA > 130)  warn('Slight knee bend OK');
+            else                warn('Straighter legs');
+          }
+        }
+      } else {
+        warn('Hinge at hips to start');
+      }
+    }
+  }
+
+  // ── PUSH family ────────────────────────────────────────────────
+  else if (['pushup','benchpress','dips','chestfly'].indexOf(exercise) !== -1) {
+    var elbA = avgAngle(ls,le,lw, rs,re,rw) || getAngle(shoulder, elbow, wrist);
+    if (elbA !== null) {
+      if (elbA > 155) {
+        // Top of rep — no depth feedback needed
+      } else if (elbA < 80) {
+        good('Full depth');
+      } else if (elbA < 115) {
+        good('Good depth');
+      } else {
+        warn('Lower further');
+      }
+    }
+    // Push-up body alignment (best from side view)
+    if (exercise === 'pushup' && shoulder && hip && ankle &&
+        (shoulder.visibility||1) > 0.4 && (ankle.visibility||1) > 0.4) {
+      var pdx = ankle.x - shoulder.x;
+      var pdy = ankle.y - shoulder.y;
+      var plen = pdx*pdx + pdy*pdy;
+      if (plen > 0.01) {
+        var pt = ((hip.x-shoulder.x)*pdx + (hip.y-shoulder.y)*pdy) / plen;
+        var pProjY = shoulder.y + pt*pdy;
+        var pDev = hip.y - pProjY;
+        if (Math.abs(pDev) < 0.05)  good('Body straight');
+        else if (pDev > 0.05)       bad('Raise your hips');
+        else                        bad('Lower your hips');
+      }
+    }
+  }
+
+  // ── PLANK family ───────────────────────────────────────────────
+  else if (['plank','sideplank','deadbug'].indexOf(exercise) !== -1) {
+    if (shoulder && hip && ankle &&
+        (shoulder.visibility||1) > 0.4 && (ankle.visibility||1) > 0.4) {
+      var lndx = ankle.x - shoulder.x;
+      var lndy = ankle.y - shoulder.y;
+      var lnlen = lndx*lndx + lndy*lndy;
+      if (lnlen > 0.01) {
+        var lnt = ((hip.x-shoulder.x)*lndx + (hip.y-shoulder.y)*lndy) / lnlen;
+        var lnProjY = shoulder.y + lnt*lndy;
+        var lnDev = hip.y - lnProjY;
+        if (Math.abs(lnDev) < 0.05)  good('Body aligned');
+        else if (lnDev > 0.05)       bad('Raise your hips');
+        else                         bad('Lower your hips');
+      }
+    }
+  }
+
+  // ── PULL family ────────────────────────────────────────────────
+  else if (['pullup','latpulldown','row','seatedrow','facepull'].indexOf(exercise) !== -1) {
+    var pullA = avgAngle(ls,le,lw, rs,re,rw) || getAngle(shoulder, elbow, wrist);
+    if (pullA !== null) {
+      if (pullA < 80)       good('Full contraction');
+      else if (pullA < 125) good('Good range');
+      else if (pullA < 155) warn('Pull further');
+    }
+  }
+
+  // ── OH PRESS / RAISES ──────────────────────────────────────────
+  else if (['ohpress','frontraise','lateralraise'].indexOf(exercise) !== -1) {
+    if (exercise === 'ohpress') {
+      if (wrist && shoulder && (wrist.visibility||1) > 0.4 && (shoulder.visibility||1) > 0.4) {
+        if (wrist.y < shoulder.y - 0.05) good('Arms overhead');
+        else                              warn('Press to overhead');
+      }
+      var elbP = avgAngle(ls,le,lw, rs,re,rw);
+      if (elbP !== null && elbP < 100) good('Good elbow bend');
+    } else if (exercise === 'lateralraise') {
+      if (elbow && shoulder && (elbow.visibility||1) > 0.4 && (shoulder.visibility||1) > 0.4) {
+        if (elbow.y <= shoulder.y + 0.03) good('Good raise height');
+        else                              warn('Raise to shoulder height');
+      }
+    } else {
+      if (wrist && shoulder && (wrist.visibility||1) > 0.4 && (shoulder.visibility||1) > 0.4) {
+        if (wrist.y <= shoulder.y + 0.03) good('Good height');
+        else                              warn('Raise to shoulder height');
+      }
+    }
+  }
+
+  // ── ARM CURLS ──────────────────────────────────────────────────
+  else if (['bicepcurl','hammercurl'].indexOf(exercise) !== -1) {
+    var curlA = avgAngle(ls,le,lw, rs,re,rw) || getAngle(shoulder, elbow, wrist);
+    if (curlA !== null) {
+      if (curlA < 55)       good('Peak contraction');
+      else if (curlA < 100) good('Good range');
+      else if (curlA > 155) good('Full extension');
+      else                  warn('Curl through full ROM');
+    }
+  }
+
+  // ── TRICEP EXT ─────────────────────────────────────────────────
+  else if (['tricepext'].indexOf(exercise) !== -1) {
+    var triA = avgAngle(ls,le,lw, rs,re,rw) || getAngle(shoulder, elbow, wrist);
+    if (triA !== null) {
+      if (triA > 155)      good('Full extension');
+      else if (triA > 120) good('Good range');
+      else                 warn('Extend fully');
+    }
+  }
+
+  // ── HIP THRUST / GLUTE BRIDGE ──────────────────────────────────
+  else if (['hipthrust','glutebridge'].indexOf(exercise) !== -1) {
+    var hipExt = getAngle(shoulder, hip, knee);
+    if (hipExt !== null) {
+      if (hipExt > 165)      good('Full hip extension');
+      else if (hipExt > 145) warn('Drive hips higher');
+      else                   warn('More hip extension');
+    }
+  }
+
+  // ── CALF RAISE ─────────────────────────────────────────────────
+  else if (['calfraise'].indexOf(exercise) !== -1) {
+    warn('Rise fully to toes — full ROM');
+  }
+
+  return checks;
+}
+
+// ── Feedback panel ─────────────────────────────────────────────
+function renderFeedback(checks) {
+  if (!checks || checks.length === 0) {
+    feedbackEl.innerHTML = '';
+    return;
+  }
+  feedbackEl.innerHTML = checks.map(function(c) {
+    return '<div class="fc-item ' + c.status + '">' +
+      '<div class="fc-dot"></div>' +
+      '<span class="fc-text">' + c.msg + '</span>' +
+      '</div>';
+  }).join('');
+}
+
+// ── Camera ─────────────────────────────────────────────────────
 async function startCamera(facingMode) {
   try {
     if (video.srcObject) video.srcObject.getTracks().forEach(function(t){ t.stop(); });
@@ -125,7 +398,11 @@ function detectFrame() {
       lastVideoTime = video.currentTime;
       var res = poseLandmarker.detectForVideo(video, performance.now());
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (res.landmarks && res.landmarks.length > 0) drawPose(res.landmarks[0]);
+      if (res.landmarks && res.landmarks.length > 0) {
+        drawPose(res.landmarks[0]);
+      } else {
+        renderFeedback([]);
+      }
       fpsCount++;
       var now = performance.now();
       if (now - lastFpsTs >= 1000) {
@@ -164,8 +441,10 @@ function drawPose(lm) {
     ctx.fillStyle = isFocusJoint ? 'rgba(255,230,0,0.95)' : COLORS.joint;
     ctx.fill();
   }
+  renderFeedback(analyzePose(lm, currentExercise));
 }
 
+// ── Window commands (called via injectJavaScript from React Native) ──
 window.flipCamera = async function() {
   facing = facing === 'environment' ? 'user' : 'environment';
   await startCamera(facing);
@@ -178,11 +457,14 @@ window.toggleFreeze = function() {
   if (!frozen && poseLandmarker) { lastVideoTime = -1; requestAnimationFrame(detectFrame); }
 };
 
-window.setFocusJoints = function(joints) {
-  focusJoints = joints;
+window.setExercise = function(key, joints) {
+  currentExercise = key || 'free';
+  focusJoints = joints || [];
 };
 
-// ── MediaPipe loaded via module script below; globals set on window ──
+window.setFocusJoints = function(joints) {
+  focusJoints = joints || [];
+};
 </script>
 <script type="module">
 import { FilesetResolver, PoseLandmarker } from './vision_bundle.mjs';

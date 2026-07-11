@@ -10,243 +10,61 @@ import {
 import { router } from 'expo-router';
 import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// ─── Exercise presets ──────────────────────────────────────────────────────────
+const FORM_CHECKER_URL = 'https://serratoreclarinse.github.io/gym-folder/form-checker.html';
 
 const PRESETS = [
-  { key: 'squat',    label: 'Squat',    icon: 'fitness-outline',  focus: [23, 24, 25, 26, 27, 28] },
-  { key: 'deadlift', label: 'Deadlift', icon: 'barbell-outline',  focus: [11, 12, 23, 24, 25, 26] },
-  { key: 'lunge',    label: 'Lunge',    icon: 'walk-outline',     focus: [23, 24, 25, 26, 27, 28] },
-  { key: 'pushup',   label: 'Push-up',  icon: 'body-outline',     focus: [11, 12, 13, 14, 15, 16] },
-  { key: 'plank',    label: 'Plank',    icon: 'remove-outline',   focus: [11, 12, 23, 24] },
-  { key: 'ohpress',  label: 'OH Press', icon: 'arrow-up-outline', focus: [11, 12, 13, 14, 15, 16] },
-  { key: 'row',      label: 'Row',      icon: 'git-pull-request-outline', focus: [11, 12, 13, 14] },
-  { key: 'free',     label: 'Free',     icon: 'grid-outline',     focus: [] },
+  // ── Lower body ──────────────────────────────────────────────────
+  { key: 'squat',        label: 'Squat',        icon: 'fitness-outline',          focus: [23,24,25,26,27,28] },
+  { key: 'deadlift',     label: 'Deadlift',     icon: 'barbell-outline',          focus: [11,12,23,24,25,26] },
+  { key: 'rdl',          label: 'RDL',          icon: 'barbell-outline',          focus: [11,12,23,24,25,26,27,28] },
+  { key: 'lunge',        label: 'Lunge',        icon: 'walk-outline',             focus: [23,24,25,26,27,28] },
+  { key: 'bulgariansplit', label: 'Bulg. Split',icon: 'walk-outline',             focus: [23,24,25,26,27,28] },
+  { key: 'stepup',       label: 'Step Up',      icon: 'trending-up-outline',      focus: [23,24,25,26,27,28] },
+  { key: 'hipthrust',    label: 'Hip Thrust',   icon: 'body-outline',             focus: [23,24,25,26,27,28] },
+  { key: 'glutebridge',  label: 'Glute Bridge', icon: 'body-outline',             focus: [23,24,25,26,27,28] },
+  { key: 'hiphinge',     label: 'Hip Hinge',    icon: 'refresh-outline',          focus: [11,12,23,24,25,26] },
+  { key: 'goodmorning',  label: 'Good Morning', icon: 'sunny-outline',            focus: [11,12,23,24,25,26] },
+  { key: 'calfraise',    label: 'Calf Raise',   icon: 'trending-up-outline',      focus: [25,26,27,28,29,30,31,32] },
+  { key: 'sidelunge',    label: 'Side Lunge',   icon: 'swap-horizontal-outline',  focus: [23,24,25,26,27,28] },
+  // ── Upper push ─────────────────────────────────────────────────
+  { key: 'pushup',       label: 'Push-up',      icon: 'body-outline',             focus: [11,12,13,14,15,16] },
+  { key: 'benchpress',   label: 'Bench Press',  icon: 'barbell-outline',          focus: [11,12,13,14,15,16] },
+  { key: 'ohpress',      label: 'OH Press',     icon: 'arrow-up-outline',         focus: [11,12,13,14,15,16] },
+  { key: 'dips',         label: 'Dips',         icon: 'chevron-down-outline',     focus: [11,12,13,14,15,16] },
+  { key: 'chestfly',     label: 'Chest Fly',    icon: 'resize-outline',           focus: [11,12,13,14,15,16] },
+  // ── Upper pull ─────────────────────────────────────────────────
+  { key: 'pullup',       label: 'Pull-up',      icon: 'chevron-up-outline',       focus: [11,12,13,14,15,16] },
+  { key: 'latpulldown',  label: 'Lat Pulldown', icon: 'arrow-down-outline',       focus: [11,12,13,14,15,16] },
+  { key: 'row',          label: 'Bent Row',     icon: 'git-pull-request-outline', focus: [11,12,13,14] },
+  { key: 'seatedrow',    label: 'Seated Row',   icon: 'arrow-forward-outline',    focus: [11,12,13,14] },
+  { key: 'facepull',     label: 'Face Pull',    icon: 'arrow-back-outline',       focus: [11,12,13,14] },
+  // ── Shoulders ──────────────────────────────────────────────────
+  { key: 'lateralraise', label: 'Lateral Raise',icon: 'swap-horizontal-outline',  focus: [11,12,13,14] },
+  { key: 'frontraise',   label: 'Front Raise',  icon: 'arrow-up-outline',         focus: [11,12,13,14,15,16] },
+  // ── Arms ───────────────────────────────────────────────────────
+  { key: 'bicepcurl',    label: 'Bicep Curl',   icon: 'hand-right-outline',       focus: [13,14,15,16] },
+  { key: 'hammercurl',   label: 'Hammer Curl',  icon: 'hand-right-outline',       focus: [13,14,15,16] },
+  { key: 'tricepext',    label: 'Tricep Ext.',  icon: 'hand-left-outline',        focus: [13,14,15,16] },
+  // ── Core ───────────────────────────────────────────────────────
+  { key: 'plank',        label: 'Plank',        icon: 'remove-outline',           focus: [11,12,23,24] },
+  { key: 'sideplank',    label: 'Side Plank',   icon: 'remove-outline',           focus: [11,12,23,24] },
+  { key: 'deadbug',      label: 'Dead Bug',     icon: 'bug-outline',              focus: [11,12,13,14,15,16,23,24,25,26] },
+  // ── Free ───────────────────────────────────────────────────────
+  { key: 'free',         label: 'Free',         icon: 'grid-outline',             focus: [] },
 ];
-
-// ─── MediaPipe HTML ─────────────────────────────────────────────────────────────
-
-function buildPoseHtml(focusJoints: number[]): string {
-  const focusStr = JSON.stringify(focusJoints);
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<style>
-* { margin:0; padding:0; box-sizing:border-box; }
-html, body { width:100vw; height:100vh; overflow:hidden; background:#000; }
-#video {
-  position:absolute; top:0; left:0;
-  width:100%; height:100%;
-  object-fit:cover;
-}
-#canvas {
-  position:absolute; top:0; left:0;
-  width:100%; height:100%;
-}
-#status {
-  position:absolute; top:50%; left:50%;
-  transform:translate(-50%,-50%);
-  color:#fff; font-family:-apple-system,sans-serif;
-  font-size:14px; text-align:center;
-  background:rgba(0,0,0,0.75); padding:20px 28px;
-  border-radius:16px; line-height:1.6;
-}
-#fps {
-  position:absolute; bottom:8px; right:8px;
-  color:rgba(255,255,255,0.45); font-family:monospace;
-  font-size:10px; background:rgba(0,0,0,0.35);
-  padding:3px 7px; border-radius:6px;
-}
-</style>
-</head>
-<body>
-<video id="video" autoplay playsinline muted></video>
-<canvas id="canvas"></canvas>
-<div id="status">Loading AI model...<br><span style="font-size:11px;opacity:0.65">First load takes ~5 seconds</span></div>
-<div id="fps"></div>
-
-<script>
-var video     = document.getElementById('video');
-var canvas    = document.getElementById('canvas');
-var ctx       = canvas.getContext('2d');
-var statusEl  = document.getElementById('status');
-var fpsEl     = document.getElementById('fps');
-
-var poseLandmarker = null;
-var animFrameId    = null;
-var lastVideoTime  = -1;
-var frozen         = false;
-var facing         = 'environment';
-var fpsCount       = 0;
-var lastFpsTs      = performance.now();
-var focusJoints    = ${focusStr};
-
-// ── Colors ─────────────────────────────────────────────────────────
-var COLORS = {
-  torso: 'rgba(100,181,246,0.9)',
-  larm:  'rgba(129,199,132,0.9)',
-  rarm:  'rgba(255,213,79,0.9)',
-  lleg:  'rgba(255,138,101,0.9)',
-  rleg:  'rgba(240,98,146,0.9)',
-  focus: 'rgba(255,255,255,1)',
-  joint: 'rgba(255,255,255,0.95)',
-};
-
-var SEGS = [
-  {a:11,b:12,c:'torso'}, {a:11,b:23,c:'torso'}, {a:12,b:24,c:'torso'}, {a:23,b:24,c:'torso'},
-  {a:11,b:13,c:'larm'},  {a:13,b:15,c:'larm'},
-  {a:12,b:14,c:'rarm'},  {a:14,b:16,c:'rarm'},
-  {a:23,b:25,c:'lleg'},  {a:25,b:27,c:'lleg'},  {a:27,b:29,c:'lleg'},  {a:27,b:31,c:'lleg'},
-  {a:24,b:26,c:'rleg'},  {a:26,b:28,c:'rleg'},  {a:28,b:30,c:'rleg'},  {a:28,b:32,c:'rleg'},
-];
-var KEY_IDX = [11,12,13,14,15,16,23,24,25,26,27,28,29,30,31,32];
-
-// ── Camera ─────────────────────────────────────────────────────────
-async function startCamera(facingMode) {
-  try {
-    if (video.srcObject) video.srcObject.getTracks().forEach(function(t){ t.stop(); });
-    var stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: facingMode, width: {ideal:640}, height: {ideal:480} },
-      audio: false,
-    });
-    video.srcObject = stream;
-    var mirror = facingMode === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
-    video.style.transform  = mirror;
-    canvas.style.transform = mirror;
-    await video.play();
-  } catch(e) {
-    statusEl.innerHTML = '⚠️ Camera error<br><span style="font-size:11px">' + e.message + '</span>';
-    statusEl.style.display = 'block';
-  }
-}
-
-// ── Init ───────────────────────────────────────────────────────────
-async function init() {
-  try {
-    await startCamera(facing);
-    statusEl.style.display = 'block';
-
-    var V = window.vision;
-    if (!V || !V.FilesetResolver) throw new Error('MediaPipe library not loaded');
-    var fs = await V.FilesetResolver.forVisionTasks(
-      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
-    );
-    poseLandmarker = await V.PoseLandmarker.createFromOptions(fs, {
-      baseOptions: {
-        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
-        delegate: 'CPU',
-      },
-      runningMode: 'VIDEO',
-      numPoses: 1,
-    });
-
-    statusEl.style.display = 'none';
-    requestAnimationFrame(detectFrame);
-  } catch(e) {
-    statusEl.innerHTML = '⚠️ Could not load model<br><span style="font-size:11px;opacity:0.7">' + (e && e.message ? e.message : 'Check internet connection') + '</span>';
-  }
-}
-
-// ── Detection loop ─────────────────────────────────────────────────
-function detectFrame() {
-  if (frozen) return;
-  if (video.readyState >= 2) {
-    canvas.width  = video.videoWidth  || window.innerWidth;
-    canvas.height = video.videoHeight || window.innerHeight;
-
-    if (video.currentTime !== lastVideoTime && poseLandmarker) {
-      lastVideoTime = video.currentTime;
-      var res = poseLandmarker.detectForVideo(video, performance.now());
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (res.landmarks && res.landmarks.length > 0) drawPose(res.landmarks[0]);
-
-      fpsCount++;
-      var now = performance.now();
-      if (now - lastFpsTs >= 1000) {
-        fpsEl.textContent = fpsCount + ' fps';
-        fpsCount = 0; lastFpsTs = now;
-      }
-    }
-  }
-  animFrameId = requestAnimationFrame(detectFrame);
-}
-
-function drawPose(lm) {
-  ctx.lineCap = 'round';
-
-  // Segments
-  for (var i = 0; i < SEGS.length; i++) {
-    var s = SEGS[i];
-    var pa = lm[s.a], pb = lm[s.b];
-    if (!pa || !pb) continue;
-    if ((pa.visibility||1) < 0.35 || (pb.visibility||1) < 0.35) continue;
-    var isFocus = focusJoints.indexOf(s.a) !== -1 && focusJoints.indexOf(s.b) !== -1;
-    ctx.beginPath();
-    ctx.strokeStyle = isFocus ? 'rgba(255,230,0,0.95)' : COLORS[s.c];
-    ctx.lineWidth   = isFocus ? 4 : 2.5;
-    ctx.moveTo(pa.x * canvas.width, pa.y * canvas.height);
-    ctx.lineTo(pb.x * canvas.width, pb.y * canvas.height);
-    ctx.stroke();
-  }
-
-  // Joints
-  for (var j = 0; j < KEY_IDX.length; j++) {
-    var idx = KEY_IDX[j];
-    var p = lm[idx];
-    if (!p || (p.visibility||1) < 0.35) continue;
-    var x = p.x * canvas.width;
-    var y = p.y * canvas.height;
-    var isFocusJoint = focusJoints.indexOf(idx) !== -1;
-    ctx.beginPath();
-    ctx.arc(x, y, isFocusJoint ? 7 : 5, 0, Math.PI * 2);
-    ctx.fillStyle = isFocusJoint ? 'rgba(255,230,0,0.95)' : COLORS.joint;
-    ctx.fill();
-  }
-}
-
-// ── Commands from React Native ─────────────────────────────────────
-window.flipCamera = async function() {
-  facing = facing === 'environment' ? 'user' : 'environment';
-  await startCamera(facing);
-  lastVideoTime = -1;
-  if (!frozen && poseLandmarker) requestAnimationFrame(detectFrame);
-};
-
-window.toggleFreeze = function() {
-  frozen = !frozen;
-  if (!frozen && poseLandmarker) { lastVideoTime = -1; requestAnimationFrame(detectFrame); }
-};
-
-window.setFocusJoints = function(joints) {
-  focusJoints = joints;
-};
-
-window._onVisionReady = function() { init(); };
-</script>
-<script
-  src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js"
-  onload="window._onVisionReady()"
-  onerror="document.getElementById('status').innerHTML='⚠️ Could not load AI library<br><span style=\\'font-size:11px;opacity:0.7\\'>Check internet connection</span>'">
-</script>
-</body>
-</html>`;
-}
-
-// ─── Component ─────────────────────────────────────────────────────────────────
 
 export default function FormCheckerScreen() {
   const webViewRef = useRef<WebView>(null);
-  const [preset, setPreset]   = useState(PRESETS[0]);
-  const [frozen, setFrozen]   = useState(false);
-  const [htmlKey, setHtmlKey] = useState(0);
-  const [html, setHtml]       = useState(() => buildPoseHtml(PRESETS[0].focus));
+  const [preset, setPreset] = useState(PRESETS[0]);
+  const [frozen, setFrozen] = useState(false);
+  const insets = useSafeAreaInsets();
 
   function handlePreset(p: typeof PRESETS[0]) {
     setPreset(p);
     webViewRef.current?.injectJavaScript(
-      `window.setFocusJoints(${JSON.stringify(p.focus)}); true;`
+      `window.setExercise(${JSON.stringify(p.key)}, ${JSON.stringify(p.focus)}); true;`
     );
   }
 
@@ -263,12 +81,10 @@ export default function FormCheckerScreen() {
     <View style={s.root}>
       <StatusBar barStyle="light-content" />
 
-      {/* WebView — full screen AI camera */}
       <WebView
-        key={htmlKey}
         ref={webViewRef}
         style={StyleSheet.absoluteFill}
-        source={{ html }}
+        source={{ uri: FORM_CHECKER_URL }}
         javaScriptEnabled
         domStorageEnabled
         allowsInlineMediaPlayback
@@ -276,6 +92,11 @@ export default function FormCheckerScreen() {
         mediaCapturePermissionGrantType="grant"
         originWhitelist={['*']}
         mixedContentMode="always"
+        onLoadEnd={() => {
+          webViewRef.current?.injectJavaScript(
+            `window.setExercise(${JSON.stringify(PRESETS[0].key)}, ${JSON.stringify(PRESETS[0].focus)}); true;`
+          );
+        }}
         onPermissionRequest={(e) => e.nativeEvent.request.grant(e.nativeEvent.request.resources)}
         scrollEnabled={false}
         bounces={false}
@@ -285,7 +106,7 @@ export default function FormCheckerScreen() {
       />
 
       {/* Top controls */}
-      <View style={s.topBar}>
+      <View style={[s.topBar, { paddingTop: insets.top + 8 }]}>
         <Pressable style={s.topBtn} onPress={() => router.back()}>
           <Ionicons name="close" size={22} color="#fff" />
         </Pressable>
@@ -308,34 +129,23 @@ export default function FormCheckerScreen() {
 
       {/* Legend */}
       <View style={s.legend}>
-        <View style={s.legendItem}>
-          <View style={[s.legendDot, { backgroundColor: 'rgba(100,181,246,0.9)' }]} />
-          <Text style={s.legendText}>Torso</Text>
-        </View>
-        <View style={s.legendItem}>
-          <View style={[s.legendDot, { backgroundColor: 'rgba(129,199,132,0.9)' }]} />
-          <Text style={s.legendText}>L.Arm</Text>
-        </View>
-        <View style={s.legendItem}>
-          <View style={[s.legendDot, { backgroundColor: 'rgba(255,213,79,0.9)' }]} />
-          <Text style={s.legendText}>R.Arm</Text>
-        </View>
-        <View style={s.legendItem}>
-          <View style={[s.legendDot, { backgroundColor: 'rgba(255,138,101,0.9)' }]} />
-          <Text style={s.legendText}>L.Leg</Text>
-        </View>
-        <View style={s.legendItem}>
-          <View style={[s.legendDot, { backgroundColor: 'rgba(240,98,146,0.9)' }]} />
-          <Text style={s.legendText}>R.Leg</Text>
-        </View>
-        <View style={s.legendItem}>
-          <View style={[s.legendDot, { backgroundColor: 'rgba(255,230,0,0.95)' }]} />
-          <Text style={s.legendText}>Focus</Text>
-        </View>
+        {[
+          { color: 'rgba(100,181,246,0.9)', label: 'Torso' },
+          { color: 'rgba(129,199,132,0.9)', label: 'L.Arm' },
+          { color: 'rgba(255,213,79,0.9)',  label: 'R.Arm' },
+          { color: 'rgba(255,138,101,0.9)', label: 'L.Leg' },
+          { color: 'rgba(240,98,146,0.9)',  label: 'R.Leg' },
+          { color: 'rgba(255,230,0,0.95)',  label: 'Focus' },
+        ].map(({ color, label }) => (
+          <View key={label} style={s.legendItem}>
+            <View style={[s.legendDot, { backgroundColor: color }]} />
+            <Text style={s.legendText}>{label}</Text>
+          </View>
+        ))}
       </View>
 
       {/* Bottom exercise selector */}
-      <View style={s.bottomBar}>
+      <View style={[s.bottomBar, { paddingBottom: insets.bottom + 10 }]}>
         <Text style={s.bottomHint}>Select exercise to highlight key joints</Text>
         <ScrollView
           horizontal
@@ -367,7 +177,7 @@ const s = StyleSheet.create({
   topBar: {
     position: 'absolute', top: 0, left: 0, right: 0,
     flexDirection: 'row', alignItems: 'center',
-    paddingTop: 52, paddingHorizontal: 14, paddingBottom: 10,
+    paddingHorizontal: 14, paddingBottom: 10,
     backgroundColor: 'rgba(0,0,0,0.5)',
     gap: 10,
   },
@@ -379,20 +189,20 @@ const s = StyleSheet.create({
   topBtnActive: { backgroundColor: '#fff' },
   presetLabel: { flex: 1 },
   presetLabelText: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  presetLabelSub: { color: 'rgba(255,255,255,0.55)', fontSize: 10, fontWeight: '600' },
+  presetLabelSub:  { color: 'rgba(255,255,255,0.55)', fontSize: 10, fontWeight: '600' },
 
   legend: {
     position: 'absolute', top: 110, left: 12,
     flexDirection: 'column', gap: 5,
   },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendDot:  { width: 8, height: 8, borderRadius: 4 },
   legendText: { color: 'rgba(255,255,255,0.7)', fontSize: 9, fontWeight: '700' },
 
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: 'rgba(0,0,0,0.65)',
-    paddingTop: 10, paddingBottom: 28,
+    paddingTop: 10,
   },
   bottomHint: {
     color: 'rgba(255,255,255,0.45)', fontSize: 10,
@@ -408,6 +218,6 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.10)',
   },
   presetBtnActive: { backgroundColor: '#fff', borderColor: '#fff' },
-  presetText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  presetText:       { color: '#fff', fontSize: 12, fontWeight: '700' },
   presetTextActive: { color: '#000' },
 });
