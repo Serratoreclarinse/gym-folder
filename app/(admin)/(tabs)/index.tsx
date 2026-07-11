@@ -81,8 +81,8 @@ export default function AdminDashboardScreen() {
     const [coachRes, clientRes, pkgRes, sessRes, revMonthRes, revAllRes,
            lowPkgRes, coachAlertRes, neverPaidRes, allPaymentsRes,
            ratingsRes, pendingTransferRes] = await Promise.all([
-      supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'coach'),
-      supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'client'),
+      supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'coach').is('deactivated_at', null),
+      supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'client').is('deactivated_at', null),
       supabase.from('packages').select('id', { count: 'exact', head: true }).eq('status', 'active'),
       supabase.from('workout_sessions').select('id', { count: 'exact', head: true }).gte('session_date', ms),
       supabase.from('payments').select('amount').gte('paid_at', ms),
@@ -96,6 +96,7 @@ export default function AdminDashboardScreen() {
       supabase.from('profiles')
         .select('id, name, visa_expiry')
         .eq('role', 'coach')
+        .is('deactivated_at', null)
         .not('visa_expiry', 'is', null),
       // Active clients with NO payment ever
       supabase.from('packages')
