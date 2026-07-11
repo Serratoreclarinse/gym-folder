@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ELEVATƎ Form Checker</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:100vw; height:100vh; overflow:hidden; background:#000; }
+#video {
+  position:absolute; top:0; left:0;
+  width:100%; height:100%;
+  object-fit:cover;
+}
+#canvas {
+  position:absolute; top:0; left:0;
+  width:100%; height:100%;
+}
+#status {
+  position:absolute; top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  color:#fff; font-family:-apple-system,sans-serif;
+  font-size:14px; text-align:center;
+  background:rgba(0,0,0,0.75); padding:20px 28px;
+  border-radius:16px; line-height:1.6;
+  pointer-events:none;
+}
+#fps {
+  position:absolute; bottom:8px; right:8px;
+  color:rgba(255,255,255,0.45); font-family:monospace;
+  font-size:10px; background:rgba(0,0,0,0.35);
+  padding:3px 7px; border-radius:6px;
+}
+</style>
+</head>
+<body>
+<video id="video" autoplay playsinline muted></video>
+<canvas id="canvas"></canvas>
+<div id="status">Downloading AI model...<br><span style="font-size:11px;opacity:0.65">~15 MB · first load only</span></div>
+<div id="fps"></div>
+
+<script>
+var video     = document.getElementById('video');
+var canvas    = document.getElementById('canvas');
+var ctx       = canvas.getContext('2d');
+var statusEl  = document.getElementById('status');
+var fpsEl     = document.getElementById('fps');
+
+var poseLandmarker = null;
+var lastVideoTime  = -1;
+var frozen         = false;
+var facing         = 'environment';
+var fpsCount       = 0;
+var lastFpsTs      = performance.now();
+var focusJoints    = [];
+
+var COLORS = {
+  torso: 'rgba(100,181,246,0.9)',
+  larm:  'rgba(129,199,132,0.9)',
+  rarm:  'rgba(255,213,79,0.9)',
+  lleg:  'rgba(255,138,101,0.9)',
+  rleg:  'rgba(240,98,146,0.9)',
+  joint: 'rgba(255,255,255,0.95)',
+};
+
+var SEGS = [
+  {a:11,b:12,c:'torso'},{a:11,b:23,c:'torso'},{a:12,b:24,c:'torso'},{a:23,b:24,c:'torso'},
+  {a:11,b:13,c:'larm'},{a:13,b:15,c:'larm'},
+  {a:12,b:14,c:'rarm'},{a:14,b:16,c:'rarm'},
+  {a:23,b:25,c:'lleg'},{a:25,b:27,c:'lleg'},{a:27,b:29,c:'lleg'},{a:27,b:31,c:'lleg'},
+  {a:24,b:26,c:'rleg'},{a:26,b:28,c:'rleg'},{a:28,b:30,c:'rleg'},{a:28,b:32,c:'rleg'},
+];
+var KEY_IDX = [11,12,13,14,15,16,23,24,25,26,27,28,29,30,31,32];
+
+async function startCamera(facingMode) {
+  try {
+    if (video.srcObject) video.srcObject.getTracks().forEach(function(t){ t.stop(); });
+    var stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: facingMode, width:{ideal:640}, height:{ideal:480} },
+      audio: false,
+    });
+    video.srcObject = stream;
+    var mirror = facingMode === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
+    video.style.transform  = mirror;
+    canvas.style.transform = mirror;
+    await video.play();
+  } catch(e) {
+    statusEl.innerHTML = '⚠️ Camera error<br><span style="font-size:11px">' + e.message + '</span>';
+    statusEl.style.display = 'block';
+  }
+}
+
+async function init() {
+  try {
+    await startCamera(facing);
+    statusEl.style.display = 'block';
+
+    var FilesetResolver = window.FilesetResolver || (window.vision && window.vision.FilesetResolver);
+    var PoseLandmarker  = window.PoseLandmarker  || (window.vision && window.vision.PoseLandmarker);
+    if (!FilesetResolver || !PoseLandmarker) throw new Error('Globals not set after load');
+
+    var fs = await FilesetResolver.forVisionTasks(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+    );
+    poseLandmarker = await PoseLandmarker.createFromOptions(fs, {
+      baseOptions: {
+        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+        delegate: 'CPU',
+      },
+      runningMode: 'VIDEO',
+      numPoses: 1,
+    });
+
+    statusEl.style.display = 'none';
+    requestAnimationFrame(detectFrame);
+  } catch(e) {
+    statusEl.innerHTML = '⚠️ Could not start model<br><span style="font-size:11px;opacity:0.7">' + (e.message || 'Unknown error') + '</span>';
+  }
+}
+
+function detectFrame() {
+  if (frozen) return;
+  if (video.readyState >= 2) {
+    canvas.width  = video.videoWidth  || window.innerWidth;
+    canvas.height = video.videoHeight || window.innerHeight;
+    if (video.currentTime !== lastVideoTime && poseLandmarker) {
+      lastVideoTime = video.currentTime;
+      var res = poseLandmarker.detectForVideo(video, performance.now());
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (res.landmarks && res.landmarks.length > 0) drawPose(res.landmarks[0]);
+      fpsCount++;
+      var now = performance.now();
+      if (now - lastFpsTs >= 1000) {
+        fpsEl.textContent = fpsCount + ' fps';
+        fpsCount = 0; lastFpsTs = now;
+      }
+    }
+  }
+  requestAnimationFrame(detectFrame);
+}
+
+function drawPose(lm) {
+  ctx.lineCap = 'round';
+  for (var i = 0; i < SEGS.length; i++) {
+    var s = SEGS[i];
+    var pa = lm[s.a], pb = lm[s.b];
+    if (!pa || !pb) continue;
+    if ((pa.visibility||1) < 0.35 || (pb.visibility||1) < 0.35) continue;
+    var isFocus = focusJoints.indexOf(s.a) !== -1 && focusJoints.indexOf(s.b) !== -1;
+    ctx.beginPath();
+    ctx.strokeStyle = isFocus ? 'rgba(255,230,0,0.95)' : COLORS[s.c];
+    ctx.lineWidth   = isFocus ? 4 : 2.5;
+    ctx.moveTo(pa.x * canvas.width, pa.y * canvas.height);
+    ctx.lineTo(pb.x * canvas.width, pb.y * canvas.height);
+    ctx.stroke();
+  }
+  for (var j = 0; j < KEY_IDX.length; j++) {
+    var idx = KEY_IDX[j];
+    var p = lm[idx];
+    if (!p || (p.visibility||1) < 0.35) continue;
+    var x = p.x * canvas.width;
+    var y = p.y * canvas.height;
+    var isFocusJoint = focusJoints.indexOf(idx) !== -1;
+    ctx.beginPath();
+    ctx.arc(x, y, isFocusJoint ? 7 : 5, 0, Math.PI * 2);
+    ctx.fillStyle = isFocusJoint ? 'rgba(255,230,0,0.95)' : COLORS.joint;
+    ctx.fill();
+  }
+}
+
+window.flipCamera = async function() {
+  facing = facing === 'environment' ? 'user' : 'environment';
+  await startCamera(facing);
+  lastVideoTime = -1;
+  if (!frozen && poseLandmarker) requestAnimationFrame(detectFrame);
+};
+
+window.toggleFreeze = function() {
+  frozen = !frozen;
+  if (!frozen && poseLandmarker) { lastVideoTime = -1; requestAnimationFrame(detectFrame); }
+};
+
+window.setFocusJoints = function(joints) {
+  focusJoints = joints;
+};
+
+// ── Load MediaPipe from CDN (works because this page is served via HTTPS) ──
+(async function() {
+  var URLS = [
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js',
+    'https://unpkg.com/@mediapipe/tasks-vision@0.10.14/vision_bundle.js',
+  ];
+
+  function loadTag(url) {
+    return new Promise(function(resolve, reject) {
+      var s = document.createElement('script');
+      s.src = url;
+      s.crossOrigin = 'anonymous';
+      s.onload  = function() { resolve(); };
+      s.onerror = function() { reject(new Error('tag failed')); };
+      document.head.appendChild(s);
+    });
+  }
+
+  for (var i = 0; i < URLS.length; i++) {
+    try {
+      statusEl.innerHTML = 'Downloading AI model...<br><span style="font-size:11px;opacity:0.65">~15 MB · first load only</span>';
+      await loadTag(URLS[i]);
+      init();
+      return;
+    } catch(e) {}
+  }
+
+  statusEl.innerHTML = '⚠️ Could not load AI library<br><span style="font-size:11px;opacity:0.7">Check internet connection</span>';
+})();
+</script>
+</body>
+</html>
