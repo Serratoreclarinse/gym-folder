@@ -332,7 +332,6 @@ export default function FormCheckerScreen() {
             placeholderTextColor="rgba(255,255,255,0.35)"
             value={searchQuery}
             onChangeText={setSearchQuery}
-            autoFocus
             returnKeyType="search"
           />
           <FlatList
