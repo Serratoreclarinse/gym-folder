@@ -16,6 +16,62 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const FORM_CHECKER_URL = 'https://serratoreclarinse.github.io/gym-folder/form-checker.html';
 
+const GUIDES = {
+  side: {
+    title: 'Side View',
+    subtitle: 'Stand directly to the side of the client',
+    dos: [
+      'Stand 6–8 ft (2–2.5 m) away',
+      'Camera at hip / mid-torso height',
+      'Full body visible — head to feet',
+      'Client faces left or right (perpendicular to camera)',
+      'Good lighting — avoid filming into a bright light',
+    ],
+    donts: [
+      "Don't film from the front or a diagonal angle",
+      "Don't stand too close — body gets cut off",
+      "Don't hold the camera above shoulder height",
+    ],
+  },
+  front: {
+    title: 'Front View',
+    subtitle: 'Stand directly in front of the client',
+    dos: [
+      'Stand 6–8 ft (2–2.5 m) away',
+      'Camera at chest / shoulder height',
+      'Full body visible — head to feet',
+      'Client faces the camera directly',
+      'Good lighting — avoid filming into a bright light',
+    ],
+    donts: [
+      "Don't film from the side or a diagonal angle",
+      "Don't stand too close — body gets cut off",
+      "Don't hold the camera too low (knee level)",
+    ],
+  },
+  '': {
+    title: 'Free Mode',
+    subtitle: 'No specific angle required',
+    dos: [
+      'Keep full body in frame if possible',
+      'Good lighting improves detection accuracy',
+    ],
+    donts: [],
+  },
+} as const;
+
+const EXERCISE_TIPS: Record<string, string> = {
+  hipthrust:    'Client is lying on their back — film from the side at ground / hip level',
+  glutebridge:  'Client is on the floor — lower the camera closer to ground level',
+  deadbug:      'Client is lying on their back — film from the side at floor level',
+  plank:        'Hip alignment (shoulder → hip → ankle) must all be visible from the side',
+  benchpress:   'Client is on bench — film from the side so the elbow depth is visible',
+  pushup:       'The full body line from head to ankle must be visible from the side',
+  row:          'Client is hinged forward — film from the side to see back angle',
+  latpulldown:  'Film from the side — torso and elbow path both visible',
+  calfraise:    'Film from the side — heel lift must be clearly visible',
+};
+
 const PRESETS = [
   // ── Lower body ──────────────────────────────────────────────────
   { key: 'squat',          label: 'Squat',         icon: 'fitness-outline',          angle: 'side',  focus: [23,24,25,26,27,28] },
@@ -63,6 +119,7 @@ export default function FormCheckerScreen() {
   const [frozen, setFrozen] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showGuide, setShowGuide] = useState(false);
   const insets = useSafeAreaInsets();
 
   const filteredPresets = PRESETS.filter((p) =>
@@ -123,6 +180,9 @@ export default function FormCheckerScreen() {
           <Text style={s.presetLabelSub}>Pose Detection</Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Pressable style={s.topBtn} onPress={() => setShowGuide(true)}>
+            <Ionicons name="videocam-outline" size={18} color="#fff" />
+          </Pressable>
           <Pressable
             style={[s.topBtn, frozen && s.topBtnActive]}
             onPress={handleFreeze}
@@ -164,6 +224,96 @@ export default function FormCheckerScreen() {
           <Ionicons name="chevron-up-outline" size={14} color="rgba(255,255,255,0.55)" />
         </View>
       </Pressable>
+
+      {/* Camera guide modal */}
+      <Modal
+        visible={showGuide}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowGuide(false)}
+      >
+        {(() => {
+          const guide = GUIDES[preset.angle as keyof typeof GUIDES] ?? GUIDES[''];
+          const tip   = EXERCISE_TIPS[preset.key];
+          return (
+            <>
+              <Pressable style={s.ddOverlay} onPress={() => setShowGuide(false)} />
+              <View style={[s.ddSheet, s.guideSheet, { paddingBottom: insets.bottom + 20 }]}>
+                <View style={s.ddHandle} />
+
+                {/* Header */}
+                <View style={s.guideHeader}>
+                  <View style={s.guideCamIcon}>
+                    <Ionicons name="videocam" size={20} color="#fff" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.guideTitle}>Camera Guide</Text>
+                    <Text style={s.guideSub}>{preset.label} · {guide.title}</Text>
+                  </View>
+                  <Pressable onPress={() => setShowGuide(false)}>
+                    <Ionicons name="close-circle" size={24} color="rgba(255,255,255,0.4)" />
+                  </Pressable>
+                </View>
+
+                {/* Angle badge */}
+                <View style={[
+                  s.guideBadge,
+                  { backgroundColor: preset.angle === 'front' ? '#2196F318' : '#FF980018',
+                    borderColor:      preset.angle === 'front' ? '#2196F360' : '#FF980060' },
+                ]}>
+                  <Ionicons
+                    name={preset.angle === 'front' ? 'person-outline' : 'swap-horizontal-outline'}
+                    size={13}
+                    color={preset.angle === 'front' ? '#64B5F6' : '#FFB74D'}
+                  />
+                  <Text style={[s.guideBadgeText,
+                    { color: preset.angle === 'front' ? '#64B5F6' : '#FFB74D' }]}>
+                    {guide.subtitle}
+                  </Text>
+                </View>
+
+                {/* Exercise-specific tip */}
+                {tip && (
+                  <View style={s.guideTipBox}>
+                    <Ionicons name="information-circle-outline" size={15} color="#64B5F6" />
+                    <Text style={s.guideTipText}>{tip}</Text>
+                  </View>
+                )}
+
+                {/* Do's */}
+                <Text style={s.guideSection}>DO</Text>
+                {guide.dos.map((item, i) => (
+                  <View key={i} style={s.guideRow}>
+                    <View style={[s.guideDot, { backgroundColor: '#4CAF50' }]} />
+                    <Text style={s.guideRowText}>{item}</Text>
+                  </View>
+                ))}
+
+                {/* Don'ts */}
+                {guide.donts.length > 0 && (
+                  <>
+                    <Text style={[s.guideSection, { marginTop: 14 }]}>AVOID</Text>
+                    {guide.donts.map((item, i) => (
+                      <View key={i} style={s.guideRow}>
+                        <View style={[s.guideDot, { backgroundColor: '#F44336' }]} />
+                        <Text style={s.guideRowText}>{item}</Text>
+                      </View>
+                    ))}
+                  </>
+                )}
+
+                {/* Accuracy note */}
+                <View style={s.guideAccNote}>
+                  <Ionicons name="analytics-outline" size={13} color="rgba(255,255,255,0.4)" />
+                  <Text style={s.guideAccText}>
+                    Correct camera position greatly improves AI detection accuracy.
+                  </Text>
+                </View>
+              </View>
+            </>
+          );
+        })()}
+      </Modal>
 
       {/* Exercise picker modal */}
       <Modal
@@ -287,4 +437,44 @@ const s = StyleSheet.create({
   },
   ddItemText: { color: '#fff', fontSize: 15, fontWeight: '600', flex: 1 },
   ddItemTextActive: { color: '#000' },
+
+  // Camera guide modal
+  guideSheet: { maxHeight: '80%' },
+  guideHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14,
+  },
+  guideCamIcon: {
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  guideTitle: { color: '#fff', fontSize: 17, fontWeight: '800' },
+  guideSub:   { color: 'rgba(255,255,255,0.45)', fontSize: 12, fontWeight: '600', marginTop: 1 },
+  guideBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    borderWidth: 1, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12,
+  },
+  guideBadgeText: { fontSize: 13, fontWeight: '700', flex: 1 },
+  guideTipBox: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: '#64B5F610', borderWidth: 1, borderColor: '#64B5F630',
+    borderRadius: 10, padding: 10, marginBottom: 14,
+  },
+  guideTipText: { color: '#64B5F6', fontSize: 12, fontWeight: '600', flex: 1, lineHeight: 17 },
+  guideSection: {
+    color: 'rgba(255,255,255,0.35)', fontSize: 10,
+    fontWeight: '800', letterSpacing: 1, marginBottom: 8,
+  },
+  guideRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 9,
+  },
+  guideDot: { width: 7, height: 7, borderRadius: 4, marginTop: 4, flexShrink: 0 },
+  guideRowText: { color: '#fff', fontSize: 13, fontWeight: '500', flex: 1, lineHeight: 18 },
+  guideAccNote: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: 18, paddingTop: 14,
+    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)',
+  },
+  guideAccText: { color: 'rgba(255,255,255,0.35)', fontSize: 11, fontWeight: '500', flex: 1 },
 });
