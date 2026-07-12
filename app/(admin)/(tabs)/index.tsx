@@ -80,7 +80,7 @@ export default function AdminDashboardScreen() {
 
     const [coachRes, clientRes, pkgRes, sessRes, revMonthRes, revAllRes,
            lowPkgRes, coachAlertRes, neverPaidRes, allPaymentsRes,
-           ratingsRes, pendingTransferRes, pendingFreezeRes] = await Promise.all([
+           ratingsRes, pendingTransferRes, pendingFreezeRes, pendingEqRes] = await Promise.all([
       supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'coach').is('deactivated_at', null),
       supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'client').is('deactivated_at', null),
       supabase.from('packages').select('id', { count: 'exact', head: true }).eq('status', 'active'),
@@ -124,6 +124,11 @@ export default function AdminDashboardScreen() {
       supabase
         .from('package_freezes')
         .select('id, client_id, freeze_start, freeze_end, profiles!package_freezes_client_id_fkey(name)')
+        .eq('status', 'pending'),
+      // Pending equipment requests
+      supabase
+        .from('equipment_requests')
+        .select('id, item_name, quantity, coach:profiles!equipment_requests_coach_id_fkey(name)')
         .eq('status', 'pending'),
     ]);
 
@@ -255,6 +260,19 @@ export default function AdminDashboardScreen() {
       });
     }
 
+    // Equipment request alerts
+    for (const eq of (pendingEqRes.data ?? []) as any[]) {
+      const coachName = eq.coach?.name ?? 'Unknown Coach';
+      newAlerts.push({
+        id: `eq-${eq.id}`,
+        level: 'notice',
+        icon: 'construct-outline',
+        title: `Equipment Request — ${coachName}`,
+        subtitle: `${eq.item_name}${eq.quantity > 1 ? ` ×${eq.quantity}` : ''} · pending approval`,
+        route: '/(admin)/equipment-requests',
+      });
+    }
+
     // Sort: critical first
     newAlerts.sort((a, b) => {
       const order = { critical: 0, warning: 1, notice: 2 };
@@ -294,6 +312,7 @@ export default function AdminDashboardScreen() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'client_transfers' },  () => load(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'session_ratings' },   () => load(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'package_freezes' },   () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'equipment_requests' }, () => load(true))
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [load]);

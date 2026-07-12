@@ -1,10 +1,12 @@
 import { useRef, useState } from 'react';
 import {
+  FlatList,
+  Modal,
   Pressable,
-  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -59,7 +61,13 @@ export default function FormCheckerScreen() {
   const webViewRef = useRef<WebView>(null);
   const [preset, setPreset] = useState(PRESETS[0]);
   const [frozen, setFrozen] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const insets = useSafeAreaInsets();
+
+  const filteredPresets = PRESETS.filter((p) =>
+    p.label.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   function handlePreset(p: typeof PRESETS[0]) {
     setPreset(p);
@@ -94,7 +102,7 @@ export default function FormCheckerScreen() {
         mixedContentMode="always"
         onLoadEnd={() => {
           webViewRef.current?.injectJavaScript(
-            `window.setExercise(${JSON.stringify(PRESETS[0].key)}, ${JSON.stringify(PRESETS[0].focus)}); true;`
+            `window.setExercise(${JSON.stringify(PRESETS[0].key)}, ${JSON.stringify(PRESETS[0].focus)}, ${JSON.stringify(PRESETS[0].angle)}); true;`
           );
         }}
         onPermissionRequest={(e) => e.nativeEvent.request.grant(e.nativeEvent.request.resources)}
@@ -144,29 +152,60 @@ export default function FormCheckerScreen() {
         ))}
       </View>
 
-      {/* Bottom exercise selector */}
-      <View style={[s.bottomBar, { paddingBottom: insets.bottom + 10 }]}>
-        <Text style={s.bottomHint}>Select exercise to highlight key joints</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.presetRow}
-        >
-          {PRESETS.map((p) => {
-            const active = p.key === preset.key;
-            return (
-              <Pressable
-                key={p.key}
-                style={[s.presetBtn, active && s.presetBtnActive]}
-                onPress={() => handlePreset(p)}
-              >
-                <Ionicons name={p.icon as any} size={15} color={active ? '#000' : '#fff'} />
-                <Text style={[s.presetText, active && s.presetTextActive]}>{p.label}</Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
+      {/* Bottom exercise picker */}
+      <Pressable
+        style={[s.bottomBar, { paddingBottom: insets.bottom + 12 }]}
+        onPress={() => { setSearchQuery(''); setShowDropdown(true); }}
+      >
+        <Text style={s.bottomHint}>Exercise</Text>
+        <View style={s.pickerRow}>
+          <Ionicons name={preset.icon as any} size={16} color="#fff" />
+          <Text style={s.pickerLabel}>{preset.label}</Text>
+          <Ionicons name="chevron-up-outline" size={14} color="rgba(255,255,255,0.55)" />
+        </View>
+      </Pressable>
+
+      {/* Exercise picker modal */}
+      <Modal
+        visible={showDropdown}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowDropdown(false)}
+      >
+        <Pressable style={s.ddOverlay} onPress={() => setShowDropdown(false)} />
+        <View style={[s.ddSheet, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={s.ddHandle} />
+          <Text style={s.ddTitle}>Select Exercise</Text>
+          <TextInput
+            style={s.ddSearch}
+            placeholder="Search..."
+            placeholderTextColor="rgba(255,255,255,0.35)"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoFocus
+            returnKeyType="search"
+          />
+          <FlatList
+            data={filteredPresets}
+            keyExtractor={(p) => p.key}
+            keyboardShouldPersistTaps="handled"
+            style={s.ddList}
+            renderItem={({ item: p }) => {
+              const active = p.key === preset.key;
+              return (
+                <Pressable
+                  style={[s.ddItem, active && s.ddItemActive]}
+                  onPress={() => { handlePreset(p); setShowDropdown(false); }}
+                >
+                  <Ionicons name={p.icon as any} size={17} color={active ? '#000' : '#fff'} />
+                  <Text style={[s.ddItemText, active && s.ddItemTextActive]}>{p.label}</Text>
+                  {active && <Ionicons name="checkmark" size={16} color="#000" style={{ marginLeft: 'auto' }} />}
+                </Pressable>
+              );
+            }}
+          />
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -201,23 +240,51 @@ const s = StyleSheet.create({
 
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    paddingTop: 10,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    paddingTop: 10, paddingHorizontal: 16,
   },
   bottomHint: {
-    color: 'rgba(255,255,255,0.45)', fontSize: 10,
-    fontWeight: '600', textAlign: 'center',
-    letterSpacing: 0.4, marginBottom: 10,
+    color: 'rgba(255,255,255,0.4)', fontSize: 10,
+    fontWeight: '600', letterSpacing: 0.4, marginBottom: 6,
   },
-  presetRow: { paddingHorizontal: 14, gap: 8 },
-  presetBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 14, paddingVertical: 9,
-    borderRadius: 20, borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
-    backgroundColor: 'rgba(255,255,255,0.10)',
+  pickerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
   },
-  presetBtnActive: { backgroundColor: '#fff', borderColor: '#fff' },
-  presetText:       { color: '#fff', fontSize: 12, fontWeight: '700' },
-  presetTextActive: { color: '#000' },
+  pickerLabel: { color: '#fff', fontSize: 15, fontWeight: '800', flex: 1 },
+
+  // Dropdown modal
+  ddOverlay: { flex: 1 },
+  ddSheet: {
+    backgroundColor: '#1a1a1a',
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingTop: 10, paddingHorizontal: 16,
+    maxHeight: '70%',
+  },
+  ddHandle: {
+    width: 36, height: 4, borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignSelf: 'center', marginBottom: 14,
+  },
+  ddTitle: {
+    color: '#fff', fontSize: 17, fontWeight: '800',
+    marginBottom: 12,
+  },
+  ddSearch: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
+    color: '#fff', fontSize: 15, marginBottom: 8,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+  },
+  ddList: { flex: 1 },
+  ddItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 13, paddingHorizontal: 4,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  ddItemActive: {
+    backgroundColor: '#fff', borderRadius: 10,
+    paddingHorizontal: 10, marginHorizontal: -6,
+  },
+  ddItemText: { color: '#fff', fontSize: 15, fontWeight: '600', flex: 1 },
+  ddItemTextActive: { color: '#000' },
 });

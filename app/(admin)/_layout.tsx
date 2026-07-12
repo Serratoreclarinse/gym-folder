@@ -39,6 +39,7 @@ export default function AdminRootLayout() {
         <Stack.Screen name="recycle-bin" options={{ title: 'Recycle Bin' }} />
         <Stack.Screen name="invoice/[paymentId]" options={{ title: 'Invoice' }} />
         <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
+        <Stack.Screen name="equipment-requests" options={{ title: 'Equipment Requests' }} />
       </Stack>
     </View>
     </NotificationsProvider>
