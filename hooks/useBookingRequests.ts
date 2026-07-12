@@ -113,12 +113,22 @@ export function useCoachBookingRequests() {
       if (status === 'accepted' && isBooking && target.preferred_date) {
         const scheduledAt = buildScheduledAt(target.preferred_date, target.preferred_time);
         if (scheduledAt) {
+          let durationMinutes = 60;
+          if (target.package_id) {
+            const { data: pkg } = await supabase
+              .from('packages')
+              .select('package_type')
+              .eq('id', target.package_id)
+              .maybeSingle();
+            if (pkg?.package_type === '30min') durationMinutes = 30;
+            else if (pkg?.package_type === '45min') durationMinutes = 45;
+          }
           await supabase.from('scheduled_sessions').insert({
             coach_id: target.coach_id,
             client_id: target.client_id,
             scheduled_at: scheduledAt,
             notes: target.notes ?? null,
-            duration_minutes: 60,
+            duration_minutes: durationMinutes,
           });
         }
       }

@@ -54,18 +54,20 @@ export function useWaitlist(coachId: string | undefined) {
 
   const totalCount = entries.length;
 
-  const addToWaitlist = async (sessionId: string, clientId: string) => {
-    if (!coachId) return;
+  const addToWaitlist = async (sessionId: string, clientId: string): Promise<{ error: string | null }> => {
+    if (!coachId) return { error: 'Not authenticated' };
     const forSession = entries.filter((e) => e.session_id === sessionId);
     const maxPos = forSession.reduce((max, e) => Math.max(max, e.position), 0);
-    await supabase.from('waitlist').insert({
+    const { error } = await supabase.from('waitlist').insert({
       coach_id: coachId,
       client_id: clientId,
       session_id: sessionId,
       position: maxPos + 1,
       status: 'waiting',
     });
+    if (error) return { error: error.message };
     await fetchEntries();
+    return { error: null };
   };
 
   const updateStatus = async (entryId: string, status: WaitlistEntry['status']) => {

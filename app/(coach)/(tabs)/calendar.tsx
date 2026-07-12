@@ -1060,7 +1060,8 @@ export default function CalendarScreen() {
                         style={({ pressed }) => [styles.clientPickRow, pressed && { opacity: 0.7 }]}
                         onPress={async () => {
                           if (!waitlistSessionId) return;
-                          await addToWaitlist(waitlistSessionId, item.id);
+                          const { error } = await addToWaitlist(waitlistSessionId, item.id);
+                          if (error) { Alert.alert('Error', error); return; }
                           setWlModalMode('view');
                         }}
                       >
