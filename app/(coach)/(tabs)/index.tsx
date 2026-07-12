@@ -296,6 +296,22 @@ export default function CoachDashboard() {
   weekAgo.setDate(weekAgo.getDate() - 7);
   const weekSessions = sessions.filter((s) => new Date(s.session_date) >= weekAgo).length;
 
+  const salesBanner = useMemo(() => {
+    const now = new Date();
+    const day = now.getDate();
+    const nextMonthName = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+      .toLocaleDateString('en-US', { month: 'long' });
+    if (day >= 28) {
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      const daysLeft = (lastDay - day) + 4;
+      return { level: 'warning' as const, daysLeft, closingMonthName: nextMonthName };
+    }
+    if (day <= 4) {
+      return { level: 'closing' as const, daysLeft: 4 - day, closingMonthName: '' };
+    }
+    return null;
+  }, []);
+
   return (
     <ScrollView
       style={styles.scroll}
@@ -343,6 +359,36 @@ export default function CoachDashboard() {
         </View>
       </View>
     </View>
+
+      {/* Sales closing banner */}
+      {salesBanner && (
+        <View style={[
+          styles.salesBanner,
+          salesBanner.level === 'closing' && styles.salesBannerFinal,
+        ]}>
+          <Ionicons
+            name={salesBanner.level === 'warning' ? 'time-outline' : 'alert-circle'}
+            size={18}
+            color={salesBanner.level === 'warning' ? '#FF9800' : '#FF4D4D'}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.salesBannerTitle, salesBanner.level === 'closing' && { color: '#FF4D4D' }]}>
+              {salesBanner.level === 'warning'
+                ? `Sales Closing in ${salesBanner.daysLeft} day${salesBanner.daysLeft !== 1 ? 's' : ''}`
+                : salesBanner.daysLeft === 0
+                  ? 'Sales Close TODAY — Last Chance!'
+                  : `Sales Close in ${salesBanner.daysLeft} day${salesBanner.daysLeft !== 1 ? 's' : ''}!`
+              }
+            </Text>
+            <Text style={styles.salesBannerSub}>
+              {salesBanner.level === 'warning'
+                ? `Submit all renewals & new packages by the 4th of ${salesBanner.closingMonthName}`
+                : 'Monthly sales deadline — submit all renewals and new packages today'
+              }
+            </Text>
+          </View>
+        </View>
+      )}
 
       {/* Earnings this month */}
       {monthEarnings !== null && (
@@ -836,6 +882,22 @@ function makeStyles(c: ColorScheme) {
       borderWidth: 1, borderColor: c.danger + '50',
     },
     emergencyBtnText: { color: c.danger, fontSize: 12, fontWeight: '800', letterSpacing: 0.5, flexShrink: 1 },
+
+    // Sales closing banner
+    salesBanner: {
+      flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+      borderWidth: 1, borderColor: '#FF980055', borderRadius: 12,
+      padding: 13, marginBottom: 12, backgroundColor: '#FF980010',
+    },
+    salesBannerFinal: {
+      borderColor: '#FF4D4D55', backgroundColor: '#FF4D4D10',
+    },
+    salesBannerTitle: {
+      fontSize: 13, fontWeight: '800', color: '#FF9800', marginBottom: 2,
+    },
+    salesBannerSub: {
+      fontSize: 12, color: c.textSecondary, lineHeight: 16,
+    },
 
     // Pinned announcement banner
     pinnedBanner: {
