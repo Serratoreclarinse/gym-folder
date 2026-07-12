@@ -81,14 +81,6 @@ var focusJoints     = [];
 var currentExercise = 'squat';
 var currentAngle    = 'side';
 
-var COLORS = {
-  torso: 'rgba(100,181,246,0.9)',
-  larm:  'rgba(129,199,132,0.9)',
-  rarm:  'rgba(255,213,79,0.9)',
-  lleg:  'rgba(255,138,101,0.9)',
-  rleg:  'rgba(240,98,146,0.9)',
-  joint: 'rgba(255,255,255,0.95)',
-};
 
 var SEGS = [
   {a:11,b:12,c:'torso'},{a:11,b:23,c:'torso'},{a:12,b:24,c:'torso'},{a:23,b:24,c:'torso'},
@@ -594,9 +586,11 @@ function drawPose(lm) {
     if (!pa || !pb) continue;
     if ((pa.visibility||1) < 0.35 || (pb.visibility||1) < 0.35) continue;
     var isFocus = focusJoints.indexOf(s.a) !== -1 && focusJoints.indexOf(s.b) !== -1;
-    ctx.beginPath();
-    ctx.strokeStyle = isFocus ? 'rgba(255,230,0,0.95)' : COLORS[s.c];
+    ctx.shadowBlur  = 10;
+    ctx.shadowColor = isFocus ? 'rgba(255,220,0,0.7)' : 'rgba(60,180,255,0.7)';
+    ctx.strokeStyle = isFocus ? 'rgba(255,230,0,0.95)' : 'rgba(100,210,255,0.95)';
     ctx.lineWidth   = isFocus ? 4 : 2.5;
+    ctx.beginPath();
     ctx.moveTo(pa.x * canvas.width, pa.y * canvas.height);
     ctx.lineTo(pb.x * canvas.width, pb.y * canvas.height);
     ctx.stroke();
@@ -608,11 +602,14 @@ function drawPose(lm) {
     var x = p.x * canvas.width;
     var y = p.y * canvas.height;
     var isFocusJoint = focusJoints.indexOf(idx) !== -1;
+    ctx.shadowBlur  = isFocusJoint ? 14 : 8;
+    ctx.shadowColor = isFocusJoint ? 'rgba(255,220,0,0.85)' : 'rgba(60,180,255,0.75)';
+    ctx.fillStyle   = isFocusJoint ? 'rgba(255,230,0,0.95)' : 'rgba(100,210,255,0.95)';
     ctx.beginPath();
     ctx.arc(x, y, isFocusJoint ? 7 : 5, 0, Math.PI * 2);
-    ctx.fillStyle = isFocusJoint ? 'rgba(255,230,0,0.95)' : COLORS.joint;
     ctx.fill();
   }
+  ctx.shadowBlur = 0;
   renderFeedback(analyzePose(lm, currentExercise));
 }
 
