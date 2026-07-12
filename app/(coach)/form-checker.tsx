@@ -14,6 +14,7 @@ import { router } from 'expo-router';
 import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Ellipse, Path, Line, G, Text as SvgText } from 'react-native-svg';
 
 const FORM_CHECKER_URL = 'https://serratoreclarinse.github.io/gym-folder/form-checker.html';
 
@@ -158,6 +159,7 @@ export default function FormCheckerScreen() {
   const [showChecklist, setShowChecklist] = useState(false);
   const [showGrid, setShowGrid] = useState(false);
   const [liveChecks, setLiveChecks] = useState<{ status: string; msg: string }[]>([]);
+  const [showSilhouette, setShowSilhouette] = useState(false);
   const insets = useSafeAreaInsets();
 
   const filteredPresets = PRESETS.filter((p) =>
@@ -228,6 +230,9 @@ export default function FormCheckerScreen() {
           <Pressable style={[s.topBtn, showGrid && s.topBtnActive]} onPress={() => setShowGrid(g => !g)}>
             <Ionicons name="grid-outline" size={18} color={showGrid ? '#000' : '#fff'} />
           </Pressable>
+          <Pressable style={[s.topBtn, showSilhouette && s.topBtnActive]} onPress={() => setShowSilhouette(v => !v)}>
+            <Ionicons name="body-outline" size={18} color={showSilhouette ? '#000' : '#fff'} />
+          </Pressable>
           <Pressable style={[s.topBtn, showChecklist && s.topBtnActive]} onPress={() => setShowChecklist(c => !c)}>
             <Ionicons name="clipboard-outline" size={18} color={showChecklist ? '#000' : '#fff'} />
           </Pressable>
@@ -285,6 +290,75 @@ export default function FormCheckerScreen() {
           <View style={[s.gridLine, s.gridH, { top: '66.6%' }]} />
           <View style={[s.gridLine, s.gridV, { left: '50%', opacity: 0.2 }]} />
           <View style={[s.gridLine, s.gridH, { top: '50%', opacity: 0.2 }]} />
+        </View>
+      )}
+
+      {/* Person placement silhouette overlay */}
+      {showSilhouette && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Svg viewBox="0 0 100 200" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+            {preset.angle === 'front' ? (
+              <G>
+                {/* Head */}
+                <Ellipse cx="50" cy="20" rx="12" ry="13" stroke="rgba(255,255,255,0.6)" strokeWidth="2" fill="none" />
+                {/* Neck */}
+                <Path d="M44,33 L43,43 M56,33 L57,43" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Shoulders */}
+                <Path d="M43,43 L20,49 M57,43 L80,49" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Left arm */}
+                <Path d="M20,49 L12,77 L10,101" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Right arm */}
+                <Path d="M80,49 L88,77 L90,101" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Left torso */}
+                <Path d="M20,49 L25,88 L22,100 L37,107" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                {/* Right torso */}
+                <Path d="M80,49 L75,88 L78,100 L63,107" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                {/* Groin */}
+                <Line x1="37" y1="107" x2="63" y2="107" stroke="rgba(255,255,255,0.6)" strokeWidth="2" />
+                {/* Left leg */}
+                <Path d="M37,107 L35,151 L33,183" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Right leg */}
+                <Path d="M63,107 L65,151 L67,183" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Left foot */}
+                <Line x1="33" y1="183" x2="22" y2="185" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round" />
+                {/* Right foot */}
+                <Line x1="67" y1="183" x2="78" y2="185" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round" />
+                {/* Foot position ovals */}
+                <Ellipse cx="27" cy="189" rx="10" ry="3.5" stroke="rgba(255,255,255,0.4)" strokeWidth="1.2" fill="none" strokeDasharray="3 2" />
+                <Ellipse cx="73" cy="189" rx="10" ry="3.5" stroke="rgba(255,255,255,0.4)" strokeWidth="1.2" fill="none" strokeDasharray="3 2" />
+              </G>
+            ) : (
+              <G>
+                {/* Side view silhouette — facing left */}
+                {/* Head */}
+                <Ellipse cx="47" cy="20" rx="12" ry="13" stroke="rgba(255,255,255,0.6)" strokeWidth="2" fill="none" />
+                {/* Front neck */}
+                <Path d="M37,31 L35,44" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Back neck */}
+                <Path d="M57,31 L59,43" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Body front contour (chest → belly → front hip) */}
+                <Path d="M35,44 C29,62 32,80 35,97 L34,108" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Body back contour (back arch + buttocks) */}
+                <Path d="M59,43 C65,62 61,82 57,96 C58,104 63,111 52,117" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Front arm */}
+                <Path d="M35,44 L27,73 L24,97" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Front leg */}
+                <Path d="M34,108 L34,152 L33,183" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Back leg */}
+                <Path d="M52,117 L51,152 L51,183" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Front foot (pointing left) */}
+                <Line x1="33" y1="183" x2="17" y2="186" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round" />
+                {/* Back heel */}
+                <Line x1="51" y1="183" x2="57" y2="186" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round" />
+                {/* Foot position oval */}
+                <Ellipse cx="37" cy="190" rx="20" ry="3.5" stroke="rgba(255,255,255,0.4)" strokeWidth="1.2" fill="none" strokeDasharray="3 2" />
+              </G>
+            )}
+            {/* Label */}
+            <SvgText x="50" y="198" textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="5" fontWeight="700" letterSpacing="1">
+              PLACE CLIENT HERE
+            </SvgText>
+          </Svg>
         </View>
       )}
 
