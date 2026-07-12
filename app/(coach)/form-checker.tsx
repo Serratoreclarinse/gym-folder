@@ -3,6 +3,7 @@ import {
   FlatList,
   Modal,
   Pressable,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -155,6 +156,7 @@ export default function FormCheckerScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showGuide, setShowGuide] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
+  const [showGrid, setShowGrid] = useState(false);
   const [checkStates, setCheckStates] = useState<('good' | 'bad' | null)[]>([]);
 
   function toggleCheck(idx: number) {
@@ -226,8 +228,11 @@ export default function FormCheckerScreen() {
           <Text style={s.presetLabelSub}>Pose Detection</Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Pressable style={s.topBtn} onPress={() => setShowChecklist(true)}>
-            <Ionicons name="clipboard-outline" size={18} color="#fff" />
+          <Pressable style={[s.topBtn, showGrid && s.topBtnActive]} onPress={() => setShowGrid(g => !g)}>
+            <Ionicons name="grid-outline" size={18} color={showGrid ? '#000' : '#fff'} />
+          </Pressable>
+          <Pressable style={[s.topBtn, showChecklist && s.topBtnActive]} onPress={() => setShowChecklist(c => !c)}>
+            <Ionicons name="clipboard-outline" size={18} color={showChecklist ? '#000' : '#fff'} />
           </Pressable>
           <Pressable style={s.topBtn} onPress={() => setShowGuide(true)}>
             <Ionicons name="videocam-outline" size={18} color="#fff" />
@@ -274,99 +279,69 @@ export default function FormCheckerScreen() {
         </View>
       </Pressable>
 
-      {/* Form checklist modal */}
-      <Modal
-        visible={showChecklist}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowChecklist(false)}
-      >
-        {(() => {
-          const items  = CHECKLISTS[preset.key] ?? [];
-          const nGood  = checkStates.filter((s) => s === 'good').length;
-          const nBad   = checkStates.filter((s) => s === 'bad').length;
-          const nDone  = nGood + nBad;
-          return (
-            <>
-              <Pressable style={s.ddOverlay} onPress={() => setShowChecklist(false)} />
-              <View style={[s.ddSheet, s.guideSheet, { paddingBottom: insets.bottom + 20 }]}>
-                <View style={s.ddHandle} />
+      {/* Rule-of-thirds gridlines overlay */}
+      {showGrid && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <View style={[s.gridLine, s.gridV, { left: '33.3%' }]} />
+          <View style={[s.gridLine, s.gridV, { left: '66.6%' }]} />
+          <View style={[s.gridLine, s.gridH, { top: '33.3%' }]} />
+          <View style={[s.gridLine, s.gridH, { top: '66.6%' }]} />
+          <View style={[s.gridLine, s.gridV, { left: '50%', opacity: 0.2 }]} />
+          <View style={[s.gridLine, s.gridH, { top: '50%', opacity: 0.2 }]} />
+        </View>
+      )}
 
-                {/* Header */}
-                <View style={s.guideHeader}>
-                  <View style={[s.guideCamIcon, { backgroundColor: 'rgba(76,175,80,0.15)' }]}>
-                    <Ionicons name="clipboard" size={20} color="#4CAF50" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.guideTitle}>Form Checklist</Text>
-                    <Text style={s.guideSub}>{preset.label}</Text>
-                  </View>
-                  <Pressable onPress={() => { setCheckStates([]); }}>
-                    <Text style={s.clReset}>Reset</Text>
-                  </Pressable>
-                </View>
-
-                {/* Summary bar */}
-                {nDone > 0 && (
-                  <View style={s.clSummary}>
-                    <View style={s.clSummaryChip}>
-                      <Ionicons name="checkmark-circle" size={13} color="#4CAF50" />
-                      <Text style={[s.clSummaryText, { color: '#4CAF50' }]}>{nGood} Correct</Text>
-                    </View>
-                    <View style={s.clSummaryChip}>
-                      <Ionicons name="close-circle" size={13} color="#F44336" />
-                      <Text style={[s.clSummaryText, { color: '#F44336' }]}>{nBad} Needs Work</Text>
-                    </View>
-                    <Text style={s.clSummaryPct}>
-                      {items.length > 0 ? Math.round((nGood / items.length) * 100) : 0}% correct
-                    </Text>
-                  </View>
-                )}
-
-                {/* Checklist items */}
-                <FlatList
-                  data={items}
-                  keyExtractor={(_, i) => String(i)}
-                  style={s.ddList}
-                  keyboardShouldPersistTaps="handled"
-                  renderItem={({ item, index }) => {
-                    const state = checkStates[index] ?? null;
-                    return (
-                      <Pressable
-                        style={[
-                          s.clItem,
-                          state === 'good' && s.clItemGood,
-                          state === 'bad'  && s.clItemBad,
-                        ]}
-                        onPress={() => toggleCheck(index)}
-                      >
-                        <View style={[
-                          s.clIcon,
-                          state === 'good' && { backgroundColor: '#4CAF50' },
-                          state === 'bad'  && { backgroundColor: '#F44336' },
-                        ]}>
-                          <Ionicons
-                            name={state === 'good' ? 'checkmark' : state === 'bad' ? 'close' : 'ellipse-outline'}
-                            size={14}
-                            color={state ? '#fff' : 'rgba(255,255,255,0.3)'}
-                          />
-                        </View>
-                        <Text style={[
-                          s.clItemText,
-                          state === 'good' && { color: '#81C784' },
-                          state === 'bad'  && { color: '#E57373' },
-                        ]}>{item}</Text>
-                      </Pressable>
-                    );
-                  }}
-                />
-
-                <Text style={s.clHint}>Tap to mark ✓ Correct → ✗ Needs Work → clear</Text>
+      {/* Live checklist overlay (left side) */}
+      {showChecklist && (() => {
+        const items = CHECKLISTS[preset.key] ?? [];
+        const nGood = checkStates.filter((st) => st === 'good').length;
+        const nBad  = checkStates.filter((st) => st === 'bad').length;
+        return (
+          <View style={[s.clPanel, { top: insets.top + 70 }]}>
+            {/* Header row */}
+            <View style={s.clPanelHeader}>
+              <Text style={s.clPanelTitle}>Checklist</Text>
+              <Pressable onPress={() => setCheckStates([])}>
+                <Text style={s.clReset}>↺</Text>
+              </Pressable>
+            </View>
+            {/* Score bar */}
+            {(nGood + nBad) > 0 && (
+              <View style={s.clScore}>
+                <Text style={[s.clScoreNum, { color: '#4CAF50' }]}>{nGood}✓</Text>
+                <Text style={[s.clScoreNum, { color: '#F44336' }]}>{nBad}✗</Text>
+                <Text style={s.clScorePct}>{Math.round((nGood / items.length) * 100)}%</Text>
               </View>
-            </>
-          );
-        })()}
-      </Modal>
+            )}
+            {/* Items */}
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 320 }}>
+              {items.map((item, idx) => {
+                const st = checkStates[idx] ?? null;
+                return (
+                  <Pressable key={idx} style={s.clRow} onPress={() => toggleCheck(idx)}>
+                    <View style={[
+                      s.clDot,
+                      st === 'good' && { backgroundColor: '#4CAF50' },
+                      st === 'bad'  && { backgroundColor: '#F44336' },
+                    ]}>
+                      <Ionicons
+                        name={st === 'good' ? 'checkmark' : st === 'bad' ? 'close' : 'remove'}
+                        size={10}
+                        color={st ? '#fff' : 'rgba(255,255,255,0.4)'}
+                      />
+                    </View>
+                    <Text style={[
+                      s.clRowText,
+                      st === 'good' && { color: '#81C784' },
+                      st === 'bad'  && { color: '#E57373' },
+                    ]} numberOfLines={2}>{item}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        );
+      })()}
 
       {/* Camera guide modal */}
       <Modal
@@ -620,33 +595,43 @@ const s = StyleSheet.create({
   },
   guideAccText: { color: 'rgba(255,255,255,0.35)', fontSize: 11, fontWeight: '500', flex: 1 },
 
-  // Checklist
-  clReset: { color: '#FF9800', fontSize: 13, fontWeight: '700' },
-  clSummary: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 10, padding: 10, marginBottom: 12,
+  // Rule-of-thirds gridlines
+  gridLine: { position: 'absolute' },
+  gridV: { width: 1, top: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.25)' },
+  gridH: { height: 1, left: 0, right: 0, backgroundColor: 'rgba(255,255,255,0.25)' },
+
+  // Live checklist panel
+  clPanel: {
+    position: 'absolute', left: 8,
+    width: 168,
+    backgroundColor: 'rgba(0,0,0,0.78)',
+    borderRadius: 12, padding: 8,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
   },
-  clSummaryChip: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  clSummaryText: { fontSize: 12, fontWeight: '700' },
-  clSummaryPct:  { marginLeft: 'auto', color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: '700' },
-  clItem: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingVertical: 12, paddingHorizontal: 10,
-    borderRadius: 10, marginBottom: 6,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+  clPanelHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', marginBottom: 5,
   },
-  clItemGood: { backgroundColor: 'rgba(76,175,80,0.1)',  borderColor: 'rgba(76,175,80,0.3)' },
-  clItemBad:  { backgroundColor: 'rgba(244,67,54,0.1)',  borderColor: 'rgba(244,67,54,0.3)' },
-  clIcon: {
-    width: 26, height: 26, borderRadius: 13,
+  clPanelTitle: { color: '#fff', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+  clReset: { color: '#FF9800', fontSize: 16, fontWeight: '700' },
+  clScore: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginBottom: 6, paddingBottom: 6,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  clScoreNum: { fontSize: 11, fontWeight: '800' },
+  clScorePct: { color: 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: '700', marginLeft: 'auto' },
+  clRow: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    gap: 7, paddingVertical: 5,
+  },
+  clDot: {
+    width: 18, height: 18, borderRadius: 9, flexShrink: 0,
     backgroundColor: 'rgba(255,255,255,0.1)',
-    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    alignItems: 'center', justifyContent: 'center', marginTop: 1,
   },
-  clItemText: { color: '#fff', fontSize: 13, fontWeight: '500', flex: 1, lineHeight: 18 },
-  clHint: {
-    color: 'rgba(255,255,255,0.25)', fontSize: 10, fontWeight: '500',
-    textAlign: 'center', marginTop: 10,
+  clRowText: {
+    color: 'rgba(255,255,255,0.8)', fontSize: 10, fontWeight: '500',
+    flex: 1, lineHeight: 14,
   },
 });
