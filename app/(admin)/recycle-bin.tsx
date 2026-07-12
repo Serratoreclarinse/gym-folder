@@ -33,6 +33,7 @@ export default function RecycleBinScreen() {
   const [profiles, setProfiles] = useState<DeactivatedProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
+  const [purging, setPurging] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -54,6 +55,33 @@ export default function RecycleBinScreen() {
     setActionId(null);
     if (error) { Alert.alert('Error', error.message); return; }
     setProfiles((prev) => prev.filter((x) => x.id !== p.id));
+  };
+
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const oldProfiles = profiles.filter((p) => p.deactivated_at < thirtyDaysAgo);
+
+  const handlePurgeOld = () => {
+    const count = oldProfiles.length;
+    if (count === 0) return;
+    Alert.alert(
+      'Purge Old Accounts',
+      `Permanently delete ${count} account${count !== 1 ? 's' : ''} deactivated 30+ days ago? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: `Delete ${count} Account${count !== 1 ? 's' : ''}`,
+          style: 'destructive',
+          onPress: async () => {
+            setPurging(true);
+            for (const p of oldProfiles) {
+              await supabase.rpc('admin_hard_delete_user', { p_user_id: p.id });
+            }
+            setPurging(false);
+            load();
+          },
+        },
+      ],
+    );
   };
 
   const handleDeleteForever = (p: DeactivatedProfile) => {
@@ -161,6 +189,21 @@ export default function RecycleBinScreen() {
                     Restore to bring an account back. Delete Forever is permanent and removes all data.
                   </Text>
                 </View>
+                {oldProfiles.length > 0 && (
+                  <Pressable
+                    style={[s.purgeBtn, purging && { opacity: 0.5 }]}
+                    onPress={handlePurgeOld}
+                    disabled={purging || !!actionId}
+                  >
+                    {purging
+                      ? <ActivityIndicator size="small" color={colors.danger} />
+                      : <Ionicons name="trash-outline" size={14} color={colors.danger} />
+                    }
+                    <Text style={s.purgeBtnText}>
+                      Purge {oldProfiles.length} Old Account{oldProfiles.length !== 1 ? 's' : ''} (30+ days)
+                    </Text>
+                  </Pressable>
+                )}
                 <Section title="COACHES" items={coaches} />
                 <Section title="CLIENTS" items={clients} />
               </>
@@ -224,6 +267,14 @@ function makeStyles(c: ColorScheme) {
       backgroundColor: c.danger + '08',
     },
     deleteBtnText: { fontSize: 12, fontWeight: '700', color: c.danger },
+
+    purgeBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      borderWidth: 1, borderColor: c.danger + '60', borderRadius: 10,
+      paddingHorizontal: 14, paddingVertical: 10,
+      backgroundColor: c.danger + '0A',
+    },
+    purgeBtnText: { fontSize: 13, fontWeight: '700', color: c.danger, flex: 1 },
 
     empty: { alignItems: 'center', paddingTop: 80, gap: 10 },
     emptyTitle: { ...Typography.subtitle, color: c.textPrimary, marginTop: 12 },

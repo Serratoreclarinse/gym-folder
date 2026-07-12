@@ -58,6 +58,7 @@ export default function AdminPaymentsScreen() {
 
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filterCoach, setFilterCoach] = useState<string | null>(null);
 
   // Record payment modal state
   const [showModal, setShowModal] = useState(false);
@@ -162,9 +163,9 @@ export default function AdminPaymentsScreen() {
   };
 
   const exportCSV = () => {
-    if (payments.length === 0) { Alert.alert('No data', 'No payments to export.'); return; }
+    if (visiblePayments.length === 0) { Alert.alert('No data', 'No payments to export.'); return; }
     const header = ['Date', 'Client', 'Coach', 'Method', 'Amount (OMR)', 'Notes'].join(',');
-    const rows = payments.map((p) => [
+    const rows = visiblePayments.map((p) => [
       new Date(p.paid_at).toLocaleDateString('en-US'),
       `"${p.client_name}"`,
       `"${p.coach_name}"`,
@@ -185,10 +186,18 @@ export default function AdminPaymentsScreen() {
   };
 
   const thisMonthStart = monthStart();
-  const monthlyPayments = payments.filter((p) => p.paid_at >= thisMonthStart);
+  const allCoaches = useMemo(() => {
+    const seen = new Set<string>();
+    return payments.reduce<string[]>((acc, p) => {
+      if (p.coach_name !== '—' && !seen.has(p.coach_name)) { seen.add(p.coach_name); acc.push(p.coach_name); }
+      return acc;
+    }, []).sort();
+  }, [payments]);
+  const visiblePayments = filterCoach ? payments.filter((p) => p.coach_name === filterCoach) : payments;
+  const monthlyPayments = visiblePayments.filter((p) => p.paid_at >= thisMonthStart);
   const monthlyTotal = monthlyPayments.reduce((sum, p) => sum + Number(p.amount), 0);
-  const allTimeTotal = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-  const methodTotals = payments.reduce<Record<string, number>>((acc, p) => {
+  const allTimeTotal = visiblePayments.reduce((sum, p) => sum + Number(p.amount), 0);
+  const methodTotals = visiblePayments.reduce<Record<string, number>>((acc, p) => {
     acc[p.payment_method] = (acc[p.payment_method] ?? 0) + Number(p.amount);
     return acc;
   }, {});
@@ -221,6 +230,26 @@ export default function AdminPaymentsScreen() {
             </Pressable>
           </View>
         </View>
+
+        {allCoaches.length > 1 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterScroll} contentContainerStyle={s.filterRow}>
+            <Pressable
+              style={[s.filterChip, filterCoach === null && s.filterChipActive]}
+              onPress={() => setFilterCoach(null)}
+            >
+              <Text style={[s.filterChipText, filterCoach === null && s.filterChipTextActive]}>All Coaches</Text>
+            </Pressable>
+            {allCoaches.map((name) => (
+              <Pressable
+                key={name}
+                style={[s.filterChip, filterCoach === name && s.filterChipActive]}
+                onPress={() => setFilterCoach(filterCoach === name ? null : name)}
+              >
+                <Text style={[s.filterChipText, filterCoach === name && s.filterChipTextActive]}>{name}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
 
         <View style={s.summaryRow}>
           <View style={s.summaryCard}>
@@ -258,18 +287,20 @@ export default function AdminPaymentsScreen() {
           </>
         )}
 
-        <Text style={[s.sectionTitle, { marginTop: 24, marginBottom: 12 }]}>ALL PAYMENTS</Text>
-        {payments.length === 0 ? (
+        <Text style={[s.sectionTitle, { marginTop: 24, marginBottom: 12 }]}>
+          {filterCoach ? `${filterCoach.toUpperCase()}'S PAYMENTS` : 'ALL PAYMENTS'}
+        </Text>
+        {visiblePayments.length === 0 ? (
           <View style={s.emptyCard}>
             <Ionicons name="cash-outline" size={44} color={colors.border} />
-            <Text style={s.emptyTitle}>No payments recorded</Text>
-            <Pressable style={s.emptyBtn} onPress={openModal}>
+            <Text style={s.emptyTitle}>{filterCoach ? 'No payments for this coach' : 'No payments recorded'}</Text>
+            {!filterCoach && <Pressable style={s.emptyBtn} onPress={openModal}>
               <Ionicons name="add" size={16} color={colors.bg} />
               <Text style={s.emptyBtnText}>Record First Payment</Text>
-            </Pressable>
+            </Pressable>}
           </View>
         ) : (
-          payments.map((p) => {
+          visiblePayments.map((p) => {
             const color = METHOD_COLOR[p.payment_method] ?? colors.textSecondary;
             const dateStr = new Date(p.paid_at).toLocaleDateString('en-US', {
               month: 'short', day: 'numeric', year: 'numeric',
@@ -506,6 +537,16 @@ function makeStyles(c: ColorScheme) {
       paddingHorizontal: 12, paddingVertical: 8,
     },
     exportBtnText: { color: c.accent, fontWeight: '700', fontSize: 13 },
+
+    filterScroll: { marginBottom: 16, marginHorizontal: -20 },
+    filterRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, paddingBottom: 2 },
+    filterChip: {
+      borderRadius: 20, borderWidth: 1, borderColor: c.border,
+      paddingHorizontal: 14, paddingVertical: 7, backgroundColor: c.surface,
+    },
+    filterChipActive: { backgroundColor: c.accent, borderColor: c.accent },
+    filterChipText: { fontSize: 13, fontWeight: '600', color: c.textSecondary },
+    filterChipTextActive: { color: c.bg },
 
     summaryRow: { flexDirection: 'row', gap: 12 },
     summaryCard: {

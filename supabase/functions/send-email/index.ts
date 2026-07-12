@@ -48,7 +48,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'ELEVATƎ Personal Training <noreply@yourdomain.com>',
+        from: 'ELEVATƎ Personal Training <noreply@jhe-group.com>',
         to,
         subject,
         html,

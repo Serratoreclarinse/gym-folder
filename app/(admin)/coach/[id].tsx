@@ -44,6 +44,22 @@ type BlockedDate = {
 
 const TYPE_LABEL: Record<string, string> = { leave: 'Leave', meeting: 'Meeting', other: 'Other' };
 
+type AvailSlot = {
+  day_of_week: number;
+  is_active: boolean;
+  start_time: string;
+  end_time: string;
+};
+
+type PastSession = {
+  id: string;
+  session_date: string;
+  duration_minutes: number;
+  session_type: string;
+  status: string | null;
+  client_name: string;
+};
+
 function initials(name: string) {
   return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
 }
@@ -57,6 +73,15 @@ function fmtDateTime(iso: string) {
     weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
   });
 }
+
+function fmtTime(t: string) {
+  const [h, m] = t.split(':').map(Number);
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const hour = h % 12 || 12;
+  return `${hour}:${m.toString().padStart(2, '0')} ${ampm}`;
+}
+
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function daysUntil(dateStr: string): number {
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -128,6 +153,8 @@ export default function CoachDetailScreen() {
   const [blockNotes, setBlockNotes] = useState('');
   const [addingBlock, setAddingBlock] = useState(false);
   const [deactivating, setDeactivating] = useState(false);
+  const [availSchedule, setAvailSchedule] = useState<AvailSlot[]>([]);
+  const [pastSessions, setPastSessions] = useState<PastSession[]>([]);
 
   const handleDeactivate = async () => {
     const msg = `Move ${coach?.name ?? 'this coach'} to the Recycle Bin? Their clients will remain but this coach will no longer appear in the coaches list. You can restore them later.`;
@@ -162,7 +189,7 @@ export default function CoachDetailScreen() {
     monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
     const today = new Date().toISOString().split('T')[0];
 
-    const [profileRes, pkgsRes, sessRes, revRes, schedRes, blockRes, payRes, ratingsRes, allPkgsRes] = await Promise.all([
+    const [profileRes, pkgsRes, sessRes, revRes, schedRes, blockRes, payRes, ratingsRes, allPkgsRes, availRes, pastSessRes] = await Promise.all([
       supabase.from('profiles').select('id, name, email, phone, birthday, visa_expiry').eq('id', id).single(),
       supabase
         .from('packages')
@@ -195,6 +222,17 @@ export default function CoachDetailScreen() {
         .from('packages')
         .select('client_id, status')
         .eq('coach_id', id),
+      supabase
+        .from('coach_availability')
+        .select('day_of_week, is_active, start_time, end_time')
+        .eq('coach_id', id)
+        .order('day_of_week'),
+      supabase
+        .from('workout_sessions')
+        .select('id, session_date, duration_minutes, session_type, status, client:profiles!workout_sessions_client_id_fkey(name)')
+        .eq('coach_id', id)
+        .order('session_date', { ascending: false })
+        .limit(50),
     ]);
 
     if (profileRes.data) {
@@ -248,6 +286,17 @@ export default function CoachDetailScreen() {
     );
 
     setBlockedDates((blockRes.data ?? []) as BlockedDate[]);
+    setAvailSchedule((availRes.data ?? []) as AvailSlot[]);
+    setPastSessions(
+      (pastSessRes.data ?? []).map((row: any) => ({
+        id: row.id,
+        session_date: row.session_date,
+        duration_minutes: row.duration_minutes,
+        session_type: row.session_type ?? 'gym',
+        status: row.status,
+        client_name: (row.client as any)?.name ?? '—',
+      })),
+    );
     setLoading(false);
   }, [id]);
 
@@ -526,6 +575,33 @@ export default function CoachDetailScreen() {
             </View>
           )}
 
+          {/* ── Availability Schedule ────────────────────────── */}
+          <Text style={[s.sectionTitle, { marginTop: 28 }]}>AVAILABILITY SCHEDULE</Text>
+          {availSchedule.length === 0 ? (
+            <View style={s.emptyCard}>
+              <Text style={s.grayText}>No availability set</Text>
+            </View>
+          ) : (
+            <View style={s.scheduleList}>
+              {[1, 2, 3, 4, 5, 6, 0].map((dow, i, arr) => {
+                const slot = availSchedule.find((a) => a.day_of_week === dow);
+                const active = slot?.is_active ?? false;
+                return (
+                  <View key={dow} style={[s.availRow, i === arr.length - 1 && { borderBottomWidth: 0 }]}>
+                    <Text style={[s.availDay, !active && { color: colors.textSecondary }]}>{DOW[dow]}</Text>
+                    {active && slot ? (
+                      <Text style={s.availHours}>{fmtTime(slot.start_time)} – {fmtTime(slot.end_time)}</Text>
+                    ) : (
+                      <View style={s.availOffChip}>
+                        <Text style={s.availOffText}>Day Off</Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
           {/* ── Blocked Dates ─────────────────────────────────── */}
           <View style={[s.sectionRow, { marginTop: 28 }]}>
             <Text style={s.sectionTitle}>BLOCKED DATES</Text>
@@ -569,6 +645,57 @@ export default function CoachDetailScreen() {
             </View>
           )}
           <Text style={s.longPressTip}>Tap trash icon to remove a blocked date</Text>
+
+          {/* ── Past Sessions ─────────────────────────────────── */}
+          <Text style={[s.sectionTitle, { marginTop: 28 }]}>
+            PAST SESSIONS{pastSessions.length > 0 ? ` (${pastSessions.length})` : ''}
+          </Text>
+          {pastSessions.length === 0 ? (
+            <View style={s.emptyCard}>
+              <Text style={s.grayText}>No sessions logged yet</Text>
+            </View>
+          ) : (
+            <View style={s.scheduleList}>
+              {pastSessions.map((sess, i) => {
+                const STATUS_COLOR: Record<string, string> = {
+                  confirmed: '#4CAF50', pending: '#FF9800', absent: '#FF4D4D', no_show: '#FF4D4D',
+                };
+                const STATUS_LABEL: Record<string, string> = {
+                  confirmed: 'Done', pending: 'Pending', absent: 'Absent', no_show: 'No Show',
+                };
+                const d = new Date(sess.session_date + 'T00:00:00');
+                const statusColor = STATUS_COLOR[sess.status ?? ''] ?? colors.textSecondary;
+                return (
+                  <View key={sess.id} style={[s.scheduleRow, i === pastSessions.length - 1 && { borderBottomWidth: 0 }]}>
+                    <View style={s.pastSessDateCol}>
+                      <Text style={s.pastSessDay}>
+                        {d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}
+                      </Text>
+                      <Text style={s.pastSessYear}>{d.getFullYear()}</Text>
+                    </View>
+                    <View style={s.scheduleInfo}>
+                      <Text style={s.scheduleClient}>{sess.client_name}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                        <Text style={s.scheduleTime}>{sess.duration_minutes} min</Text>
+                        <Ionicons
+                          name={sess.session_type === 'home' ? 'home-outline' : 'barbell-outline'}
+                          size={11}
+                          color={colors.textSecondary}
+                        />
+                      </View>
+                    </View>
+                    {sess.status && (
+                      <View style={[s.sessStatusPill, { backgroundColor: statusColor + '20', borderColor: statusColor + '60' }]}>
+                        <Text style={[s.sessStatusText, { color: statusColor }]}>
+                          {STATUS_LABEL[sess.status] ?? sess.status}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          )}
 
         </View>
 
@@ -770,6 +897,23 @@ function makeStyles(c: ColorScheme) {
       flexShrink: 0, minWidth: 58, alignItems: 'center',
     },
     typeChipText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
+
+    availRow: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      padding: 13, borderBottomWidth: 1, borderBottomColor: c.border + '70',
+    },
+    availDay: { fontSize: 13, fontWeight: '700', color: c.textPrimary, width: 36 },
+    availHours: { fontSize: 13, color: c.textSecondary, flex: 1, textAlign: 'right' },
+    availOffChip: {
+      backgroundColor: c.border + '40', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2,
+    },
+    availOffText: { fontSize: 11, fontWeight: '600', color: c.textSecondary },
+
+    pastSessDateCol: { alignItems: 'center', minWidth: 40 },
+    pastSessDay: { fontSize: 13, fontWeight: '700', color: c.textPrimary },
+    pastSessYear: { fontSize: 10, color: c.textSecondary, marginTop: 1 },
+    sessStatusPill: { borderRadius: 6, borderWidth: 1, paddingHorizontal: 7, paddingVertical: 2, flexShrink: 0 },
+    sessStatusText: { fontSize: 10, fontWeight: '700' },
 
     addBlockBtn: {
       flexDirection: 'row', alignItems: 'center', gap: 5,

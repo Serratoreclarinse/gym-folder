@@ -457,6 +457,27 @@ export default function ClientDetailScreen() {
     return <View style={s.center}><Text style={s.grayText}>Client not found.</Text></View>;
   }
 
+  const exportSessions = () => {
+    if (sessions.length === 0) return;
+    const header = ['Date', 'Duration (min)', 'Type', 'Status', 'Notes', 'Exercises'].join(',');
+    const rows = sessions.map((s) => [
+      s.sessionDate,
+      s.durationMinutes,
+      s.sessionType,
+      s.status ?? '',
+      `"${(s.notes ?? '').replace(/"/g, '""')}"`,
+      `"${(s.exercises ?? []).map((e) => e.exercise_name).join('; ')}"`,
+    ].join(','));
+    const csv = [header, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `sessions_${client!.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const activePkg = packages.find((p) => p.status === 'active') ?? null;
   const pastPkgs = packages.filter((p) => p.status !== 'active');
   const fillPct = activePkg
@@ -732,9 +753,17 @@ export default function ClientDetailScreen() {
           )}
 
           {/* Session history */}
-          <Text style={[s.sectionTitle, { marginTop: 24 }]}>
-            SESSION HISTORY{sessions.length > 0 ? ` (${sessions.length})` : ''}
-          </Text>
+          <View style={[s.sectionRow, { marginTop: 24 }]}>
+            <Text style={s.sectionTitle}>
+              SESSION HISTORY{sessions.length > 0 ? ` (${sessions.length})` : ''}
+            </Text>
+            {Platform.OS === 'web' && sessions.length > 0 && (
+              <Pressable style={s.exportBtn} onPress={exportSessions}>
+                <Ionicons name="download-outline" size={14} color={colors.accent} />
+                <Text style={s.exportBtnText}>Export CSV</Text>
+              </Pressable>
+            )}
+          </View>
           {sessions.length === 0 ? (
             <View style={[s.historyList, { padding: 24, alignItems: 'center' }]}>
               <Text style={s.grayText}>No sessions logged yet</Text>
@@ -1183,6 +1212,13 @@ function makeStyles(c: ColorScheme) {
     cancelEditText: { color: c.textSecondary, fontSize: 12, fontWeight: '700' },
 
     sectionTitle: { ...Typography.label, color: c.textSecondary, marginBottom: 12 },
+    sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+    exportBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      borderWidth: 1, borderColor: c.accent + '60', borderRadius: 8,
+      paddingHorizontal: 10, paddingVertical: 5,
+    },
+    exportBtnText: { fontSize: 12, fontWeight: '700', color: c.accent },
 
     coachList: { gap: 6, marginBottom: 14 },
     coachOption: {
