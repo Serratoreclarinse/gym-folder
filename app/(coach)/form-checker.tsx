@@ -161,6 +161,13 @@ export default function FormCheckerScreen() {
   const [liveChecks, setLiveChecks] = useState<{ status: string; msg: string }[]>([]);
   const [showSilhouette, setShowSilhouette] = useState(false);
   const insets = useSafeAreaInsets();
+  const silType = (() => {
+    if (['deadlift','rdl','row','goodmorning','hiphinge'].includes(preset.key)) return 'hinge';
+    if (['hipthrust','glutebridge','deadbug'].includes(preset.key)) return 'floor';
+    if (['plank','pushup'].includes(preset.key)) return 'plank';
+    if (['latpulldown','seatedrow'].includes(preset.key)) return 'seated';
+    return preset.angle === 'front' ? 'front' : 'side';
+  })();
 
   const filteredPresets = PRESETS.filter((p) =>
     p.label.toLowerCase().includes(searchQuery.toLowerCase())
@@ -297,65 +304,113 @@ export default function FormCheckerScreen() {
       {showSilhouette && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Svg viewBox="0 0 100 200" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
-            {preset.angle === 'front' ? (
+            {silType === 'hinge' ? (
               <G>
-                {/* Head */}
+                {/* HINGE — deadlift/RDL/row: bent forward ~50°, flat back, hips high & back */}
+                {/* Head (low & forward, following spine angle) */}
+                <Ellipse cx="14" cy="116" rx="10" ry="11" stroke="rgba(255,255,255,0.6)" strokeWidth="2" fill="none" />
+                {/* Front body: face → chest → belly → groin */}
+                <Path d="M6,122 L16,110 L26,100 L40,90 L52,76" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Back (FLAT = neutral spine): head → upper back → lower back → hips */}
+                <Path d="M22,112 L28,106 L36,96 L50,83 L64,67 L68,56" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Hip top (hips pushed back, highest point) */}
+                <Path d="M52,76 L56,74 L68,56" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Arm hanging from shoulder */}
+                <Path d="M26,100 L28,132 L34,154" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Back of thigh */}
+                <Path d="M68,56 L62,74 L56,140" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Front of thigh */}
+                <Path d="M56,74 L44,140" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Calf / shin */}
+                <Path d="M56,140 L54,178 M44,140 L42,178" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Knee connector */}
+                <Line x1="44" y1="140" x2="56" y2="140" stroke="rgba(255,255,255,0.6)" strokeWidth="2" />
+                {/* Foot & heel */}
+                <Line x1="42" y1="178" x2="26" y2="181" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round" />
+                <Line x1="54" y1="178" x2="60" y2="181" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round" />
+                {/* Barbell (visual indicator of bar position at mid-shin/knee) */}
+                <Line x1="8" y1="158" x2="80" y2="158" stroke="rgba(255,255,255,0.28)" strokeWidth="3" strokeLinecap="round" />
+                <Line x1="8" y1="152" x2="8" y2="164" stroke="rgba(255,255,255,0.35)" strokeWidth="3" strokeLinecap="round" />
+                <Line x1="80" y1="152" x2="80" y2="164" stroke="rgba(255,255,255,0.35)" strokeWidth="3" strokeLinecap="round" />
+                {/* Foot circle */}
+                <Ellipse cx="44" cy="184" rx="18" ry="3.5" stroke="rgba(255,255,255,0.35)" strokeWidth="1.2" fill="none" strokeDasharray="3,2" />
+              </G>
+            ) : silType === 'floor' ? (
+              <G>
+                {/* FLOOR — lying on back, knees bent (hip thrust / glute bridge / deadbug) */}
+                <Ellipse cx="12" cy="102" rx="10" ry="11" stroke="rgba(255,255,255,0.6)" strokeWidth="2" fill="none" />
+                <Path d="M22,92 L74,90" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                <Path d="M22,112 L74,112" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                <Line x1="22" y1="92" x2="22" y2="112" stroke="rgba(255,255,255,0.6)" strokeWidth="2" />
+                {/* Thighs bent upward */}
+                <Path d="M74,90 L80,62 M74,112 L84,62" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Shins back down */}
+                <Path d="M80,62 L80,112 M84,62 L88,112" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                <Line x1="80" y1="112" x2="92" y2="115" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round" />
+                <Line x1="4" y1="116" x2="96" y2="116" stroke="rgba(255,255,255,0.2)" strokeWidth="1" strokeDasharray="4,3" />
+              </G>
+            ) : silType === 'plank' ? (
+              <G>
+                {/* PLANK / PUSHUP — prone, body straight, arms extended */}
+                <Ellipse cx="10" cy="96" rx="9" ry="10" stroke="rgba(255,255,255,0.6)" strokeWidth="2" fill="none" />
+                <Path d="M18,88 L84,88 M18,102 L84,102" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                <Path d="M20,90 L18,118 M24,101 L22,118" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                <Line x1="18" y1="118" x2="22" y2="118" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round" />
+                <Path d="M84,88 L84,112" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                <Line x1="4" y1="120" x2="96" y2="120" stroke="rgba(255,255,255,0.2)" strokeWidth="1" strokeDasharray="4,3" />
+              </G>
+            ) : silType === 'seated' ? (
+              <G>
+                {/* SEATED — lat pulldown / seated row: upright torso, thighs horizontal */}
+                <Ellipse cx="47" cy="22" rx="12" ry="13" stroke="rgba(255,255,255,0.6)" strokeWidth="2" fill="none" />
+                <Path d="M41,35 L39,46 M53,35 L55,45" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                <Path d="M39,46 C33,64 35,82 37,98" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                <Path d="M55,45 C61,63 59,82 57,99" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Thigh horizontal */}
+                <Path d="M37,98 L72,96 M57,99 L72,101" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                {/* Shin vertical */}
+                <Path d="M72,96 L70,158 M72,101 L74,158" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
+                <Line x1="70" y1="158" x2="58" y2="162" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round" />
+                <Line x1="74" y1="158" x2="78" y2="162" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round" />
+                {/* Seat */}
+                <Line x1="22" y1="100" x2="72" y2="99" stroke="rgba(255,255,255,0.28)" strokeWidth="2.5" strokeLinecap="round" />
+                <Ellipse cx="68" cy="165" rx="10" ry="3.5" stroke="rgba(255,255,255,0.35)" strokeWidth="1.2" fill="none" strokeDasharray="3,2" />
+              </G>
+            ) : silType === 'front' ? (
+              <G>
+                {/* FRONT STANDING */}
                 <Ellipse cx="50" cy="20" rx="12" ry="13" stroke="rgba(255,255,255,0.6)" strokeWidth="2" fill="none" />
-                {/* Neck */}
                 <Path d="M44,33 L43,43 M56,33 L57,43" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
-                {/* Shoulders */}
                 <Path d="M43,43 L20,49 M57,43 L80,49" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
-                {/* Left arm */}
                 <Path d="M20,49 L12,77 L10,101" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
-                {/* Right arm */}
                 <Path d="M80,49 L88,77 L90,101" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
-                {/* Left torso */}
                 <Path d="M20,49 L25,88 L22,100 L37,107" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                {/* Right torso */}
                 <Path d="M80,49 L75,88 L78,100 L63,107" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                {/* Groin */}
                 <Line x1="37" y1="107" x2="63" y2="107" stroke="rgba(255,255,255,0.6)" strokeWidth="2" />
-                {/* Left leg */}
                 <Path d="M37,107 L35,151 L33,183" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
-                {/* Right leg */}
                 <Path d="M63,107 L65,151 L67,183" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
-                {/* Left foot */}
                 <Line x1="33" y1="183" x2="22" y2="185" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round" />
-                {/* Right foot */}
                 <Line x1="67" y1="183" x2="78" y2="185" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round" />
-                {/* Foot position ovals */}
-                <Ellipse cx="27" cy="189" rx="10" ry="3.5" stroke="rgba(255,255,255,0.4)" strokeWidth="1.2" fill="none" strokeDasharray="3 2" />
-                <Ellipse cx="73" cy="189" rx="10" ry="3.5" stroke="rgba(255,255,255,0.4)" strokeWidth="1.2" fill="none" strokeDasharray="3 2" />
+                <Ellipse cx="27" cy="189" rx="10" ry="3.5" stroke="rgba(255,255,255,0.35)" strokeWidth="1.2" fill="none" strokeDasharray="3,2" />
+                <Ellipse cx="73" cy="189" rx="10" ry="3.5" stroke="rgba(255,255,255,0.35)" strokeWidth="1.2" fill="none" strokeDasharray="3,2" />
               </G>
             ) : (
               <G>
-                {/* Side view silhouette — facing left */}
-                {/* Head */}
+                {/* SIDE STANDING */}
                 <Ellipse cx="47" cy="20" rx="12" ry="13" stroke="rgba(255,255,255,0.6)" strokeWidth="2" fill="none" />
-                {/* Front neck */}
                 <Path d="M37,31 L35,44" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
-                {/* Back neck */}
                 <Path d="M57,31 L59,43" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
-                {/* Body front contour (chest → belly → front hip) */}
                 <Path d="M35,44 C29,62 32,80 35,97 L34,108" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
-                {/* Body back contour (back arch + buttocks) */}
                 <Path d="M59,43 C65,62 61,82 57,96 C58,104 63,111 52,117" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
-                {/* Front arm */}
                 <Path d="M35,44 L27,73 L24,97" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
-                {/* Front leg */}
                 <Path d="M34,108 L34,152 L33,183" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
-                {/* Back leg */}
                 <Path d="M52,117 L51,152 L51,183" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" fill="none" />
-                {/* Front foot (pointing left) */}
                 <Line x1="33" y1="183" x2="17" y2="186" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round" />
-                {/* Back heel */}
                 <Line x1="51" y1="183" x2="57" y2="186" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round" />
-                {/* Foot position oval */}
-                <Ellipse cx="37" cy="190" rx="20" ry="3.5" stroke="rgba(255,255,255,0.4)" strokeWidth="1.2" fill="none" strokeDasharray="3 2" />
+                <Ellipse cx="37" cy="190" rx="20" ry="3.5" stroke="rgba(255,255,255,0.35)" strokeWidth="1.2" fill="none" strokeDasharray="3,2" />
               </G>
             )}
-            {/* Label */}
-            <SvgText x="50" y="198" textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="5" fontWeight="700" letterSpacing="1">
+            <SvgText x="50" y="198" textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="5" fontWeight="700">
               PLACE CLIENT HERE
             </SvgText>
           </Svg>
