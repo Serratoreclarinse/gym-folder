@@ -473,6 +473,8 @@ function analyzePose(lm, exercise) {
 }
 
 // ── Feedback panel ─────────────────────────────────────────────
+var lastPostMs = 0;
+
 function renderFeedback(checks) {
   var html = '';
 
@@ -497,6 +499,21 @@ function renderFeedback(checks) {
   }
 
   feedbackEl.innerHTML = html;
+
+  // Send AI results to React Native (~5 fps throttle)
+  var now = Date.now();
+  if (now - lastPostMs > 200) {
+    lastPostMs = now;
+    try {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'checks',
+          exercise: currentExercise,
+          data: checks || [],
+        }));
+      }
+    } catch(e) {}
+  }
 }
 
 // ── Camera ─────────────────────────────────────────────────────

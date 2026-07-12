@@ -157,16 +157,7 @@ export default function FormCheckerScreen() {
   const [showGuide, setShowGuide] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
   const [showGrid, setShowGrid] = useState(false);
-  const [checkStates, setCheckStates] = useState<('good' | 'bad' | null)[]>([]);
-
-  function toggleCheck(idx: number) {
-    setCheckStates((prev) => {
-      const next = [...prev];
-      const cur = next[idx] ?? null;
-      next[idx] = cur === null ? 'good' : cur === 'good' ? 'bad' : null;
-      return next;
-    });
-  }
+  const [liveChecks, setLiveChecks] = useState<{ status: string; msg: string }[]>([]);
   const insets = useSafeAreaInsets();
 
   const filteredPresets = PRESETS.filter((p) =>
@@ -175,7 +166,7 @@ export default function FormCheckerScreen() {
 
   function handlePreset(p: typeof PRESETS[0]) {
     setPreset(p);
-    setCheckStates([]);
+    setLiveChecks([]);
     webViewRef.current?.injectJavaScript(
       `window.setExercise(${JSON.stringify(p.key)}, ${JSON.stringify(p.focus)}, ${JSON.stringify(p.angle)}); true;`
     );
@@ -209,6 +200,12 @@ export default function FormCheckerScreen() {
           webViewRef.current?.injectJavaScript(
             `window.setExercise(${JSON.stringify(PRESETS[0].key)}, ${JSON.stringify(PRESETS[0].focus)}, ${JSON.stringify(PRESETS[0].angle)}); true;`
           );
+        }}
+        onMessage={(e) => {
+          try {
+            const msg = JSON.parse(e.nativeEvent.data);
+            if (msg.type === 'checks') setLiveChecks(msg.data ?? []);
+          } catch {}
         }}
         onPermissionRequest={(e) => e.nativeEvent.request.grant(e.nativeEvent.request.resources)}
         scrollEnabled={false}
@@ -291,57 +288,40 @@ export default function FormCheckerScreen() {
         </View>
       )}
 
-      {/* Live checklist overlay (left side) */}
-      {showChecklist && (() => {
-        const items = CHECKLISTS[preset.key] ?? [];
-        const nGood = checkStates.filter((st) => st === 'good').length;
-        const nBad  = checkStates.filter((st) => st === 'bad').length;
-        return (
-          <View style={[s.clPanel, { top: insets.top + 70 }]}>
-            {/* Header row */}
-            <View style={s.clPanelHeader}>
-              <Text style={s.clPanelTitle}>Checklist</Text>
-              <Pressable onPress={() => setCheckStates([])}>
-                <Text style={s.clReset}>↺</Text>
-              </Pressable>
-            </View>
-            {/* Score bar */}
-            {(nGood + nBad) > 0 && (
-              <View style={s.clScore}>
-                <Text style={[s.clScoreNum, { color: '#4CAF50' }]}>{nGood}✓</Text>
-                <Text style={[s.clScoreNum, { color: '#F44336' }]}>{nBad}✗</Text>
-                <Text style={s.clScorePct}>{Math.round((nGood / items.length) * 100)}%</Text>
-              </View>
-            )}
-            {/* Items */}
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 320 }}>
-              {items.map((item, idx) => {
-                const st = checkStates[idx] ?? null;
+      {/* Live AI checklist overlay (left side) */}
+      {showChecklist && (
+        <View style={[s.clPanel, { top: insets.top + 70 }]}>
+          <View style={s.clPanelHeader}>
+            <Text style={s.clPanelTitle}>AI FORM CHECK</Text>
+            <View style={s.clLiveDot} />
+          </View>
+          {liveChecks.length === 0 ? (
+            <Text style={s.clEmpty}>Position client{'\n'}in frame…</Text>
+          ) : (
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 340 }}>
+              {liveChecks.map((item, idx) => {
+                const isGood = item.status === 'good';
+                const isBad  = item.status === 'bad';
+                const dotColor = isGood ? '#4CAF50' : isBad ? '#F44336' : '#FF9800';
+                const textColor = isGood ? '#81C784' : isBad ? '#E57373' : '#FFB74D';
                 return (
-                  <Pressable key={idx} style={s.clRow} onPress={() => toggleCheck(idx)}>
-                    <View style={[
-                      s.clDot,
-                      st === 'good' && { backgroundColor: '#4CAF50' },
-                      st === 'bad'  && { backgroundColor: '#F44336' },
-                    ]}>
+                  <View key={idx} style={s.clRow}>
+                    <View style={[s.clDot, { backgroundColor: dotColor }]}>
                       <Ionicons
-                        name={st === 'good' ? 'checkmark' : st === 'bad' ? 'close' : 'remove'}
-                        size={10}
-                        color={st ? '#fff' : 'rgba(255,255,255,0.4)'}
+                        name={isGood ? 'checkmark' : isBad ? 'close' : 'alert'}
+                        size={10} color="#fff"
                       />
                     </View>
-                    <Text style={[
-                      s.clRowText,
-                      st === 'good' && { color: '#81C784' },
-                      st === 'bad'  && { color: '#E57373' },
-                    ]} numberOfLines={2}>{item}</Text>
-                  </Pressable>
+                    <Text style={[s.clRowText, { color: textColor }]} numberOfLines={2}>
+                      {item.msg}
+                    </Text>
+                  </View>
                 );
               })}
             </ScrollView>
-          </View>
-        );
-      })()}
+          )}
+        </View>
+      )}
 
       {/* Camera guide modal */}
       <Modal
@@ -610,24 +590,22 @@ const s = StyleSheet.create({
   },
   clPanelHeader: {
     flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', marginBottom: 5,
+    justifyContent: 'space-between', marginBottom: 7,
   },
-  clPanelTitle: { color: '#fff', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
-  clReset: { color: '#FF9800', fontSize: 16, fontWeight: '700' },
-  clScore: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    marginBottom: 6, paddingBottom: 6,
-    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)',
+  clPanelTitle: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
+  clLiveDot: {
+    width: 6, height: 6, borderRadius: 3, backgroundColor: '#4CAF50',
   },
-  clScoreNum: { fontSize: 11, fontWeight: '800' },
-  clScorePct: { color: 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: '700', marginLeft: 'auto' },
+  clEmpty: {
+    color: 'rgba(255,255,255,0.35)', fontSize: 10,
+    fontWeight: '500', lineHeight: 15, textAlign: 'center', paddingVertical: 8,
+  },
   clRow: {
     flexDirection: 'row', alignItems: 'flex-start',
-    gap: 7, paddingVertical: 5,
+    gap: 7, paddingVertical: 4,
   },
   clDot: {
     width: 18, height: 18, borderRadius: 9, flexShrink: 0,
-    backgroundColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center', justifyContent: 'center', marginTop: 1,
   },
   clRowText: {
