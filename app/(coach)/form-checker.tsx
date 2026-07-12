@@ -72,6 +72,40 @@ const EXERCISE_TIPS: Record<string, string> = {
   calfraise:    'Film from the side — heel lift must be clearly visible',
 };
 
+const CHECKLISTS: Record<string, string[]> = {
+  squat:          ['Feet shoulder-width, toes out 15–30°','Knees track over 2nd/3rd toe','Depth at parallel or below','Chest up / torso upright','Heels flat on floor throughout','Core braced'],
+  deadlift:       ['Back neutral — spine long, no rounding','Hip hinge initiated (not a squat)','Bar stays close to body throughout','Shoulders packed / lats engaged','Full lockout at top — hips through','Soft knee at start'],
+  rdl:            ['Soft knee maintained throughout','Hinge at hips — sit hips back','Back stays neutral / long','Hamstring stretch felt at bottom','Bar close to legs throughout'],
+  lunge:          ['Front knee tracks over ankle','Both knees near 90° at bottom','Torso upright / core braced','Back knee hovers — controlled descent','Front heel stays flat'],
+  bulgariansplit: ['Front knee tracks over ankle','Front knee reaches ~90° at bottom','Torso angle matches goal (upright=quads, lean=glutes)','Rear foot resting on bench, not pushing','Control hip drop at bottom'],
+  stepup:         ['Full foot planted on the box','Drive through heel of front foot','Torso upright — no forward lean','Control the descent back down','No pushing off with back foot'],
+  hipthrust:      ['Upper back on bench edge (not neck)','Feet hip-width, ~6–8 inches from glutes','Knee at ~90° at the top','Full hip extension — squeeze glutes at top','Chin tucked — ribs down'],
+  glutebridge:    ['Feet hip-width, heels close to glutes','Full hip extension at top','Squeeze glutes — hold 1 sec at top','Lower back neutral (no over-arch)','Controlled lowering'],
+  hiphinge:       ['Weight in heels throughout','Hinge at hips — not at waist','Soft knee maintained','Back flat / neutral spine','Hamstring stretch felt at bottom'],
+  goodmorning:    ['Bar on upper traps (not neck)','Soft knee, hinge at hips','Back neutral — no rounding','Hinge until ~45° from vertical','Drive hips forward to return'],
+  calfraise:      ['Full plantarflexion — heels fully raised','Both heels rise evenly','Control the descent — no dropping','Slight knee bend is acceptable','Pause briefly at the top'],
+  sidelunge:      ['Bent knee tracks over ankle (no cave)','Straight leg fully extended','Torso upright / chest up','Foot of bent leg flat on floor','Hips push back and to the side'],
+  pushup:         ['Body in straight line — head to heels','Elbows 45–70° from torso (not flared)','Chest near/touches floor at bottom','Full arm extension at top','Core braced — hips don\'t sag or rise'],
+  benchpress:     ['Shoulder blades retracted and depressed','Natural arch in lower back','Elbows 45–70° from torso','Bar touches lower chest at bottom','Wrists straight / neutral throughout'],
+  ohpress:        ['Torso stays upright — no lumbar arch','Bar starts at upper chest / chin level','Wrists directly over elbows','Full lockout overhead','Core braced throughout'],
+  dips:           ['Elbows reach 90° at bottom minimum','Forward lean for chest, upright for triceps','Shoulders don\'t shrug up','Controlled descent — no dropping','Full extension at top'],
+  chestfly:       ['Slight, consistent elbow bend throughout','Arms wide — full chest stretch at bottom','Controlled arc back to centre','Shoulders stay back — no shrugging','Squeeze chest at top'],
+  pullup:         ['Dead hang at bottom — full extension','Pull elbows down and back','Chin clears the bar at top','No kipping or momentum','Shoulder blades retract at top'],
+  latpulldown:    ['Slight backward lean only (~15°)','Bar pulled to upper chest','Drive elbows down toward hips','Full stretch at top — arms extended','Shoulder blades depress and retract'],
+  row:            ['Torso ~45° from vertical','Pull to lower ribcage / belly button','Drive elbows toward ceiling','Shoulder blades squeeze at top','Back stays neutral throughout'],
+  seatedrow:      ['Torso upright — minimal lean','Pull handle to navel','Drive elbows behind body','Shoulder blades squeeze at end','No excessive swinging / rocking'],
+  facepull:       ['Pull to face / nose height','Elbows high at end (external rotation)','Shoulder blades retract','Torso upright — no lean back','Controlled return'],
+  lateralraise:   ['Raise to shoulder height only','Slight elbow bend throughout','Lead with elbows (not wrists)','No shrugging / traps taking over','Controlled descent'],
+  frontraise:     ['Raise to shoulder height','Slight elbow bend maintained','Wrists neutral — don\'t bend','No swinging or momentum','Torso upright throughout'],
+  bicepcurl:      ['Upper arms pinned to sides','Full extension at bottom','Squeeze at top — peak contraction','No elbow swinging forward','Wrists neutral (not bent)'],
+  hammercurl:     ['Neutral grip (thumbs up) throughout','Upper arms pinned to sides','Full extension at bottom','No swinging / momentum','Controlled throughout'],
+  tricepext:      ['Elbows pointing forward — not flared','Full extension at top','Deep stretch at bottom','Upper arms stay still','Controlled movement'],
+  plank:          ['Body in straight line — head to heels','Hips level (not sagging or raised)','Core braced / glutes squeezed','Shoulders over wrists or elbows','Neutral neck — don\'t look up'],
+  sideplank:      ['Hips elevated — not sagging','Straight line from head to feet','Supporting shoulder stable','No hip rotation forward/back','Breathe steadily'],
+  deadbug:        ['Lower back pressed flat to floor','Arms straight up over shoulders','Legs at 90° tabletop at start','Extend opposite arm and leg together','Exhale as you extend'],
+  free:           ['Full body visible in frame','Good lighting for detection','Observe overall posture','Check joint symmetry','Note any compensations'],
+};
+
 const PRESETS = [
   // ── Lower body ──────────────────────────────────────────────────
   { key: 'squat',          label: 'Squat',         icon: 'fitness-outline',          angle: 'side',  focus: [23,24,25,26,27,28] },
@@ -120,6 +154,17 @@ export default function FormCheckerScreen() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showGuide, setShowGuide] = useState(false);
+  const [showChecklist, setShowChecklist] = useState(false);
+  const [checkStates, setCheckStates] = useState<('good' | 'bad' | null)[]>([]);
+
+  function toggleCheck(idx: number) {
+    setCheckStates((prev) => {
+      const next = [...prev];
+      const cur = next[idx] ?? null;
+      next[idx] = cur === null ? 'good' : cur === 'good' ? 'bad' : null;
+      return next;
+    });
+  }
   const insets = useSafeAreaInsets();
 
   const filteredPresets = PRESETS.filter((p) =>
@@ -128,6 +173,7 @@ export default function FormCheckerScreen() {
 
   function handlePreset(p: typeof PRESETS[0]) {
     setPreset(p);
+    setCheckStates([]);
     webViewRef.current?.injectJavaScript(
       `window.setExercise(${JSON.stringify(p.key)}, ${JSON.stringify(p.focus)}, ${JSON.stringify(p.angle)}); true;`
     );
@@ -180,6 +226,9 @@ export default function FormCheckerScreen() {
           <Text style={s.presetLabelSub}>Pose Detection</Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Pressable style={s.topBtn} onPress={() => setShowChecklist(true)}>
+            <Ionicons name="clipboard-outline" size={18} color="#fff" />
+          </Pressable>
           <Pressable style={s.topBtn} onPress={() => setShowGuide(true)}>
             <Ionicons name="videocam-outline" size={18} color="#fff" />
           </Pressable>
@@ -224,6 +273,100 @@ export default function FormCheckerScreen() {
           <Ionicons name="chevron-up-outline" size={14} color="rgba(255,255,255,0.55)" />
         </View>
       </Pressable>
+
+      {/* Form checklist modal */}
+      <Modal
+        visible={showChecklist}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowChecklist(false)}
+      >
+        {(() => {
+          const items  = CHECKLISTS[preset.key] ?? [];
+          const nGood  = checkStates.filter((s) => s === 'good').length;
+          const nBad   = checkStates.filter((s) => s === 'bad').length;
+          const nDone  = nGood + nBad;
+          return (
+            <>
+              <Pressable style={s.ddOverlay} onPress={() => setShowChecklist(false)} />
+              <View style={[s.ddSheet, s.guideSheet, { paddingBottom: insets.bottom + 20 }]}>
+                <View style={s.ddHandle} />
+
+                {/* Header */}
+                <View style={s.guideHeader}>
+                  <View style={[s.guideCamIcon, { backgroundColor: 'rgba(76,175,80,0.15)' }]}>
+                    <Ionicons name="clipboard" size={20} color="#4CAF50" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.guideTitle}>Form Checklist</Text>
+                    <Text style={s.guideSub}>{preset.label}</Text>
+                  </View>
+                  <Pressable onPress={() => { setCheckStates([]); }}>
+                    <Text style={s.clReset}>Reset</Text>
+                  </Pressable>
+                </View>
+
+                {/* Summary bar */}
+                {nDone > 0 && (
+                  <View style={s.clSummary}>
+                    <View style={s.clSummaryChip}>
+                      <Ionicons name="checkmark-circle" size={13} color="#4CAF50" />
+                      <Text style={[s.clSummaryText, { color: '#4CAF50' }]}>{nGood} Correct</Text>
+                    </View>
+                    <View style={s.clSummaryChip}>
+                      <Ionicons name="close-circle" size={13} color="#F44336" />
+                      <Text style={[s.clSummaryText, { color: '#F44336' }]}>{nBad} Needs Work</Text>
+                    </View>
+                    <Text style={s.clSummaryPct}>
+                      {items.length > 0 ? Math.round((nGood / items.length) * 100) : 0}% correct
+                    </Text>
+                  </View>
+                )}
+
+                {/* Checklist items */}
+                <FlatList
+                  data={items}
+                  keyExtractor={(_, i) => String(i)}
+                  style={s.ddList}
+                  keyboardShouldPersistTaps="handled"
+                  renderItem={({ item, index }) => {
+                    const state = checkStates[index] ?? null;
+                    return (
+                      <Pressable
+                        style={[
+                          s.clItem,
+                          state === 'good' && s.clItemGood,
+                          state === 'bad'  && s.clItemBad,
+                        ]}
+                        onPress={() => toggleCheck(index)}
+                      >
+                        <View style={[
+                          s.clIcon,
+                          state === 'good' && { backgroundColor: '#4CAF50' },
+                          state === 'bad'  && { backgroundColor: '#F44336' },
+                        ]}>
+                          <Ionicons
+                            name={state === 'good' ? 'checkmark' : state === 'bad' ? 'close' : 'ellipse-outline'}
+                            size={14}
+                            color={state ? '#fff' : 'rgba(255,255,255,0.3)'}
+                          />
+                        </View>
+                        <Text style={[
+                          s.clItemText,
+                          state === 'good' && { color: '#81C784' },
+                          state === 'bad'  && { color: '#E57373' },
+                        ]}>{item}</Text>
+                      </Pressable>
+                    );
+                  }}
+                />
+
+                <Text style={s.clHint}>Tap to mark ✓ Correct → ✗ Needs Work → clear</Text>
+              </View>
+            </>
+          );
+        })()}
+      </Modal>
 
       {/* Camera guide modal */}
       <Modal
@@ -476,4 +619,34 @@ const s = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)',
   },
   guideAccText: { color: 'rgba(255,255,255,0.35)', fontSize: 11, fontWeight: '500', flex: 1 },
+
+  // Checklist
+  clReset: { color: '#FF9800', fontSize: 13, fontWeight: '700' },
+  clSummary: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 10, padding: 10, marginBottom: 12,
+  },
+  clSummaryChip: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  clSummaryText: { fontSize: 12, fontWeight: '700' },
+  clSummaryPct:  { marginLeft: 'auto', color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: '700' },
+  clItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 12, paddingHorizontal: 10,
+    borderRadius: 10, marginBottom: 6,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+  },
+  clItemGood: { backgroundColor: 'rgba(76,175,80,0.1)',  borderColor: 'rgba(76,175,80,0.3)' },
+  clItemBad:  { backgroundColor: 'rgba(244,67,54,0.1)',  borderColor: 'rgba(244,67,54,0.3)' },
+  clIcon: {
+    width: 26, height: 26, borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  clItemText: { color: '#fff', fontSize: 13, fontWeight: '500', flex: 1, lineHeight: 18 },
+  clHint: {
+    color: 'rgba(255,255,255,0.25)', fontSize: 10, fontWeight: '500',
+    textAlign: 'center', marginTop: 10,
+  },
 });
