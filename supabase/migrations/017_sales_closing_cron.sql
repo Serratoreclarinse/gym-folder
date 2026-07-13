@@ -28,8 +28,8 @@ SELECT cron.schedule(
   '0 9 28 * *',
   $cron$
     SELECT net.http_post(
-      url     := 'https://YOUR_PROJECT_REF.supabase.co/functions/v1/sales-closing-reminder',
-      headers := '{"Authorization":"Bearer YOUR_REMINDER_SECRET","Content-Type":"application/json"}'::jsonb,
+      url     := 'https://crdefmftxjhdcxqqrxuu.supabase.co/functions/v1/sales-closing-reminder',
+      headers := '{"Authorization":"Bearer PzaR1CotpU1jAI7OOe6N3fv2lI8xeJsXtPhHCTYSAi4IhLZn","Content-Type":"application/json"}'::jsonb,
       body    := '{"type":"warning"}'::jsonb
     ) AS request_id;
   $cron$
@@ -41,8 +41,8 @@ SELECT cron.schedule(
   '0 9 4 * *',
   $cron$
     SELECT net.http_post(
-      url     := 'https://YOUR_PROJECT_REF.supabase.co/functions/v1/sales-closing-reminder',
-      headers := '{"Authorization":"Bearer YOUR_REMINDER_SECRET","Content-Type":"application/json"}'::jsonb,
+      url     := 'https://crdefmftxjhdcxqqrxuu.supabase.co/functions/v1/sales-closing-reminder',
+      headers := '{"Authorization":"Bearer PzaR1CotpU1jAI7OOe6N3fv2lI8xeJsXtPhHCTYSAi4IhLZn","Content-Type":"application/json"}'::jsonb,
       body    := '{"type":"closing"}'::jsonb
     ) AS request_id;
   $cron$

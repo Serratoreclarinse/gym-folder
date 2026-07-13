@@ -7,6 +7,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { NotificationsProvider } from '@/context/NotificationsContext';
 import { NotificationBell } from '@/components/NotificationBell';
 import { ClientDrawer } from '@/components/ClientDrawer';
+import { useMyUnreadCount } from '@/hooks/useChat';
 
 // Context so BurgerButton (inside the tab header) can open the drawer
 const DrawerCtx = createContext<() => void>(() => {});
@@ -25,6 +26,7 @@ export default function ClientLayout() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const { count: unreadMsgCount } = useMyUnreadCount();
 
   return (
     <DrawerCtx.Provider value={() => setDrawerOpen(true)}>
@@ -84,6 +86,7 @@ export default function ClientLayout() {
               options={{
                 title: 'Messages',
                 tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles-outline" size={size} color={color} />,
+                tabBarBadge: unreadMsgCount > 0 ? unreadMsgCount : undefined,
               }}
             />
             <Tabs.Screen

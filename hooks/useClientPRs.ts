@@ -71,7 +71,7 @@ export function useClientPRs() {
 
     const result = [...map.values()]
       .filter((pr) => pr.best_weight > 0)
-      .sort((a, b) => b.session_count - a.session_count);
+      .sort((a, b) => b.best_weight - a.best_weight);
 
     setPRs(result);
     setLoading(false);

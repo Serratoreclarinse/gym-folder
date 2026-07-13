@@ -98,6 +98,26 @@ export function useChat(otherUserId: string) {
   return { messages, loading, sendMessage, refetch: load, myId };
 }
 
+// Hook to count all unread messages received by the current user
+export function useMyUnreadCount() {
+  const { user } = useAuth();
+  const [count, setCount] = useState(0);
+
+  const load = useCallback(async () => {
+    if (!user?.id) return;
+    const { count: c } = await supabase
+      .from('messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('receiver_id', user.id)
+      .is('read_at', null);
+    setCount(c ?? 0);
+  }, [user?.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return { count, refetch: load };
+}
+
 // Hook to count unread messages from a specific sender
 export function useUnreadCount(fromUserId: string) {
   const { user } = useAuth();

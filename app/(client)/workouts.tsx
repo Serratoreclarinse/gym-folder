@@ -38,11 +38,12 @@ function ExerciseRow({ name, sets, reps, weight, notes, styles }: {
 }
 
 // ─── Session card ────────────────────────────────────────────
-function SessionCard({ session, showRateBadge, onRate, ratingExpired, styles, colors }: {
+function SessionCard({ session, showRateBadge, onRate, ratingExpired, submittedRating, styles, colors }: {
   session: ClientSession;
   showRateBadge?: boolean;
   onRate?: () => void;
   ratingExpired?: boolean;
+  submittedRating?: number;
   styles: ReturnType<typeof makeStyles>;
   colors: ColorScheme;
 }) {
@@ -97,13 +98,21 @@ function SessionCard({ session, showRateBadge, onRate, ratingExpired, styles, co
         </View>
       ) : null}
 
-      {showRateBadge && onRate && !isNoShow && (
+      {submittedRating != null && !isNoShow && (
+        <View style={styles.rateExpiredRow}>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Ionicons key={i} name={i < submittedRating ? 'star' : 'star-outline'} size={14} color={i < submittedRating ? '#FFD700' : colors.border} />
+          ))}
+          <Text style={styles.rateExpiredText}>You rated this {submittedRating}/5</Text>
+        </View>
+      )}
+      {!submittedRating && showRateBadge && onRate && !isNoShow && (
         <Pressable style={styles.ratePromptBtn} onPress={onRate}>
           <Ionicons name="star-outline" size={14} color="#FFD700" />
           <Text style={styles.ratePromptText}>Rate this session</Text>
         </Pressable>
       )}
-      {ratingExpired && !isNoShow && (
+      {!submittedRating && ratingExpired && !isNoShow && (
         <View style={styles.rateExpiredRow}>
           <Ionicons name="time-outline" size={12} color={colors.textSecondary} />
           <Text style={styles.rateExpiredText}>Rating window closed (48 hrs)</Text>
@@ -146,6 +155,7 @@ export default function ClientWorkoutsScreen() {
   const [submittingRating, setSubmittingRating] = useState(false);
 
   const [ratingExpiredSession, setRatingExpiredSession] = useState<ClientSession | null>(null);
+  const [submittedRatings, setSubmittedRatings] = useState<Record<string, number>>({});
 
   // ── In-app review prompt (once, after 3+ sessions) ───────────
   useEffect(() => {
@@ -196,6 +206,7 @@ export default function ClientWorkoutsScreen() {
     });
     setSubmittingRating(false);
     if (rErr) { Alert.alert('Error', 'Could not save rating. Please try again.'); return; }
+    setSubmittedRatings((prev) => ({ ...prev, [unratedSession.id]: selectedRating }));
     setShowRatingModal(false);
     setUnratedSession(null);
     setSelectedRating(0);
@@ -288,6 +299,7 @@ export default function ClientWorkoutsScreen() {
               showRateBadge={unratedSession?.id === s.id}
               onRate={() => { setSelectedRating(0); setShowRatingModal(true); }}
               ratingExpired={ratingExpiredSession?.id === s.id}
+              submittedRating={submittedRatings[s.id]}
               styles={styles}
               colors={colors}
             />

@@ -55,7 +55,20 @@ export function useClientBookingRequests(coachId: string | null, packageId: stri
     return { error: error?.message ?? null };
   };
 
-  return { requests, refetch, submitRequest };
+  const cancelRequest = async (id: string): Promise<{ error: string | null }> => {
+    if (!user?.id) return { error: 'Not authenticated' };
+    const { error } = await supabase
+      .from('booking_requests')
+      .delete()
+      .eq('id', id)
+      .eq('client_id', user.id)
+      .eq('status', 'pending');
+    if (error) return { error: error.message };
+    await refetch();
+    return { error: null };
+  };
+
+  return { requests, refetch, submitRequest, cancelRequest };
 }
 
 // ── Helpers ────────────────────────────────────────────────────

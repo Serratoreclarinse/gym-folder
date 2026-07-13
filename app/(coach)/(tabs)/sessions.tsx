@@ -49,6 +49,20 @@ function SessionCard({ session }: { session: ReturnType<typeof useSessions>['ses
       {session.notes ? (
         <Text style={styles.notes} numberOfLines={1}>{session.notes}</Text>
       ) : null}
+
+      {session.rating !== null && (
+        <View style={styles.ratingRow}>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Ionicons
+              key={i}
+              name={i < session.rating! ? 'star' : 'star-outline'}
+              size={13}
+              color={i < session.rating! ? '#FFD700' : colors.border}
+            />
+          ))}
+          <Text style={styles.ratingText}>{session.rating}/5</Text>
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -150,6 +164,8 @@ function makeStyles(c: ColorScheme) {
     exerciseItem: { ...Typography.caption, color: c.textSecondary },
     exerciseMore: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic' },
     notes: { ...Typography.caption, color: c.textSecondary, marginTop: 8, fontStyle: 'italic' },
+    ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 8 },
+    ratingText: { ...Typography.caption, color: c.textSecondary, marginLeft: 4 },
     empty: { alignItems: 'center', paddingTop: 80, gap: 8 },
     emptyTitle: { ...Typography.subtitle, color: c.textPrimary, marginTop: 12 },
     emptySub: { ...Typography.body, color: c.textSecondary, textAlign: 'center' },

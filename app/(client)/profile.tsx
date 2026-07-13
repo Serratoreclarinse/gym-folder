@@ -250,46 +250,49 @@ export default function ClientProfileScreen() {
       )}
 
       {/* Goals */}
-      {goals.length > 0 && (
-        <>
-          <View style={[styles.sectionHeader, { marginTop: 4 }]}>
-            <Text style={styles.sectionLabel}>MY GOALS</Text>
-          </View>
-          <View style={[styles.infoSection, { marginBottom: 24 }]}>
-            {goals.map((goal, i) => {
-              const achieved = goal.status === 'achieved';
-              const dropped = goal.status === 'dropped';
-              const color = achieved ? '#4CAF50' : dropped ? colors.textSecondary : colors.accent;
-              return (
-                <Pressable
-                  key={goal.id}
-                  style={[styles.goalRow, i < goals.length - 1 && styles.goalRowBorder]}
-                  onPress={() => { if (!achieved && !dropped) markGoalAchieved(goal.id); }}
-                >
-                  <Ionicons
-                    name={achieved ? 'checkmark-circle' : dropped ? 'close-circle-outline' : 'radio-button-off-outline'}
-                    size={20} color={color}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.goalTitle, achieved && { textDecorationLine: 'line-through', color: colors.textSecondary }]}>
-                      {goal.title}
+      <>
+        <View style={[styles.sectionHeader, { marginTop: 4 }]}>
+          <Text style={styles.sectionLabel}>MY GOALS</Text>
+        </View>
+        <View style={[styles.infoSection, { marginBottom: 24 }]}>
+          {goals.length === 0 ? (
+            <View style={styles.goalEmptyRow}>
+              <Ionicons name="flag-outline" size={18} color={colors.textSecondary} />
+              <Text style={styles.goalEmptyText}>Your coach will set goals for you here</Text>
+            </View>
+          ) : goals.map((goal, i) => {
+            const achieved = goal.status === 'achieved';
+            const dropped = goal.status === 'dropped';
+            const color = achieved ? '#4CAF50' : dropped ? colors.textSecondary : colors.accent;
+            return (
+              <Pressable
+                key={goal.id}
+                style={[styles.goalRow, i < goals.length - 1 && styles.goalRowBorder]}
+                onPress={() => { if (!achieved && !dropped) markGoalAchieved(goal.id); }}
+              >
+                <Ionicons
+                  name={achieved ? 'checkmark-circle' : dropped ? 'close-circle-outline' : 'radio-button-off-outline'}
+                  size={20} color={color}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.goalTitle, achieved && { textDecorationLine: 'line-through', color: colors.textSecondary }]}>
+                    {goal.title}
+                  </Text>
+                  {goal.target_date && !achieved && !dropped && (
+                    <Text style={styles.goalDate}>
+                      Target: {new Date(goal.target_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </Text>
-                    {goal.target_date && !achieved && !dropped && (
-                      <Text style={styles.goalDate}>
-                        Target: {new Date(goal.target_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </Text>
-                    )}
-                  </View>
-                  {!achieved && !dropped && (
-                    <Text style={styles.goalTapHint}>Tap to achieve</Text>
                   )}
-                  {achieved && <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />}
-                </Pressable>
-              );
-            })}
-          </View>
-        </>
-      )}
+                </View>
+                {!achieved && !dropped && (
+                  <Text style={styles.goalTapHint}>Tap to achieve</Text>
+                )}
+                {achieved && <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />}
+              </Pressable>
+            );
+          })}
+        </View>
+      </>
 
       {/* Contact & Social */}
       <View style={styles.sectionHeader}>
@@ -575,6 +578,8 @@ function makeStyles(c: ColorScheme) {
     goalTitle: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
     goalDate: { ...Typography.caption, color: c.textSecondary },
     goalTapHint: { ...Typography.caption, color: c.accent, fontSize: 10, fontWeight: '700' },
+    goalEmptyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 },
+    goalEmptyText: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic' },
 
     payRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14 },
     payRowBorder: { borderBottomWidth: 1, borderBottomColor: c.border },

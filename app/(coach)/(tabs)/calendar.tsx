@@ -164,7 +164,7 @@ export default function CalendarScreen() {
     refetch: refetchWaitlist,
   } = useWaitlist(profile?.id);
   const { clients } = useClients();
-  const { isDateBlocked } = useAvailability();
+  const { isDateBlocked, availability } = useAvailability();
 
   const mapRow = (row: any): ScheduledSession => ({
     id: row.id,
@@ -376,6 +376,44 @@ export default function CalendarScreen() {
     if (isNaN(proposed.getTime()) || proposed <= new Date()) {
       Alert.alert('Invalid time', 'Please pick a future date and time.'); return;
     }
+
+    // Availability checks — collect soft warnings, hard-block on blocked dates
+    const proposedDateStr = `${dateMatch[1]}-${String(parseInt(dateMatch[2])).padStart(2, '0')}-${String(parseInt(dateMatch[3])).padStart(2, '0')}`;
+    if (isDateBlocked(proposedDateStr)) {
+      Alert.alert('Date Unavailable', 'That date is blocked in your schedule. Choose a different date.');
+      return;
+    }
+    const warnings: string[] = [];
+    const dow = proposed.getDay(); // 0=Sun
+    const dayInfo = availability.find((d) => d.day_of_week === dow);
+    if (!dayInfo || !dayInfo.is_active) {
+      warnings.push('That day is not in your working schedule.');
+    } else {
+      const [sh, sm] = dayInfo.start_time.split(':').map(Number);
+      const [eh, em] = dayInfo.end_time.split(':').map(Number);
+      const startMins = h * 60 + m;
+      if (startMins < sh * 60 + sm || startMins >= eh * 60 + em) {
+        warnings.push(`Time is outside your ${dayInfo.start_time}–${dayInfo.end_time} working hours.`);
+      }
+    }
+    const proposedEnd = proposed.getTime() + (rescheduleTarget.duration_minutes * 60000);
+    const conflict = scheduledSessions.find((ss) => {
+      if (ss.id === rescheduleTarget.id) return false;
+      const ssStart = new Date(ss.scheduled_at).getTime();
+      return proposed.getTime() < ssStart + ss.duration_minutes * 60000 && proposedEnd > ssStart;
+    });
+    if (conflict) warnings.push(`Conflicts with ${conflict.client_name}'s existing session.`);
+
+    if (warnings.length > 0) {
+      const proceed = await new Promise<boolean>((resolve) =>
+        Alert.alert('Availability Warning', warnings.join('\n\n') + '\n\nProceed anyway?', [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Proceed', onPress: () => resolve(true) },
+        ])
+      );
+      if (!proceed) return;
+    }
+
     setRescheduling(true);
     const { error } = await supabase
       .from('scheduled_sessions')

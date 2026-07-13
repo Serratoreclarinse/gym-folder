@@ -207,10 +207,12 @@ export default function ClientProgressScreen() {
   const firstName = profile?.name?.split(' ')[0] ?? 'there';
   const { pkg, sessions, coachInfo, nextScheduled, upcomingScheduled, loading, error, refetch } = useClientData();
   const { announcements } = useClientAnnouncements(pkg?.coach_id ?? null);
-  const { requests: bookingRequests, submitRequest, refetch: refetchRequests } = useClientBookingRequests(
+  const { requests: bookingRequests, submitRequest, cancelRequest, refetch: refetchRequests } = useClientBookingRequests(
     pkg?.coach_id ?? null,
     pkg?.id ?? null,
   );
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const typeIcon = useMemo(() => getTypeIcon(colors), [colors]);
@@ -424,13 +426,17 @@ export default function ClientProgressScreen() {
 
       {/* Pending requests (recent) */}
       {bookingRequests.filter((r) => r.status === 'pending').length > 0 && (
-        <View style={styles.pendingRequestBanner}>
+        <Pressable
+          style={({ pressed }) => [styles.pendingRequestBanner, pressed && { opacity: 0.75 }]}
+          onPress={() => setShowPendingModal(true)}
+        >
           <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
-          <Text style={styles.pendingRequestText}>
+          <Text style={[styles.pendingRequestText, { flex: 1 }]}>
             {bookingRequests.filter((r) => r.status === 'pending').length} request
             {bookingRequests.filter((r) => r.status === 'pending').length !== 1 ? 's' : ''} pending — waiting for coach
           </Text>
-        </View>
+          <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
+        </Pressable>
       )}
 
       {/* Booking request modal */}
@@ -484,6 +490,51 @@ export default function ClientProgressScreen() {
               onPress={() => { setRequestModal(null); setReqDate(''); setReqTime(''); setReqNotes(''); }}
             >
               <Text style={styles.reqCancelBtnText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Pending requests modal */}
+      <Modal visible={showPendingModal} transparent animationType="slide" onRequestClose={() => setShowPendingModal(false)}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }} onPress={() => setShowPendingModal(false)} />
+          <View style={styles.modalSheet}>
+            <View style={styles.modalSheetHandle} />
+            <Text style={styles.modalSheetTitle}>Pending Requests</Text>
+            {bookingRequests.filter((r) => r.status === 'pending').map((r) => (
+              <View key={r.id} style={styles.pendingReqRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.pendingReqType}>
+                    {r.type === 'renewal' ? 'Package Renewal' : 'Session Booking'}
+                  </Text>
+                  {r.preferred_date ? (
+                    <Text style={styles.pendingReqMeta}>Date: {r.preferred_date}{r.preferred_time ? ` at ${r.preferred_time}` : ''}</Text>
+                  ) : null}
+                  {r.notes ? <Text style={styles.pendingReqMeta} numberOfLines={2}>{r.notes}</Text> : null}
+                  <Text style={styles.pendingReqDate}>
+                    Sent {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </Text>
+                </View>
+                <Pressable
+                  style={({ pressed }) => [styles.pendingReqCancelBtn, (cancellingId === r.id || pressed) && { opacity: 0.5 }]}
+                  disabled={cancellingId === r.id}
+                  onPress={async () => {
+                    setCancellingId(r.id);
+                    const { error } = await cancelRequest(r.id);
+                    setCancellingId(null);
+                    if (error) Alert.alert('Error', error);
+                    if (bookingRequests.filter((x) => x.status === 'pending').length <= 1) setShowPendingModal(false);
+                  }}
+                >
+                  <Text style={styles.pendingReqCancelText}>
+                    {cancellingId === r.id ? '…' : 'Cancel'}
+                  </Text>
+                </Pressable>
+              </View>
+            ))}
+            <Pressable style={styles.reqCancelBtn} onPress={() => setShowPendingModal(false)}>
+              <Text style={styles.reqCancelBtnText}>Close</Text>
             </Pressable>
           </View>
         </View>
@@ -1049,6 +1100,18 @@ function makeStyles(c: ColorScheme) {
       borderWidth: 1, borderColor: c.border,
     },
     pendingRequestText: { color: c.textSecondary, fontSize: 12, fontWeight: '500' },
+    pendingReqRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    pendingReqType: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
+    pendingReqMeta: { ...Typography.caption, color: c.textSecondary, marginBottom: 1 },
+    pendingReqDate: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic', marginTop: 2 },
+    pendingReqCancelBtn: {
+      backgroundColor: '#FF4D4D20', borderWidth: 1, borderColor: '#FF4D4D50',
+      borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7,
+    },
+    pendingReqCancelText: { color: '#FF4D4D', fontSize: 12, fontWeight: '700' },
 
     // Booking request modal (bottom sheet)
     modalOverlay: {

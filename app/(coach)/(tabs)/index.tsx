@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Image, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
@@ -115,7 +115,7 @@ export default function CoachDashboard() {
   const [pausedWorkout, setPausedWorkout] = useState<any | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [monthEarnings, setMonthEarnings] = useState<number | null>(null);
-  const [atRiskClients, setAtRiskClients] = useState<{ id: string; name: string; daysSince: number }[]>([]);
+  const [atRiskClients, setAtRiskClients] = useState<{ id: string; name: string; daysSince: number; phone: string | null }[]>([]);
   const [incomingTransfers, setIncomingTransfers] = useState<{
     id: string; client_name: string; from_coach_id: string; from_coach_name: string;
     package_type: string; sessions_remaining: number; notes: string | null;
@@ -213,7 +213,7 @@ export default function CoachDashboard() {
         .gte('session_date', new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0]),
       supabase
         .from('packages')
-        .select('client_id, start_date, client:profiles!packages_client_id_fkey(name)')
+        .select('client_id, start_date, client:profiles!packages_client_id_fkey(name, phone)')
         .eq('coach_id', profile.id)
         .eq('status', 'active'),
     ]);
@@ -225,14 +225,19 @@ export default function CoachDashboard() {
     }
 
     const today = new Date();
-    const riskMap = new Map<string, { id: string; name: string; daysSince: number }>();
+    const riskMap = new Map<string, { id: string; name: string; daysSince: number; phone: string | null }>();
     for (const pkg of pkgRes.data ?? []) {
       const clientId = pkg.client_id;
       const lastDate = lastSess.get(clientId);
       const refDate  = lastDate ?? pkg.start_date;
       const days     = Math.floor((today.getTime() - new Date(refDate).getTime()) / 86400000);
       if (days >= 14 && !riskMap.has(clientId)) {
-        riskMap.set(clientId, { id: clientId, name: (pkg.client as any)?.name ?? '—', daysSince: days });
+        riskMap.set(clientId, {
+          id: clientId,
+          name: (pkg.client as any)?.name ?? '—',
+          daysSince: days,
+          phone: (pkg.client as any)?.phone ?? null,
+        });
       }
     }
     setAtRiskClients([...riskMap.values()].sort((a, b) => b.daysSince - a.daysSince));
@@ -684,22 +689,43 @@ export default function CoachDashboard() {
           {atRiskClients.map((c) => {
             const ini = c.name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
             return (
-              <Pressable
+              <View
                 key={c.id}
-                style={({ pressed }) => [styles.strikeAlertCard, { borderColor: '#FF980050' }, pressed && { opacity: 0.75 }]}
-                onPress={() => router.push(`/(coach)/client/${c.id}`)}
+                style={[styles.strikeAlertCard, { borderColor: '#FF980050' }]}
               >
-                <View style={[styles.strikeAvatar, { backgroundColor: '#FF980018', borderColor: '#FF980040' }]}>
-                  <Text style={[styles.strikeAvatarText, { color: '#FF9800' }]}>{ini}</Text>
+                <Pressable
+                  style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }, pressed && { opacity: 0.75 }]}
+                  onPress={() => router.push(`/(coach)/client/${c.id}`)}
+                >
+                  <View style={[styles.strikeAvatar, { backgroundColor: '#FF980018', borderColor: '#FF980040' }]}>
+                    <Text style={[styles.strikeAvatarText, { color: '#FF9800' }]}>{ini}</Text>
+                  </View>
+                  <View style={styles.strikeAlertInfo}>
+                    <Text style={styles.strikeAlertName}>{c.name}</Text>
+                    <Text style={[styles.strikeAlertDate, { color: '#FF9800' }]}>
+                      No session in {c.daysSince} day{c.daysSince !== 1 ? 's' : ''}
+                    </Text>
+                  </View>
+                </Pressable>
+                <View style={styles.atRiskActions}>
+                  <Pressable
+                    style={({ pressed }) => [styles.atRiskBtn, pressed && { opacity: 0.7 }]}
+                    onPress={() => router.push(`/(coach)/log-session?clientId=${c.id}` as any)}
+                  >
+                    <Ionicons name="add-circle-outline" size={13} color="#FF9800" />
+                    <Text style={styles.atRiskBtnText}>LOG</Text>
+                  </Pressable>
+                  {c.phone ? (
+                    <Pressable
+                      style={({ pressed }) => [styles.atRiskBtn, pressed && { opacity: 0.7 }]}
+                      onPress={() => Linking.openURL(`tel:${c.phone}`)}
+                    >
+                      <Ionicons name="call-outline" size={13} color="#FF9800" />
+                      <Text style={styles.atRiskBtnText}>CALL</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
-                <View style={styles.strikeAlertInfo}>
-                  <Text style={styles.strikeAlertName}>{c.name}</Text>
-                  <Text style={[styles.strikeAlertDate, { color: '#FF9800' }]}>
-                    No session in {c.daysSince} day{c.daysSince !== 1 ? 's' : ''}
-                  </Text>
-                </View>
-                <Ionicons name="alert-circle-outline" size={20} color="#FF9800" />
-              </Pressable>
+              </View>
             );
           })}
           <View style={{ height: 8 }} />
@@ -820,6 +846,13 @@ function makeStyles(c: ColorScheme) {
     strikeAlertInfo: { flex: 1 },
     strikeAlertName: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
     strikeAlertDate: { ...Typography.caption, color: c.textSecondary },
+    atRiskActions: { flexDirection: 'row', gap: 6 },
+    atRiskBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      backgroundColor: '#FF980018', borderWidth: 1, borderColor: '#FF980050',
+      borderRadius: 8, paddingHorizontal: 9, paddingVertical: 6,
+    },
+    atRiskBtnText: { fontSize: 11, fontWeight: '800', color: '#FF9800', letterSpacing: 0.5 },
     strikeCountBadge: {
       alignItems: 'center',
       gap: 6,
