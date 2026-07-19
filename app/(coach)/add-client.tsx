@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { PhoneInput } from '@/components/PhoneInput';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { Typography, ColorScheme } from '@/constants/theme';
@@ -134,7 +135,10 @@ export default function AddClientScreen() {
           colors={colors}
           styles={styles}
         />
-        <Field label="Phone" value={phone} onChangeText={setPhone} placeholder="+63 912 345 6789" keyboardType="phone-pad" colors={colors} styles={styles} />
+        <View style={styles.field}>
+          <Text style={styles.label}>Phone</Text>
+          <PhoneInput value={phone} onChange={setPhone} colors={colors} />
+        </View>
 
         {/* Package section */}
         <Text style={[styles.sectionTitle, { marginTop: 28 }]}>PACKAGE</Text>

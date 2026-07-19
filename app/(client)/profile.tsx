@@ -4,8 +4,8 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
-import QRCode from 'react-native-qrcode-svg';
 import { supabase } from '@/lib/supabase';
+import { PhoneInput } from '@/components/PhoneInput';
 import { useAuth } from '@/context/AuthContext';
 import { useClientData } from '@/hooks/useClientData';
 import { Typography } from '@/constants/theme';
@@ -19,15 +19,14 @@ const PAY_METHOD_LABEL: Record<string, string> = {
 };
 
 type ClientPayment = { id: string; amount: number; payment_method: string; paid_at: string; notes: string | null };
+type RenewalRecord = { id: string; total_sessions: number; package_type: string; created_at: string; payment_status: string; balance_due_date: string | null };
 type ClientGoal = { id: string; title: string; description: string | null; target_date: string | null; status: 'active' | 'achieved' | 'dropped' };
 
 export default function ClientProfileScreen() {
   const { user, profile, signOut, refreshProfile } = useAuth();
-  const { colors, isDark, toggleTheme } = useTheme();
+  const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { coachInfo } = useClientData();
-  const [timeWindow, setTimeWindow] = useState(() => Math.floor(Date.now() / 300000));
-  const [secondsLeft, setSecondsLeft] = useState(() => 300 - Math.floor((Date.now() % 300000) / 1000));
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -35,9 +34,10 @@ export default function ClientProfileScreen() {
   const [instagram, setInstagram] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Goals + payments
+  // Goals + payments + renewals
   const [goals, setGoals] = useState<ClientGoal[]>([]);
   const [clientPayments, setClientPayments] = useState<ClientPayment[]>([]);
+  const [renewals, setRenewals] = useState<RenewalRecord[]>([]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -47,6 +47,11 @@ export default function ClientProfileScreen() {
     supabase.from('payments').select('id, amount, payment_method, paid_at, notes')
       .eq('client_id', user.id).order('paid_at', { ascending: false }).limit(20)
       .then(({ data }) => setClientPayments((data ?? []) as ClientPayment[]));
+    supabase.from('renewal_requests')
+      .select('id, total_sessions, package_type, created_at, payment_status, balance_due_date')
+      .eq('client_id', user.id).eq('status', 'accepted')
+      .order('created_at', { ascending: false }).limit(20)
+      .then(({ data }) => setRenewals((data ?? []) as RenewalRecord[]));
   }, [user?.id]);
 
   const markGoalAchieved = async (id: string) => {
@@ -60,15 +65,9 @@ export default function ClientProfileScreen() {
   const [confirmPw, setConfirmPw] = useState('');
   const [changingPw, setChangingPw] = useState(false);
   const [pwSuccess, setPwSuccess] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
 
-  useEffect(() => {
-    const tick = setInterval(() => {
-      const now = Date.now();
-      setTimeWindow(Math.floor(now / 300000));
-      setSecondsLeft(300 - Math.floor((now % 300000) / 1000));
-    }, 1000);
-    return () => clearInterval(tick);
-  }, []);
 
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -172,24 +171,6 @@ export default function ClientProfileScreen() {
       <Text style={styles.name}>{profile?.name ?? '—'}</Text>
       <Text style={styles.email}>{profile?.email ?? '—'}</Text>
 
-      {/* QR Code */}
-      {profile?.id && (
-        <View style={styles.qrCard}>
-          <Text style={styles.qrTitle}>MY QR CODE</Text>
-          <Text style={styles.qrSub}>Show this to your coach to check in</Text>
-          <View style={styles.qrWrap}>
-            <QRCode
-              value={`${profile.id}:${timeWindow}`}
-              size={180}
-              color={colors.textPrimary}
-              backgroundColor={colors.surface}
-            />
-          </View>
-          <Text style={styles.qrExpiry}>
-            Refreshes in {Math.floor(secondsLeft / 60)}m {secondsLeft % 60}s
-          </Text>
-        </View>
-      )}
 
       {/* My Coach */}
       {coachInfo && (
@@ -263,7 +244,7 @@ export default function ClientProfileScreen() {
           ) : goals.map((goal, i) => {
             const achieved = goal.status === 'achieved';
             const dropped = goal.status === 'dropped';
-            const color = achieved ? '#4CAF50' : dropped ? colors.textSecondary : colors.accent;
+            const color = achieved ? colors.success : dropped ? colors.textSecondary : colors.accent;
             return (
               <Pressable
                 key={goal.id}
@@ -287,7 +268,7 @@ export default function ClientProfileScreen() {
                 {!achieved && !dropped && (
                   <Text style={styles.goalTapHint}>Tap to achieve</Text>
                 )}
-                {achieved && <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />}
+                {achieved && <Ionicons name="checkmark-circle" size={16} color={colors.success} />}
               </Pressable>
             );
           })}
@@ -308,8 +289,20 @@ export default function ClientProfileScreen() {
       {editing ? (
         <View style={styles.editCard}>
           <EditField icon="person-outline" label="NAME" value={name} onChangeText={setName} placeholder="Your full name" styles={styles} colors={colors} />
-          <EditField icon="call-outline" label="PHONE" value={phone} onChangeText={setPhone} placeholder="+63 912 345 6789" keyboardType="phone-pad" styles={styles} colors={colors} />
-          <EditField icon="logo-whatsapp" label="WHATSAPP" value={whatsapp} onChangeText={setWhatsapp} placeholder="+63 912 345 6789" keyboardType="phone-pad" iconColor="#25D366" styles={styles} colors={colors} />
+          <View style={[styles.editField, styles.editFieldBorder]}>
+            <Ionicons name="call-outline" size={18} color={colors.textSecondary} style={styles.rowIcon} />
+            <View style={styles.rowContent}>
+              <Text style={styles.infoLabel}>PHONE</Text>
+              <PhoneInput value={phone} onChange={setPhone} colors={colors} inputStyle={{ backgroundColor: 'transparent', borderWidth: 0, paddingHorizontal: 0, paddingVertical: 2, ...Typography.body, color: colors.textPrimary }} />
+            </View>
+          </View>
+          <View style={[styles.editField, styles.editFieldBorder]}>
+            <Ionicons name="logo-whatsapp" size={18} color="#25D366" style={styles.rowIcon} />
+            <View style={styles.rowContent}>
+              <Text style={styles.infoLabel}>WHATSAPP</Text>
+              <PhoneInput value={whatsapp} onChange={setWhatsapp} colors={colors} inputStyle={{ backgroundColor: 'transparent', borderWidth: 0, paddingHorizontal: 0, paddingVertical: 2, ...Typography.body, color: colors.textPrimary }} placeholder="WhatsApp number" />
+            </View>
+          </View>
           <EditField icon="logo-instagram" label="INSTAGRAM" value={instagram} onChangeText={setInstagram} placeholder="@yourhandle" iconColor="#E1306C" last styles={styles} colors={colors} />
           <View style={styles.editActions}>
             <Pressable style={styles.cancelBtn} onPress={() => setEditing(false)}>
@@ -361,7 +354,7 @@ export default function ClientProfileScreen() {
           <View style={[styles.infoSection, { marginBottom: 24 }]}>
             {clientPayments.map((pay, i) => (
               <View key={pay.id} style={[styles.payRow, i < clientPayments.length - 1 && styles.payRowBorder]}>
-                <Ionicons name="cash-outline" size={18} color="#4CAF50" />
+                <Ionicons name="cash-outline" size={18} color={colors.success} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.payAmount}>
                     OMR {Number(pay.amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
@@ -378,6 +371,39 @@ export default function ClientProfileScreen() {
         </>
       )}
 
+      {/* Package Renewal History */}
+      {renewals.length > 0 && (
+        <>
+          <View style={[styles.sectionHeader, { marginTop: 4 }]}>
+            <Text style={styles.sectionLabel}>PACKAGE RENEWALS</Text>
+          </View>
+          <View style={[styles.infoSection, { marginBottom: 24 }]}>
+            {renewals.map((r, i) => {
+              const pkgLabel: Record<string, string> = { '30min': '30 min', '45min': '45 min', '1hr': '1 hour' };
+              const dateStr = new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+              const isPartial = r.payment_status === 'partial';
+              const dueDateStr = r.balance_due_date
+                ? new Date(r.balance_due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                : null;
+              return (
+                <View key={r.id} style={[styles.payRow, i < renewals.length - 1 && styles.payRowBorder]}>
+                  <Ionicons name="refresh-circle-outline" size={18} color={colors.accent} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.payAmount, { color: colors.accent }]}>+{r.total_sessions} sessions</Text>
+                    <Text style={styles.payMeta}>{dateStr} · {pkgLabel[r.package_type] ?? r.package_type}</Text>
+                    {isPartial && (
+                      <Text style={[styles.payMeta, { color: '#F59E0B', marginTop: 2 }]}>
+                        ⚠️ Balance pending{dueDateStr ? ` · due ${dueDateStr}` : ''}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </>
+      )}
+
       <Pressable
         style={({ pressed }) => [styles.guideBtn, pressed && { opacity: 0.7 }]}
         onPress={() => router.push('/(client)/guide')}
@@ -387,19 +413,6 @@ export default function ClientProfileScreen() {
         <Ionicons name="chevron-forward" size={14} color={colors.accent} style={{ marginLeft: 'auto' }} />
       </Pressable>
 
-      <View style={[styles.infoRow, { marginBottom: 8 }]}>
-        <Ionicons name={isDark ? 'moon-outline' : 'sunny-outline'} size={18} color={colors.textSecondary} style={{ marginRight: 10 }} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.infoLabel}>APPEARANCE</Text>
-          <Text style={styles.infoValue}>{isDark ? 'Dark Mode' : 'Light Mode'}</Text>
-        </View>
-        <Switch
-          value={!isDark}
-          onValueChange={toggleTheme}
-          trackColor={{ false: colors.border, true: colors.accent + '80' }}
-          thumbColor={!isDark ? colors.accent : colors.textSecondary}
-        />
-      </View>
 
       {/* Change Password */}
       <Pressable
@@ -444,30 +457,40 @@ export default function ClientProfileScreen() {
             </View>
             {pwSuccess ? (
               <View style={styles.pwSuccess}>
-                <Ionicons name="checkmark-circle" size={36} color="#4CAF50" />
+                <Ionicons name="checkmark-circle" size={36} color={colors.success} />
                 <Text style={styles.pwSuccessText}>Password Changed!</Text>
               </View>
             ) : (
               <>
-                <TextInput
-                  style={styles.modalInput}
-                  value={newPw}
-                  onChangeText={setNewPw}
-                  placeholder="New password (min 6 chars)"
-                  placeholderTextColor={colors.textSecondary}
-                  secureTextEntry
-                  autoFocus
-                />
-                <TextInput
-                  style={[styles.modalInput, { marginTop: 10 }]}
-                  value={confirmPw}
-                  onChangeText={setConfirmPw}
-                  placeholder="Confirm new password"
-                  placeholderTextColor={colors.textSecondary}
-                  secureTextEntry
-                  returnKeyType="done"
-                  onSubmitEditing={handleChangePassword}
-                />
+                <View style={styles.pwInputRow}>
+                  <TextInput
+                    style={[styles.modalInput, { flex: 1, borderWidth: 0 }]}
+                    value={newPw}
+                    onChangeText={setNewPw}
+                    placeholder="New password (min 6 chars)"
+                    placeholderTextColor={colors.textSecondary}
+                    secureTextEntry={!showNewPw}
+                    autoFocus
+                  />
+                  <Pressable onPress={() => setShowNewPw(v => !v)} style={styles.eyeBtn}>
+                    <Ionicons name={showNewPw ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.textSecondary} />
+                  </Pressable>
+                </View>
+                <View style={[styles.pwInputRow, { marginTop: 10 }]}>
+                  <TextInput
+                    style={[styles.modalInput, { flex: 1, borderWidth: 0 }]}
+                    value={confirmPw}
+                    onChangeText={setConfirmPw}
+                    placeholder="Confirm new password"
+                    placeholderTextColor={colors.textSecondary}
+                    secureTextEntry={!showConfirmPw}
+                    returnKeyType="done"
+                    onSubmitEditing={handleChangePassword}
+                  />
+                  <Pressable onPress={() => setShowConfirmPw(v => !v)} style={styles.eyeBtn}>
+                    <Ionicons name={showConfirmPw ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.textSecondary} />
+                  </Pressable>
+                </View>
                 <Pressable
                   style={[styles.saveBtn, { borderRadius: 12, marginTop: 14 }, changingPw && { opacity: 0.6 }]}
                   onPress={handleChangePassword}
@@ -583,7 +606,7 @@ function makeStyles(c: ColorScheme) {
 
     payRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14 },
     payRowBorder: { borderBottomWidth: 1, borderBottomColor: c.border },
-    payAmount: { ...Typography.body, color: '#4CAF50', fontWeight: '800', marginBottom: 2 },
+    payAmount: { ...Typography.body, color: c.success, fontWeight: '800', marginBottom: 2 },
     payMeta: { ...Typography.caption, color: c.textSecondary },
     payNotes: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic', marginTop: 2 },
 
@@ -642,7 +665,7 @@ function makeStyles(c: ColorScheme) {
 
     modalOverlay: {
       position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-      backgroundColor: '#00000070', justifyContent: 'flex-end',
+      backgroundColor: c.overlay, justifyContent: 'flex-end',
     },
     modalBox: {
       backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
@@ -659,7 +682,9 @@ function makeStyles(c: ColorScheme) {
       borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
       color: c.textPrimary, fontSize: 15,
     },
+    pwInputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.bg, borderWidth: 1, borderColor: c.border, borderRadius: 12 },
+    eyeBtn: { paddingHorizontal: 12, paddingVertical: 12 },
     pwSuccess: { alignItems: 'center', paddingVertical: 24, gap: 10 },
-    pwSuccessText: { fontSize: 18, fontWeight: '800', color: '#4CAF50' },
+    pwSuccessText: { fontSize: 18, fontWeight: '800', color: c.success },
   });
 }

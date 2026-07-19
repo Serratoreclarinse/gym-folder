@@ -167,7 +167,7 @@ export default function TimerScreen() {
   const isWarning = remaining <= 5 && remaining > 0 && running;
   const isDone = remaining === 0;
 
-  const ringColor = isDone ? '#4CAF50' : isWarning ? '#FFA500' : colors.accent;
+  const ringColor = isDone ? colors.success : isWarning ? colors.warning : colors.accent;
 
   return (
     <Pressable style={styles.container} onPress={Keyboard.dismiss} accessible={false}>

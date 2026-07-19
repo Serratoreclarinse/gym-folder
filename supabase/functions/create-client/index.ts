@@ -33,12 +33,17 @@ serve(async (req) => {
     if (authErr || !caller) throw new Error('Unauthorized');
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
-    const { data: callerProfile } = await adminClient
-      .from('profiles')
-      .select('role')
-      .eq('id', caller.id)
-      .single();
-    if (!['coach', 'admin'].includes(callerProfile?.role)) throw new Error('Unauthorized');
+
+    // 'admin' is not in the user_role enum on profiles — check app_metadata instead
+    const isAdmin = caller.app_metadata?.role === 'admin';
+    if (!isAdmin) {
+      const { data: callerProfile } = await adminClient
+        .from('profiles')
+        .select('role')
+        .eq('id', caller.id)
+        .single();
+      if (callerProfile?.role !== 'coach') throw new Error('Unauthorized');
+    }
 
     const { name, email, phone, package_type, total_sessions, duration_weeks, coach_id } = await req.json();
 
@@ -51,7 +56,7 @@ serve(async (req) => {
 
     const { data: existingProfile } = await adminClient
       .from('profiles')
-      .select('id, role')
+      .select('id, role, deactivated_at')
       .eq('email', normalizedEmail)
       .maybeSingle();
 
@@ -64,6 +69,10 @@ serve(async (req) => {
       }
       // Existing client — reuse their account, just add a new package
       userId = existingProfile.id;
+      // Restore if deactivated
+      if (existingProfile.deactivated_at) {
+        await adminClient.from('profiles').update({ deactivated_at: null }).eq('id', userId);
+      }
     } else {
       // New user — create with temp password
       tempPassword = generatePassword();
@@ -82,7 +91,8 @@ serve(async (req) => {
         .eq('id', userId);
     }
 
-    const resolvedCoachId = callerProfile.role === 'admin' ? coach_id : caller.id;
+    // Admin uses the passed coach_id; coach uses their own id
+    const resolvedCoachId = isAdmin ? coach_id : caller.id;
     if (!resolvedCoachId) throw new Error('coach_id is required');
 
     const { data: pkg, error: pkgErr } = await adminClient

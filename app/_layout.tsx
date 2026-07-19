@@ -13,6 +13,7 @@ import { useFonts } from 'expo-font';
 import {
   Montserrat_700Bold,
   Montserrat_800ExtraBold,
+  Montserrat_900Black,
   Montserrat_600SemiBold,
 } from '@expo-google-fonts/montserrat';
 import {
@@ -21,19 +22,21 @@ import {
   Inter_600SemiBold,
 } from '@expo-google-fonts/inter';
 
-function AnimatedSplash() {
+function AnimatedSplash({ fontsLoaded }: { fontsLoaded: boolean }) {
   const fadeAnim  = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
 
   useEffect(() => {
     Animated.spring(scaleAnim, { toValue: 1, friction: 7, useNativeDriver: true }).start();
+  }, []);
 
+  useEffect(() => {
+    if (!fontsLoaded) return;
     const t = setTimeout(() => {
       Animated.timing(fadeAnim, { toValue: 0, duration: 350, useNativeDriver: true }).start();
-    }, 900);
-
+    }, 400);
     return () => clearTimeout(t);
-  }, []);
+  }, [fontsLoaded]);
 
   return (
     <Animated.View style={[styles.splash, { opacity: fadeAnim }]} pointerEvents="none">
@@ -125,6 +128,7 @@ export default function RootLayout() {
     Montserrat_600SemiBold,
     Montserrat_700Bold,
     Montserrat_800ExtraBold,
+    Montserrat_900Black,
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
@@ -143,7 +147,7 @@ export default function RootLayout() {
           </ThemeProvider>
         )}
         {/* Splash renders immediately — covers the font-loading gap AND auth wait */}
-        <AnimatedSplash />
+        <AnimatedSplash fontsLoaded={fontsLoaded} />
       </View>
     </NavThemeProvider>
   );

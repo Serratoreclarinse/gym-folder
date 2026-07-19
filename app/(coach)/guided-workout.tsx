@@ -1,6 +1,6 @@
 ﻿import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, Vibration, View } from 'react-native';
+import { Alert, Keyboard, Pressable, StyleSheet, Text, TextInput, Vibration, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -56,6 +56,7 @@ export default function GuidedWorkoutScreen() {
     durationMinutes: string;
     sessionNotes: string;
     clientName: string;
+    sessionId?: string;
     resume?: string;
     alreadySaved?: string;
   }>();
@@ -66,6 +67,13 @@ export default function GuidedWorkoutScreen() {
   const [exIdx, setExIdx] = useState(0);
   const [setIdx, setSetIdx] = useState(0);
   const [phase, setPhase] = useState<Phase>('set');
+  // Per-set actual weights and notes: [exercise_index][set_index]
+  const [setWeights, setSetWeights] = useState<string[][]>(
+    () => exercises.map((ex) => Array.from({ length: Math.max(1, ex.sets ?? 1) }, () => ex.weight ?? '')),
+  );
+  const [setNotes, setSetNotes] = useState<string[][]>(
+    () => exercises.map((ex) => Array.from({ length: Math.max(1, ex.sets ?? 1) }, () => '')),
+  );
   const [restRemaining, setRestRemaining] = useState(60);
   const [defaultRest, setDefaultRest] = useState(60);
   const [restRunning, setRestRunning] = useState(false);
@@ -73,6 +81,7 @@ export default function GuidedWorkoutScreen() {
   const [startTime] = useState(() => Date.now());
   const [sessionAlreadySaved, setSessionAlreadySaved] = useState(params.alreadySaved === 'true');
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const setNotesRef = useRef<TextInput>(null);
 
   const saveProgress = async (currentExIdx: number, currentSetIdx: number) => {
     try {
@@ -222,7 +231,33 @@ export default function GuidedWorkoutScreen() {
   const handleFinish = async () => {
     setPhase('saving');
     try {
-      if (!sessionAlreadySaved) {
+      // Merge per-set weights and notes back into exercises
+      const finalExercises = exercises.map((ex, i) => {
+        const weights = (setWeights[i] ?? []).map((w) => w.trim()).filter(Boolean);
+        const unique = [...new Set(weights)];
+        const finalWeight = weights.length === 0 ? ex.weight : (unique.length === 1 ? unique[0] : weights.join(' / '));
+
+        const perSetNotes = (setNotes[i] ?? [])
+          .map((n, si) => n.trim() ? `S${si + 1}: ${n.trim()}` : '')
+          .filter(Boolean)
+          .join(' · ');
+        const finalNotes = perSetNotes
+          ? (ex.notes ? `${ex.notes} | ${perSetNotes}` : perSetNotes)
+          : (ex.notes ?? null);
+
+        return { ...ex, weight: finalWeight, notes: finalNotes };
+      });
+
+      if (sessionAlreadySaved) {
+        // Session already exists — just update the exercises with actual weights
+        if (params.sessionId) {
+          const { error } = await supabase
+            .from('workout_sessions')
+            .update({ exercises: finalExercises })
+            .eq('id', params.sessionId);
+          if (error) throw error;
+        }
+      } else {
         const elapsed = Math.round((Date.now() - startTime) / 60000);
         const finalDuration = Math.max(Number(params.durationMinutes) || elapsed, elapsed);
         const { error } = await supabase.from('workout_sessions').insert({
@@ -231,8 +266,9 @@ export default function GuidedWorkoutScreen() {
           coach_id: params.coachId,
           session_date: params.sessionDate,
           duration_minutes: finalDuration,
-          exercises,
+          exercises: finalExercises,
           notes: params.sessionNotes || null,
+          status: 'completed',
         });
         if (error) throw error;
       }
@@ -276,64 +312,113 @@ export default function GuidedWorkoutScreen() {
 
       {/* SET phase */}
       {phase === 'set' && (
-        <View style={styles.phase}>
-          <Text style={styles.progressLabel}>
-            {isSupersetGroup
-              ? `SUPERSET ${currentGroup.indexOf(exIdx) + 1}/${currentGroup.length}  ·  Group ${currentGroupIdx + 1} of ${groups.length}`
-              : `Exercise ${currentGroupIdx + 1} of ${groups.length}`}
-          </Text>
+        <View style={styles.phaseSet}>
 
-          <Text style={styles.exName}>{currentEx?.exercise_name}</Text>
-
-          <View style={styles.setChip}>
-            <Text style={styles.setChipText}>SET {setIdx + 1} OF {totalSets}</Text>
-          </View>
-
-          {(currentEx?.reps || currentEx?.weight) ? (
-            <Text style={styles.targetText}>
-              {[
-                currentEx.reps ? `${currentEx.reps} reps` : null,
-                currentEx.weight ?? null,
-              ].filter(Boolean).join('  ·  ')}
-            </Text>
-          ) : null}
-
-          {currentEx?.notes ? (
-            <Text style={styles.notesText}>{currentEx.notes}</Text>
-          ) : null}
-
-          <Pressable style={styles.primaryBtn} onPress={handleSetDone}>
-            <Ionicons name="checkmark-circle" size={26} color={colors.bg} />
-            <Text style={styles.primaryBtnText}>SET DONE</Text>
-          </Pressable>
-
-          <View style={styles.dotsRow}>
-            {Array.from({ length: totalSets }).map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.dot,
-                  i < setIdx && styles.dotDone,
-                  i === setIdx && styles.dotCurrent,
-                ]}
-              />
-            ))}
-          </View>
-
-          <View style={styles.exerciseList}>
+          {/* TOP: Exercise overview strip */}
+          <View style={styles.exStrip}>
             {exercises.map((ex, i) => (
-              <View key={i} style={styles.exerciseListRow}>
+              <View key={i} style={[styles.exStripRow, i === exIdx && styles.exStripRowActive]}>
                 <Ionicons
                   name={i < exIdx ? 'checkmark-circle' : i === exIdx ? 'ellipse' : 'ellipse-outline'}
-                  size={14}
+                  size={12}
                   color={i < exIdx ? colors.accent : i === exIdx ? colors.accent : colors.border}
                 />
-                <Text style={[styles.exerciseListName, i === exIdx && { color: colors.textPrimary }]}>
+                <Text
+                  style={[styles.exStripName, i === exIdx && { color: colors.textPrimary, fontWeight: '700' }]}
+                  numberOfLines={1}
+                >
                   {ex.exercise_name}
                 </Text>
+                {i === exIdx && (
+                  <Text style={styles.exStripBadge}>S{setIdx + 1}/{totalSets}</Text>
+                )}
               </View>
             ))}
           </View>
+
+          {/* MIDDLE: Current exercise info */}
+          <View style={styles.phaseCenter}>
+            <Text style={styles.progressLabel}>
+              {isSupersetGroup
+                ? `SUPERSET ${currentGroup.indexOf(exIdx) + 1}/${currentGroup.length}  ·  Group ${currentGroupIdx + 1} of ${groups.length}`
+                : `Exercise ${currentGroupIdx + 1} of ${groups.length}`}
+            </Text>
+
+            <Text style={styles.exName}>{currentEx?.exercise_name}</Text>
+
+            <View style={styles.setChip}>
+              <Text style={styles.setChipText}>SET {setIdx + 1} OF {totalSets}</Text>
+            </View>
+
+            {currentEx?.reps ? (
+              <Text style={styles.targetText}>{currentEx.reps} reps</Text>
+            ) : null}
+
+            {currentEx?.notes ? (
+              <Text style={styles.notesText}>{currentEx.notes}</Text>
+            ) : null}
+          </View>
+
+          {/* BOTTOM: Per-set weight + notes + SET DONE */}
+          <View style={styles.phaseBottom}>
+            {/* Weight */}
+            <View style={styles.weightRow}>
+              <Text style={styles.weightRowLabel}>
+                WEIGHT{setIdx > 0 && setWeights[exIdx]?.[setIdx - 1] ? `  ·  prev: ${setWeights[exIdx][setIdx - 1]}` : ''}
+              </Text>
+              <TextInput
+                style={styles.weightInput}
+                value={setWeights[exIdx]?.[setIdx] ?? ''}
+                onChangeText={(v) => setSetWeights((prev) => {
+                  const next = prev.map((arr) => [...arr]);
+                  if (next[exIdx]) next[exIdx][setIdx] = v;
+                  return next;
+                })}
+                placeholder={currentEx?.weight ?? 'e.g. 60kg'}
+                placeholderTextColor={colors.textSecondary + '60'}
+                returnKeyType="next"
+                onSubmitEditing={() => setNotesRef.current?.focus()}
+                blurOnSubmit={false}
+              />
+            </View>
+
+            {/* Per-set notes */}
+            <TextInput
+              ref={setNotesRef}
+              style={styles.setNotesInput}
+              value={setNotes[exIdx]?.[setIdx] ?? ''}
+              onChangeText={(v) => setSetNotes((prev) => {
+                const next = prev.map((arr) => [...arr]);
+                if (next[exIdx]) next[exIdx][setIdx] = v;
+                return next;
+              })}
+              placeholder="Set notes (optional)…"
+              placeholderTextColor={colors.textSecondary + '60'}
+              returnKeyType="done"
+              onSubmitEditing={() => Keyboard.dismiss()}
+            />
+
+            {/* Progress dots */}
+            <View style={styles.dotsRow}>
+              {Array.from({ length: totalSets }).map((_, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.dot,
+                    i < setIdx && styles.dotDone,
+                    i === setIdx && styles.dotCurrent,
+                  ]}
+                />
+              ))}
+            </View>
+
+            {/* SET DONE */}
+            <Pressable style={styles.setDoneBtn} onPress={() => { Keyboard.dismiss(); handleSetDone(); }}>
+              <Ionicons name="checkmark-circle" size={26} color={colors.bg} />
+              <Text style={styles.primaryBtnText}>SET DONE</Text>
+            </Pressable>
+          </View>
+
         </View>
       )}
 
@@ -737,5 +822,89 @@ function makeStyles(c: ColorScheme) {
   },
   summaryLabel: { ...Typography.body, color: c.textSecondary },
   summaryValue: { ...Typography.body, color: c.textPrimary, fontWeight: '700' },
+
+  // ── SET phase layout ──────────────────────────────────────────
+  phaseSet: {
+    flex: 1,
+  },
+  exStrip: {
+    backgroundColor: c.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: c.border,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 7,
+  },
+  exStripRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  exStripRowActive: {},
+  exStripName: {
+    ...Typography.caption,
+    color: c.textSecondary,
+    flex: 1,
+  },
+  exStripBadge: {
+    color: c.accent,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  phaseCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    paddingBottom: 8,
+  },
+  phaseBottom: {
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    gap: 8,
+  },
+  weightRow: {
+    backgroundColor: c.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: c.border,
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    paddingBottom: 10,
+  },
+  weightRowLabel: {
+    ...Typography.label,
+    color: c.textSecondary,
+    fontSize: 10,
+    marginBottom: 2,
+  },
+  weightInput: {
+    color: c.textPrimary,
+    fontSize: 22,
+    fontWeight: '800',
+    paddingVertical: 2,
+    letterSpacing: 0.3,
+  },
+  setNotesInput: {
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: c.textPrimary,
+    fontSize: 14,
+  },
+  setDoneBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: c.accent,
+    borderRadius: 18,
+    paddingVertical: 18,
+    alignSelf: 'stretch',
+  },
 });
 }

@@ -874,7 +874,7 @@ function makeStyles(c: ColorScheme) {
     photoThumb: { width: THUMB, height: THUMB, borderRadius: 4, backgroundColor: c.surface },
 
     // Send modal
-    modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+    modalBackdrop: { flex: 1, backgroundColor: c.overlay },
     modalSheet: {
       backgroundColor: c.surface,
       borderTopLeftRadius: 20, borderTopRightRadius: 20,

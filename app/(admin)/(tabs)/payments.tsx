@@ -554,7 +554,7 @@ function makeStyles(c: ColorScheme) {
       borderWidth: 1, borderColor: c.border, padding: 16, alignItems: 'center',
     },
     summaryLabel: { ...Typography.caption, color: c.textSecondary, marginBottom: 6, textAlign: 'center' },
-    summaryValue: { fontSize: 22, fontWeight: '900', color: '#4CAF50', marginBottom: 4 },
+    summaryValue: { fontSize: 22, fontWeight: '900', color: c.success, marginBottom: 4 },
     summaryCount: { ...Typography.caption, color: c.textSecondary },
 
     methodsCard: {
@@ -587,7 +587,7 @@ function makeStyles(c: ColorScheme) {
     dateText: { ...Typography.caption, color: c.textSecondary },
     notesText: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic' },
     amountRight: { alignItems: 'flex-end', flexShrink: 0 },
-    amountText: { fontSize: 16, fontWeight: '900', color: '#4CAF50' },
+    amountText: { fontSize: 16, fontWeight: '900', color: c.success },
 
     emptyCard: { alignItems: 'center', paddingVertical: 60, gap: 12 },
     emptyTitle: { ...Typography.subtitle, color: c.textPrimary, marginTop: 8 },
@@ -599,7 +599,7 @@ function makeStyles(c: ColorScheme) {
     emptyBtnText: { color: c.bg, fontWeight: '700', fontSize: 14 },
 
     // Modal
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    modalOverlay: { flex: 1, backgroundColor: c.overlay, justifyContent: 'flex-end' },
     modalSheet: {
       backgroundColor: c.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
       padding: 20, paddingBottom: 36, maxHeight: '90%',

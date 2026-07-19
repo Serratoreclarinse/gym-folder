@@ -252,8 +252,8 @@ function makeStyles(c: ColorScheme) {
     approveBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
     rejectBtn: { backgroundColor: '#F4433615', borderWidth: 1, borderColor: '#F4433650' },
     rejectBtnText: { color: '#F44336', fontWeight: '700', fontSize: 14 },
-    fulfillBtn: { backgroundColor: '#4CAF50', marginTop: 10 },
-    fulfillBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+    fulfillBtn: { backgroundColor: c.success, marginTop: 10 },
+    fulfillBtnText: { color: c.bg, fontWeight: '700', fontSize: 14 },
     rejectForm: { marginTop: 10, gap: 8 },
     rejectInput: {
       ...Typography.body, color: c.textPrimary,

@@ -80,7 +80,7 @@ export function useClientData() {
           coach:profiles!packages_coach_id_fkey ( id, name, phone, whatsapp, instagram )
         `)
         .eq('client_id', user.id)
-        .eq('status', 'active')
+        .order('status', { ascending: true })   // 'active' sorts before 'expired'
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
@@ -140,6 +140,8 @@ export function useClientData() {
     }
 
     if (!sessionsResult.error) {
+      // Fallback to package coach name when the join returns null (dual-FK ambiguity)
+      const pkgCoachName = (pkgResult.data as any)?.coach?.name as string | undefined;
       setSessions(
         (sessionsResult.data ?? []).map((row) => ({
           id: row.id,
@@ -148,7 +150,7 @@ export function useClientData() {
           duration_minutes: row.duration_minutes,
           exercises: row.exercises as Exercise[],
           notes: row.notes,
-          coach_name: (row.coach as { name: string } | null)?.name ?? 'Your coach',
+          coach_name: (row.coach as { name: string } | null)?.name ?? pkgCoachName ?? 'Your coach',
           status: row.status ?? null,
         })),
       );

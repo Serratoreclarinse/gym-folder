@@ -1,7 +1,9 @@
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
+import { router } from 'expo-router';
 import { useNotifications, type AppNotification } from '@/context/NotificationsContext';
+import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { Typography } from '@/constants/theme';
 import type { ColorScheme } from '@/constants/theme';
@@ -57,10 +59,48 @@ function dayLabel(isoString: string): string {
   return d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
 }
 
+// ─── Route resolver ───────────────────────────────────────────────────────────
+
+type RouteTarget = string | { pathname: string; params: Record<string, string> } | null;
+
+function resolveRoute(n: AppNotification, role: string): RouteTarget {
+  const t = n.title.toLowerCase();
+  const d = n.data as Record<string, unknown>;
+  const isMsg = t.includes('message') || t.includes('chat') || d?.type === 'message';
+
+  if (role === 'client') {
+    if (isMsg) return '/(client)/messages';
+    if (t.includes('package') || t.includes('renewal') || t.includes('session remaining'))
+      return '/(client)/profile';
+    if (t.includes('record') || t.includes('milestone') || t.includes('pr') || t.includes('trophy'))
+      return '/(client)/records';
+    if (t.includes('session') || t.includes('schedule') || t.includes('confirmed') || t.includes('declined'))
+      return '/(client)/workouts';
+  } else if (role === 'coach') {
+    if (isMsg) {
+      const clientId = d?.clientId as string | undefined;
+      const clientName = d?.clientName as string | undefined;
+      if (clientId) {
+        return { pathname: '/(coach)/chat', params: { clientId, clientName: clientName ?? '' } };
+      }
+      return '/(coach)/messages';
+    }
+    if (t.includes('package') || t.includes('renewal')) return '/(coach)/(tabs)/clients';
+    if (t.includes('announcement')) return '/(coach)/announcements';
+    if (t.includes('session') || t.includes('schedule') || t.includes('sales') || t.includes('closing'))
+      return '/(coach)/(tabs)/sessions';
+  } else if (role === 'admin') {
+    if (t.includes('package') || t.includes('renewal')) return '/(admin)/(tabs)/clients';
+    return '/(admin)/(tabs)';
+  }
+  return null;
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function NotificationsScreen() {
   const { notifications, loading, unreadCount, markRead, markAllRead } = useNotifications();
+  const { profile } = useAuth();
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
 
@@ -130,10 +170,14 @@ export function NotificationsScreen() {
               return <Text style={s.dayLabel}>{item.label}</Text>;
             }
             const { name: iconName, color: iconColor } = iconForTitle(item.item.title);
+            const route = resolveRoute(item.item, profile?.role ?? '');
             return (
               <Pressable
-                style={[s.row, !item.item.read && s.rowUnread]}
-                onPress={() => markRead(item.item.id)}
+                style={({ pressed }) => [s.row, !item.item.read && s.rowUnread, pressed && s.rowPressed]}
+                onPress={async () => {
+                  await markRead(item.item.id);
+                  if (route) router.push(route as any);
+                }}
               >
                 <View style={[s.iconWrap, { backgroundColor: iconColor + '18' }]}>
                   <Ionicons name={iconName as any} size={20} color={iconColor} />
@@ -194,6 +238,7 @@ function makeStyles(c: ColorScheme) {
       borderBottomWidth: 1, borderBottomColor: c.border + '50',
     },
     rowUnread: { backgroundColor: c.accent + '08' },
+    rowPressed: { opacity: 0.6 },
     iconWrap: {
       width: 40, height: 40, borderRadius: 20,
       alignItems: 'center', justifyContent: 'center', flexShrink: 0,

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -38,6 +38,14 @@ export function QRScanModal({
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Reset scan state each time the modal opens so the camera is ready
+  useEffect(() => {
+    if (visible) {
+      setScanned(false);
+      setError(null);
+    }
+  }, [visible]);
 
   const reset = () => { setScanned(false); setError(null); };
 
@@ -79,7 +87,6 @@ export function QRScanModal({
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    reset();
     onConfirm();
   };
 

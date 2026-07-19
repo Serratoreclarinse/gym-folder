@@ -87,8 +87,8 @@ function WeeklyGrid({ days }: { days: DayAvailability[] }) {
               {active && barH > 0 && (
                 <View style={{
                   position: 'absolute', top: topY, height: barH, left: 2, right: 2,
-                  backgroundColor: AVAIL_GREEN + '40',
-                  borderRadius: 4, borderWidth: 1, borderColor: AVAIL_GREEN + '70',
+                  backgroundColor: colors.success + '40',
+                  borderRadius: 4, borderWidth: 1, borderColor: colors.success + '70',
                 }} />
               )}
             </View>
@@ -99,8 +99,6 @@ function WeeklyGrid({ days }: { days: DayAvailability[] }) {
     </View>
   );
 }
-
-const AVAIL_GREEN = '#4CAF50';
 
 function makeGridSt(colors: ColorScheme) {
   return StyleSheet.create({
@@ -394,7 +392,7 @@ export default function AvailabilityScreen() {
             <View style={st.gridCard}>
               <WeeklyGrid days={days} />
               <View style={st.gridLegend}>
-                <View style={[st.legendDot, { backgroundColor: AVAIL_GREEN }]} />
+                <View style={[st.legendDot, { backgroundColor: colors.success }]} />
                 <Text style={st.legendTxt}>Available</Text>
                 <View style={[st.legendDot, { backgroundColor: colors.border, marginLeft: 14 }]} />
                 <Text style={st.legendTxt}>Off</Text>
@@ -528,7 +526,7 @@ function makeStyles(c: ColorScheme) {
   blockedTxt: { ...Typography.body, color: c.textPrimary, fontWeight: '500', flex: 1 },
 
   // Modal
-  overlay:    { flex: 1, backgroundColor: '#000000AA', justifyContent: 'flex-end' },
+  overlay:    { flex: 1, backgroundColor: c.overlay, justifyContent: 'flex-end' },
   sheet:      { backgroundColor: c.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 36 },
   sheetHeader:{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sheetTitle: { ...Typography.subtitle, color: c.textPrimary },

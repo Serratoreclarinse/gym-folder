@@ -327,10 +327,9 @@ export default function AdminDashboardScreen() {
 
   const monthName = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const statCards = [
-    { icon: 'people-outline',  label: 'Coaches',                    value: stats?.coachCount ?? 0,        color: colors.accent, route: '/(admin)/(tabs)/coaches' },
-    { icon: 'person-outline',  label: 'Clients',                    value: stats?.clientCount ?? 0,       color: '#4CAF50',     route: '/(admin)/(tabs)/clients' },
-    { icon: 'cube-outline',    label: 'Active Packages',            value: stats?.activePackages ?? 0,    color: '#FF9800',     route: null },
-    { icon: 'barbell-outline', label: `Sessions · ${monthName}`,   value: stats?.sessionsThisMonth ?? 0, color: '#9C27B0',     route: null },
+    { icon: 'people-outline', label: 'Coaches',         value: stats?.coachCount ?? 0,     color: colors.accent, route: '/(admin)/(tabs)/coaches' },
+    { icon: 'person-outline', label: 'Clients',         value: stats?.clientCount ?? 0,    color: colors.success,  route: '/(admin)/(tabs)/clients' },
+    { icon: 'cube-outline',   label: 'Active Packages', value: stats?.activePackages ?? 0, color: colors.warning,  route: '/(admin)/(tabs)/clients' },
   ] as const;
 
   return (
@@ -393,7 +392,7 @@ export default function AdminDashboardScreen() {
           <>
             <Text style={s.sectionTitle}>ALERTS</Text>
             <View style={s.noAlerts}>
-              <Ionicons name="checkmark-circle-outline" size={20} color="#4CAF50" />
+              <Ionicons name="checkmark-circle-outline" size={20} color={colors.success} />
               <Text style={s.noAlertsText}>All clear — no warnings</Text>
             </View>
           </>
@@ -448,7 +447,7 @@ export default function AdminDashboardScreen() {
               const stars = Math.round(r.rating);
               const isHigh = stars >= 4;
               const isLow  = stars <= 2;
-              const color  = isHigh ? '#4CAF50' : isLow ? '#FF6D00' : '#FF9800';
+              const color  = isHigh ? colors.success : isLow ? colors.danger : colors.warning;
               const icon   = isHigh ? 'star' : isLow ? 'star-half-outline' : 'star-outline';
               const dateStr = new Date(r.sessionDate + 'T00:00:00').toLocaleDateString('en-US', {
                 month: 'short', day: 'numeric',
@@ -538,11 +537,11 @@ function makeStyles(c: ColorScheme) {
   alertSub: { ...Typography.caption, color: c.textSecondary },
   noAlerts: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#4CAF5010', borderRadius: 12,
-    borderWidth: 1, borderColor: '#4CAF5030',
+    backgroundColor: c.success + '10', borderRadius: 12,
+    borderWidth: 1, borderColor: c.success + '30',
     padding: 14, marginBottom: 4,
   },
-  noAlertsText: { ...Typography.body, color: '#4CAF50' },
+  noAlertsText: { ...Typography.body, color: c.success },
 
   // Stats
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
@@ -557,10 +556,10 @@ function makeStyles(c: ColorScheme) {
   starRow: { flexDirection: 'row', gap: 2, alignItems: 'center' },
 
   // Revenue
-  revenueCard: { flexDirection: 'row', backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: '#4CAF5030', overflow: 'hidden' },
+  revenueCard: { flexDirection: 'row', backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: c.success + '30', overflow: 'hidden' },
   revenueItem: { flex: 1, alignItems: 'center', paddingVertical: 20 },
   revenueDivider: { width: 1, backgroundColor: c.border },
   revenueLabel: { ...Typography.caption, color: c.textSecondary, marginBottom: 6 },
-  revenueValue: { fontSize: 22, fontWeight: '900', color: '#4CAF50' },
+  revenueValue: { fontSize: 22, fontWeight: '900', color: c.success },
   });
 }

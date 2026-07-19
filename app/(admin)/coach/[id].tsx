@@ -6,6 +6,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
+import { PhoneInput } from '@/components/PhoneInput';
 import { useAuth } from '@/context/AuthContext';
 import { Typography, ColorScheme } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
@@ -143,6 +144,7 @@ export default function CoachDetailScreen() {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
   const [editBirthday, setEditBirthday] = useState('');
   const [editVisaExpiry, setEditVisaExpiry] = useState('');
   const [saving, setSaving] = useState(false);
@@ -193,7 +195,7 @@ export default function CoachDetailScreen() {
       supabase.from('profiles').select('id, name, email, phone, birthday, visa_expiry').eq('id', id).single(),
       supabase
         .from('packages')
-        .select('sessions_remaining, package_type, client:profiles!packages_client_id_fkey(id, name, email)')
+        .select('sessions_remaining, package_type, client:profiles!packages_client_id_fkey(id, name, email, deactivated_at)')
         .eq('coach_id', id).eq('status', 'active'),
       supabase
         .from('workout_sessions')
@@ -232,7 +234,7 @@ export default function CoachDetailScreen() {
         .select('id, session_date, duration_minutes, session_type, status, client:profiles!workout_sessions_client_id_fkey(name)')
         .eq('coach_id', id)
         .order('session_date', { ascending: false })
-        .limit(50),
+        .limit(5),
     ]);
 
     if (profileRes.data) {
@@ -240,6 +242,7 @@ export default function CoachDetailScreen() {
       setCoach(p);
       setEditName(p.name);
       setEditPhone(p.phone ?? '');
+      setEditEmail(p.email ?? '');
       setEditBirthday(p.birthday ?? '');
       setEditVisaExpiry(p.visa_expiry ?? '');
     }
@@ -251,14 +254,16 @@ export default function CoachDetailScreen() {
     });
 
     setClients(
-      (pkgsRes.data ?? []).map((row: any) => ({
-        id: row.client.id,
-        name: row.client.name,
-        email: row.client.email,
-        sessionsRemaining: row.sessions_remaining,
-        packageType: row.package_type,
-        totalPaid: payTotals[row.client.id] ?? 0,
-      })),
+      (pkgsRes.data ?? [])
+        .filter((row: any) => row.client && !row.client.deactivated_at)
+        .map((row: any) => ({
+          id: row.client.id,
+          name: row.client.name,
+          email: row.client.email,
+          sessionsRemaining: row.sessions_remaining,
+          packageType: row.package_type,
+          totalPaid: payTotals[row.client.id] ?? 0,
+        })),
     );
 
     setSessionsThisMonth(sessRes.count ?? 0);
@@ -315,15 +320,28 @@ export default function CoachDetailScreen() {
         p_visa_expiry: editVisaExpiry.trim() || null,
       }),
     ]);
-    setSaving(false);
     if (r1.error || r2.error) {
+      setSaving(false);
       Alert.alert('Error', r1.error?.message ?? r2.error?.message ?? 'Failed to save');
       return;
     }
+    const newEmail = editEmail.trim().toLowerCase();
+    if (newEmail && newEmail !== coach?.email) {
+      const { data: emailData, error: emailErr } = await supabase.functions.invoke('update-user-email', {
+        body: { user_id: id, new_email: newEmail },
+      });
+      if (emailErr || emailData?.error) {
+        setSaving(false);
+        Alert.alert('Error', emailData?.error ?? emailErr?.message ?? 'Failed to update email');
+        return;
+      }
+    }
+    setSaving(false);
     setCoach((c) => c ? {
       ...c,
       name: editName.trim(),
       phone: editPhone.trim() || null,
+      email: newEmail || c.email,
       birthday: editBirthday.trim() || null,
       visa_expiry: editVisaExpiry.trim() || null,
     } : c);
@@ -391,11 +409,11 @@ export default function CoachDetailScreen() {
           {/* ── Alerts ───────────────────────────────────────── */}
           {bdWarn && bdDays !== null && (
             <View style={[s.alertBanner, {
-              borderColor: bdDays <= 7 ? '#FF980080' : '#FF980040',
-              backgroundColor: bdDays <= 7 ? '#FF980015' : '#FF980008',
+              borderColor: bdDays <= 7 ? colors.warning + '80' : colors.warning + '40',
+              backgroundColor: bdDays <= 7 ? colors.warning + '15' : colors.warning + '08',
             }]}>
-              <Ionicons name="gift-outline" size={16} color="#FF9800" />
-              <Text style={[s.alertText, { color: '#FF9800' }]}>
+              <Ionicons name="gift-outline" size={16} color={colors.warning} />
+              <Text style={[s.alertText, { color: colors.warning }]}>
                 {bdDays === 0
                   ? `TODAY is ${coach.name.split(' ')[0]}'s birthday! 🎉`
                   : bdDays <= 7
@@ -430,8 +448,15 @@ export default function CoachDetailScreen() {
                 <>
                   <TextInput style={s.editInput} value={editName} onChangeText={setEditName}
                     placeholder="Full name" placeholderTextColor={colors.textSecondary} autoCapitalize="words" />
-                  <TextInput style={[s.editInput, { marginTop: 6 }]} value={editPhone} onChangeText={setEditPhone}
-                    placeholder="Phone (optional)" placeholderTextColor={colors.textSecondary} keyboardType="phone-pad" />
+                  <TextInput style={[s.editInput, { marginTop: 6 }]} value={editEmail} onChangeText={setEditEmail}
+                    placeholder="Email" placeholderTextColor={colors.textSecondary} keyboardType="email-address" autoCapitalize="none" />
+                  <PhoneInput
+                    value={editPhone}
+                    onChange={setEditPhone}
+                    colors={colors}
+                    containerStyle={{ marginTop: 6 }}
+                    inputStyle={s.editInput}
+                  />
                   {Platform.OS === 'web'
                     ? React.createElement('input', { type: 'date', value: editBirthday, onChange: (e: any) => setEditBirthday(e.target.value), style: { marginTop: 6, background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: 10, padding: '9px 12px', color: colors.textPrimary, fontSize: 14, width: '100%', boxSizing: 'border-box', cursor: 'pointer', colorScheme: 'dark' } })
                     : <TextInput style={[s.editInput, { marginTop: 6 }]} value={editBirthday} onChangeText={setEditBirthday} placeholder="Birthday (YYYY-MM-DD)" placeholderTextColor={colors.textSecondary} />}
@@ -445,6 +470,7 @@ export default function CoachDetailScreen() {
                     <Pressable style={s.cancelEditBtn} onPress={() => {
                       setEditing(false);
                       setEditName(coach.name); setEditPhone(coach.phone ?? '');
+                      setEditEmail(coach.email ?? '');
                       setEditBirthday(coach.birthday ?? ''); setEditVisaExpiry(coach.visa_expiry ?? '');
                     }}>
                       <Text style={s.cancelEditText}>CANCEL</Text>
@@ -493,7 +519,7 @@ export default function CoachDetailScreen() {
             </View>
             <View style={s.statDivider} />
             <View style={s.statBox}>
-              <Text style={[s.statVal, { color: '#4CAF50', fontSize: 20 }]} numberOfLines={1} adjustsFontSizeToFit>
+              <Text style={[s.statVal, { color: colors.success, fontSize: 20 }]} numberOfLines={1} adjustsFontSizeToFit>
                 OMR {revenueThisMonth.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               </Text>
               <Text style={s.statLbl}>Revenue · {monthName}</Text>
@@ -501,7 +527,7 @@ export default function CoachDetailScreen() {
           </View>
           <View style={s.statsRow}>
             <View style={s.statBox}>
-              <Text style={[s.statVal, { color: '#FF9800' }]}>
+              <Text style={[s.statVal, { color: colors.warning }]}>
                 {avgRating !== null ? `${avgRating.toFixed(1)} ★` : '—'}
               </Text>
               <Text style={s.statLbl}>Avg Rating</Text>
@@ -647,9 +673,18 @@ export default function CoachDetailScreen() {
           <Text style={s.longPressTip}>Tap trash icon to remove a blocked date</Text>
 
           {/* ── Past Sessions ─────────────────────────────────── */}
-          <Text style={[s.sectionTitle, { marginTop: 28 }]}>
-            PAST SESSIONS{pastSessions.length > 0 ? ` (${pastSessions.length})` : ''}
-          </Text>
+          <View style={[s.sectionRow, { marginTop: 28 }]}>
+            <Text style={s.sectionTitle}>PAST SESSIONS</Text>
+            {pastSessions.length > 0 && (
+              <Pressable
+                style={({ pressed }) => [s.viewAllBtn, pressed && { opacity: 0.7 }]}
+                onPress={() => router.push({ pathname: '/(admin)/coach-sessions/[id]', params: { id, name: coach.name } } as any)}
+              >
+                <Text style={s.viewAllTxt}>View All</Text>
+                <Ionicons name="chevron-forward" size={13} color={colors.accent} />
+              </Pressable>
+            )}
+          </View>
           {pastSessions.length === 0 ? (
             <View style={s.emptyCard}>
               <Text style={s.grayText}>No sessions logged yet</Text>
@@ -658,7 +693,7 @@ export default function CoachDetailScreen() {
             <View style={s.scheduleList}>
               {pastSessions.map((sess, i) => {
                 const STATUS_COLOR: Record<string, string> = {
-                  confirmed: '#4CAF50', pending: '#FF9800', absent: '#FF4D4D', no_show: '#FF4D4D',
+                  confirmed: colors.success, pending: colors.warning, absent: colors.danger, no_show: colors.danger,
                 };
                 const STATUS_LABEL: Record<string, string> = {
                   confirmed: 'Done', pending: 'Pending', absent: 'Absent', no_show: 'No Show',
@@ -861,14 +896,14 @@ function makeStyles(c: ColorScheme) {
     },
     clientAvatar: {
       width: 38, height: 38, borderRadius: 19,
-      backgroundColor: '#4CAF5018', borderWidth: 1, borderColor: '#4CAF5040',
+      backgroundColor: c.success + '18', borderWidth: 1, borderColor: c.success + '40',
       justifyContent: 'center', alignItems: 'center', flexShrink: 0,
     },
-    clientAvatarText: { fontSize: 13, fontWeight: '700', color: '#4CAF50' },
+    clientAvatarText: { fontSize: 13, fontWeight: '700', color: c.success },
     clientInfo: { flex: 1 },
     clientName: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
     clientEmail: { ...Typography.caption, color: c.textSecondary },
-    clientPaid: { fontSize: 11, color: '#4CAF50', fontWeight: '600', marginTop: 2 },
+    clientPaid: { fontSize: 11, color: c.success, fontWeight: '600', marginTop: 2 },
     sessionsBadge: { alignItems: 'center', minWidth: 38 },
     sessionsBadgeNum: { fontSize: 18, fontWeight: '800', color: c.accent, lineHeight: 22 },
     sessionsBadgeLbl: { fontSize: 10, fontWeight: '600', color: c.textSecondary },
@@ -921,6 +956,8 @@ function makeStyles(c: ColorScheme) {
       paddingHorizontal: 12, paddingVertical: 6,
     },
     addBlockBtnText: { color: c.bg, fontSize: 12, fontWeight: '800' },
+    viewAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+    viewAllTxt: { fontSize: 13, fontWeight: '700', color: c.accent },
     longPressTip: { ...Typography.caption, color: c.textSecondary, textAlign: 'center', marginTop: 8 },
 
     // Modal

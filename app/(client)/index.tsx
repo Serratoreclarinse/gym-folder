@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Animated, Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useClientData, type ClientPackage } from '@/hooks/useClientData';
 import { useClientAnnouncements } from '@/hooks/useClientAnnouncements';
@@ -25,74 +25,43 @@ const PKG_LABEL: Record<string, string> = {
 
 function getTypeIcon(c: ColorScheme): Record<string, { name: string; color: string }> {
   return {
-    emergency: { name: 'warning-outline',   color: '#FF4D4D' },
-    holiday:   { name: 'calendar-outline',  color: '#4CAF50' },
+    emergency: { name: 'warning-outline',   color: c.danger },
+    holiday:   { name: 'calendar-outline',  color: c.success },
     promo:     { name: 'pricetag-outline',  color: '#9C27B0' },
     general:   { name: 'megaphone-outline', color: c.accent },
   };
 }
 
-// ─── Status helpers ──────────────────────────────────────────
-function packageColor(pkg: ClientPackage, c: ColorScheme): string {
-  if (pkg.status === 'expired')        return c.textSecondary;
-  if (pkg.sessions_remaining <= 3)     return '#FFA500';
-  return c.accent;
-}
-
-function packageStatusLabel(pkg: ClientPackage): string {
-  if (pkg.status === 'expired')        return 'EXPIRED';
-  if (pkg.sessions_remaining === 0)    return 'ALL DONE';
-  if (pkg.sessions_remaining <= 3)     return 'ALMOST OUT';
-  return 'ACTIVE';
-}
-
 // ─── Package card ────────────────────────────────────────────
 function PackageCard({ pkg, styles, colors }: { pkg: ClientPackage; styles: ReturnType<typeof makeStyles>; colors: ColorScheme }) {
-  const color       = packageColor(pkg, colors);
-  const pct         = pkg.total_sessions > 0 ? pkg.sessions_used / pkg.total_sessions : 0;
-  const statusLabel = packageStatusLabel(pkg);
-  const segments    = Math.min(pkg.total_sessions, 20);
-  const filledSegs  = Math.round(pct * segments);
+  const progressPct = pkg.total_sessions > 0 ? Math.min(pkg.sessions_used / pkg.total_sessions, 1) : 0;
 
   return (
-    <View style={[styles.pkgCard, { borderColor: color + '40' }]}>
+    <View style={styles.pkgCard}>
       <View style={styles.pkgTop}>
-        <Text style={styles.pkgType}>{PKG_LABEL[pkg.package_type] ?? pkg.package_type}</Text>
-        <View style={[styles.statusPill, { backgroundColor: color + '18', borderColor: color + '50' }]}>
-          <Text style={[styles.statusText, { color }]}>{statusLabel}</Text>
+        <View>
+          <Text style={styles.pkgLabel}>ACTIVE PACKAGE</Text>
+          <Text style={styles.pkgType}>{PKG_LABEL[pkg.package_type] ?? pkg.package_type}</Text>
+        </View>
+        <View style={[
+          styles.statusBadge,
+          pkg.sessions_remaining <= 3 && pkg.sessions_remaining > 0 && styles.statusWarning,
+          pkg.sessions_remaining === 0 && styles.statusExpired,
+        ]}>
+          <Text style={[
+            styles.statusText,
+            pkg.sessions_remaining <= 3 && pkg.sessions_remaining > 0 && styles.statusTextWarning,
+            pkg.sessions_remaining === 0 && styles.statusTextExpired,
+          ]}>
+            {pkg.sessions_remaining} REMAINING
+          </Text>
         </View>
       </View>
 
-      <View style={styles.heroRow}>
-        <Text style={[styles.heroNumber, { color }]}>{pkg.sessions_remaining}</Text>
-        <Text style={styles.heroLabel}>sessions{'\n'}remaining</Text>
+      <View style={styles.progressTrack}>
+        <View style={[styles.progressFill, { width: `${progressPct * 100}%` as any }]} />
       </View>
-
-      <View style={styles.segmentRow}>
-        {Array.from({ length: segments }).map((_, i) => (
-          <View
-            key={i}
-            style={[
-              styles.segment,
-              { backgroundColor: i < filledSegs ? color : colors.border },
-              { width: `${(1 / segments) * 100 - 1.5}%` },
-            ]}
-          />
-        ))}
-      </View>
-
-      <View style={styles.statsRow}>
-        <Stat label="TOTAL"     value={String(pkg.total_sessions)} styles={styles} colors={colors} />
-        <View style={styles.statDivider} />
-        <Stat label="USED"      value={String(pkg.sessions_used)} color={color} styles={styles} colors={colors} />
-        <View style={styles.statDivider} />
-        <Stat label="REMAINING" value={String(pkg.sessions_remaining)} color={color} styles={styles} colors={colors} />
-      </View>
-
-      <Text style={styles.startDate}>
-        Package started{' '}
-        {new Date(pkg.start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-      </Text>
+      <Text style={styles.progressLabel}>{pkg.sessions_used} of {pkg.total_sessions} sessions used</Text>
 
       {pkg.duration_weeks && (() => {
         const days = Math.max(0, Math.floor((Date.now() - new Date(pkg.start_date + 'T00:00:00').getTime()) / 86_400_000));
@@ -107,27 +76,18 @@ function PackageCard({ pkg, styles, colors }: { pkg: ClientPackage; styles: Retu
             <View style={styles.timelineHeader}>
               <Text style={styles.timelineLabel}>SCHEDULE · {paceLabel}</Text>
               <View style={[styles.timelineTrack, !onTrack && styles.timelineTrackBehind]}>
-                <Text style={[styles.timelineTrackText, !onTrack && { color: '#FFA500' }]}>
+                <Text style={[styles.timelineTrackText, !onTrack && { color: colors.warning }]}>
                   {onTrack ? '✓ On Track' : '⚠ Behind'}
                 </Text>
               </View>
             </View>
             <Text style={styles.timelineWeek}>Week {currentWeek} of {pkg.duration_weeks}</Text>
             <View style={styles.timelineBar}>
-              <View style={[styles.timelineFill, { width: `${timelinePct * 100}%` }]} />
+              <View style={[styles.timelineFill, { width: `${timelinePct * 100}%` as any }]} />
             </View>
           </View>
         );
       })()}
-    </View>
-  );
-}
-
-function Stat({ label, value, color, styles, colors }: { label: string; value: string; color?: string; styles: ReturnType<typeof makeStyles>; colors: ColorScheme }) {
-  return (
-    <View style={styles.stat}>
-      <Text style={[styles.statValue, color ? { color } : {}]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
@@ -149,10 +109,10 @@ function RecentSessionRow({
 
   return (
     <View style={[styles.recentRow, isNoShow && styles.recentRowNoShow]}>
-      <View style={[styles.recentDot, isNoShow && { backgroundColor: '#FFA500' }]} />
+      <View style={[styles.recentDot, isNoShow && { backgroundColor: colors.warning }]} />
       <View style={styles.recentInfo}>
         <Text style={styles.recentDate}>{date}{!isNoShow && `  ·  ${session.duration_minutes} min`}</Text>
-        <Text style={[styles.recentExercises, isNoShow && { color: '#FFA500' }]} numberOfLines={1}>
+        <Text style={[styles.recentExercises, isNoShow && { color: colors.warning }]} numberOfLines={1}>
           {isNoShow ? 'No-show — 1 session deducted' : (topExercises || 'No exercises recorded') + extra}
         </Text>
       </View>
@@ -259,6 +219,53 @@ export default function ClientProgressScreen() {
       .eq('coach_id', pkg.coach_id)
       .then(({ count }) => setStrikeCount(count ?? 0));
   }, [user?.id, pkg?.coach_id]);
+
+  // ── Active session timer (client sees their live session) ───
+  const [clientActiveSession, setClientActiveSession] = useState<{
+    start_time: string;
+    current_duration: number;
+    is_paused: boolean;
+    pause_started_at: string | null;
+  } | null>(null);
+  const [sessionRemainingSecs, setSessionRemainingSecs] = useState(0);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  const fetchActiveSession = useCallback(async () => {
+    if (!user?.id) return;
+    const { data } = await supabase
+      .from('active_sessions')
+      .select('start_time, current_duration, is_paused, pause_started_at')
+      .eq('client_id', user.id)
+      .eq('is_active', true)
+      .maybeSingle();
+    setClientActiveSession(data ?? null);
+  }, [user?.id]);
+
+  useFocusEffect(useCallback(() => { fetchActiveSession(); }, [fetchActiveSession]));
+
+  useEffect(() => {
+    if (!clientActiveSession || clientActiveSession.is_paused) return;
+    const endMs = new Date(clientActiveSession.start_time).getTime() + clientActiveSession.current_duration * 60_000;
+    const tick = () => setSessionRemainingSecs(Math.max(0, Math.floor((endMs - Date.now()) / 1000)));
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [clientActiveSession?.start_time, clientActiveSession?.current_duration, clientActiveSession?.is_paused]);
+
+  useEffect(() => {
+    if (!clientActiveSession) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 0.3, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [clientActiveSession]);
+
+  const sessionMins = Math.floor(sessionRemainingSecs / 60);
+  const sessionSecs = String(sessionRemainingSecs % 60).padStart(2, '0');
 
   // ── Booking request modal ────────────────────────────────────
   const [requestModal, setRequestModal] = useState<'booking' | 'renewal' | null>(null);
@@ -398,10 +405,28 @@ export default function ClientProgressScreen() {
 
       {error && <ErrorBanner message={error} onRetry={refetch} />}
 
+      {/* Active session banner */}
+      {clientActiveSession && (
+        <View style={styles.activeSessionBanner}>
+          <Animated.View style={[styles.activePulseDot, { opacity: pulseAnim }]} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.activeSessionTitle}>SESSION IN PROGRESS</Text>
+            <Text style={styles.activeSessionTime}>
+              {clientActiveSession.is_paused
+                ? 'Paused'
+                : `${sessionMins}:${sessionSecs} remaining`}
+            </Text>
+          </View>
+          {coachInfo && (
+            <Text style={styles.activeSessionCoach}>{coachInfo.name}</Text>
+          )}
+        </View>
+      )}
+
       {/* Strike warning */}
       {strikeCount > 0 && (
         <View style={styles.strikeBanner}>
-          <Ionicons name="warning-outline" size={16} color="#FFA500" />
+          <Ionicons name="warning-outline" size={16} color={colors.warning} />
           <Text style={styles.strikeBannerText}>
             {strikeCount} of 3 strike{strikeCount !== 1 ? 's' : ''} — 3 strikes deducts 1 session
           </Text>
@@ -417,8 +442,8 @@ export default function ClientProgressScreen() {
           </Pressable>
           {(pkg.sessions_remaining <= 3) && (
             <Pressable style={[styles.quickBtn, styles.quickBtnRenew]} onPress={() => setRequestModal('renewal')}>
-              <Ionicons name="refresh-outline" size={16} color="#4CAF50" />
-              <Text style={[styles.quickBtnText, { color: '#4CAF50' }]}>Renew Package</Text>
+              <Ionicons name="refresh-outline" size={16} color={colors.success} />
+              <Text style={[styles.quickBtnText, { color: colors.success }]}>Renew Package</Text>
             </Pressable>
           )}
         </View>
@@ -566,7 +591,7 @@ export default function ClientProgressScreen() {
           {nextScheduled.status === 'reschedule_pending' ? (
             <View style={styles.reschedulePending}>
               <View style={styles.rescheduleHeader}>
-                <Ionicons name="calendar-outline" size={14} color="#FFA500" />
+                <Ionicons name="calendar-outline" size={14} color={colors.warning} />
                 <Text style={styles.rescheduleHeaderText}>Coach Proposed a New Time</Text>
               </View>
               <Text style={styles.rescheduleFrom}>
@@ -594,7 +619,7 @@ export default function ClientProgressScreen() {
                   onPress={() => handleDeclineReschedule(nextScheduled.id)}
                   disabled={!!acceptingReschedule || !!decliningReschedule}
                 >
-                  <Ionicons name="close" size={14} color="#FF4D4D" />
+                  <Ionicons name="close" size={14} color={colors.danger} />
                   <Text style={styles.rescheduleDeclineText}>
                     {decliningReschedule === nextScheduled.id ? 'Declining…' : 'Decline'}
                   </Text>
@@ -606,7 +631,7 @@ export default function ClientProgressScreen() {
               {/* Confirm attendance */}
               {(nextScheduled.client_confirmed_at || localConfirmed) ? (
                 <View style={styles.confirmedBadge}>
-                  <Ionicons name="checkmark-circle" size={15} color="#4CAF50" />
+                  <Ionicons name="checkmark-circle" size={15} color={colors.success} />
                   <Text style={styles.confirmedText}>Attendance Confirmed</Text>
                 </View>
               ) : (
@@ -671,7 +696,7 @@ export default function ClientProgressScreen() {
                       <Text style={styles.rescheduleBadgeText}>RESCHEDULED</Text>
                     </View>
                   ) : isConfirmed ? (
-                    <Ionicons name="checkmark-circle" size={18} color="#4CAF50" />
+                    <Ionicons name="checkmark-circle" size={18} color={colors.success} />
                   ) : null}
                 </View>
                 <View style={styles.upcomingActions}>
@@ -922,10 +947,10 @@ function makeStyles(c: ColorScheme) {
     confirmBtnText: { color: c.bg, fontWeight: '800', fontSize: 14 },
     confirmedBadge: {
       flexDirection: 'row', alignItems: 'center', gap: 6,
-      backgroundColor: '#4CAF5015', borderRadius: 10, paddingVertical: 10,
-      justifyContent: 'center', borderWidth: 1, borderColor: '#4CAF5040',
+      backgroundColor: c.success + '15', borderRadius: 10, paddingVertical: 10,
+      justifyContent: 'center', borderWidth: 1, borderColor: c.success + '40',
     },
-    confirmedText: { color: '#4CAF50', fontWeight: '700', fontSize: 14 },
+    confirmedText: { color: c.success, fontWeight: '700', fontSize: 14 },
 
     // Announcement banner
     annBanner: {
@@ -940,44 +965,26 @@ function makeStyles(c: ColorScheme) {
       borderColor: c.accent + '30',
     },
     annBannerEmergency: {
-      backgroundColor: '#FF4D4D12',
-      borderColor: '#FF4D4D40',
+      backgroundColor: c.danger + '12',
+      borderColor: c.danger + '40',
     },
     annTitle: { ...Typography.caption, fontWeight: '700', marginBottom: 2 },
     annMsg:   { ...Typography.caption, color: c.textSecondary, lineHeight: 17 },
 
     // Package card
-    pkgCard: {
-      backgroundColor: c.surface,
-      borderRadius: 20,
-      padding: 20,
-      borderWidth: 1,
-      marginBottom: 4,
-    },
-    pkgTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    pkgType: { ...Typography.body, color: c.textSecondary, fontWeight: '600', flex: 1, marginRight: 8 },
-    statusPill: {
-      borderRadius: 20,
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderWidth: 1,
-    },
-    statusText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
-
-    heroRow:   { flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginBottom: 20 },
-    heroNumber: { fontSize: 64, fontWeight: '800', lineHeight: 68, letterSpacing: -2 },
-    heroLabel:  { ...Typography.body, color: c.textSecondary, marginBottom: 8, lineHeight: 20 },
-
-    segmentRow: { flexDirection: 'row', gap: 3, marginBottom: 20 },
-    segment:    { height: 6, borderRadius: 3 },
-
-    statsRow:    { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-    stat:        { flex: 1, alignItems: 'center' },
-    statValue:   { ...Typography.subtitle, color: c.textPrimary, marginBottom: 2 },
-    statLabel:   { ...Typography.label, color: c.textSecondary, fontSize: 10 },
-    statDivider: { width: 1, height: 28, backgroundColor: c.border },
-
-    startDate: { ...Typography.caption, color: c.textSecondary, textAlign: 'center', marginBottom: 16 },
+    pkgCard: { backgroundColor: c.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: c.accent + '30', marginBottom: 4 },
+    pkgTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+    pkgLabel: { ...Typography.label, color: c.accent, marginBottom: 4 },
+    pkgType: { ...Typography.subtitle, color: c.textPrimary },
+    statusBadge: { backgroundColor: c.accent + '18', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: c.accent + '40' },
+    statusWarning: { backgroundColor: c.warning + '18', borderColor: c.warning + '50' },
+    statusExpired: { backgroundColor: c.border + '80', borderColor: c.border },
+    statusText: { fontSize: 12, fontWeight: '700', color: c.accent },
+    statusTextWarning: { color: c.warning },
+    statusTextExpired: { color: c.textSecondary },
+    progressTrack: { height: 6, backgroundColor: c.border, borderRadius: 3, overflow: 'hidden', marginBottom: 8 },
+    progressFill: { height: '100%', backgroundColor: c.accent, borderRadius: 3 },
+    progressLabel: { ...Typography.caption, color: c.textSecondary, marginBottom: 10 },
 
     timeline: {
       borderTopWidth: 1, borderTopColor: c.border, paddingTop: 14,
@@ -985,15 +992,15 @@ function makeStyles(c: ColorScheme) {
     timelineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
     timelineLabel: { ...Typography.label, color: c.textSecondary, fontSize: 10 },
     timelineTrack: {
-      backgroundColor: '#4CAF5015', borderRadius: 6,
+      backgroundColor: c.success + '15', borderRadius: 6,
       paddingHorizontal: 8, paddingVertical: 3,
-      borderWidth: 1, borderColor: '#4CAF5040',
+      borderWidth: 1, borderColor: c.success + '40',
     },
-    timelineTrackBehind: { backgroundColor: '#FFA50015', borderColor: '#FFA50040' },
-    timelineTrackText: { fontSize: 11, fontWeight: '700', color: '#4CAF50' },
+    timelineTrackBehind: { backgroundColor: c.warning + '15', borderColor: c.warning + '40' },
+    timelineTrackText: { fontSize: 11, fontWeight: '700', color: c.success },
     timelineWeek: { ...Typography.caption, color: c.textSecondary, marginBottom: 8 },
     timelineBar: { height: 4, backgroundColor: c.border, borderRadius: 2, overflow: 'hidden' },
-    timelineFill: { height: '100%', backgroundColor: '#4CAF50', borderRadius: 2 },
+    timelineFill: { height: '100%', backgroundColor: c.success, borderRadius: 2 },
 
     // Recent sessions
     recentCard: {
@@ -1010,17 +1017,17 @@ function makeStyles(c: ColorScheme) {
       paddingVertical: 14,
       gap: 12,
     },
-    recentRowNoShow: { backgroundColor: '#FFA50008' },
+    recentRowNoShow: { backgroundColor: c.warning + '08' },
     recentDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: c.accent },
     noShowBadge: {
-      backgroundColor: '#FFA50020',
+      backgroundColor: c.warning + '20',
       borderRadius: 6,
       paddingHorizontal: 7,
       paddingVertical: 3,
       borderWidth: 1,
-      borderColor: '#FFA50050',
+      borderColor: c.warning + '50',
     },
-    noShowBadgeText: { color: '#FFA500', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+    noShowBadgeText: { color: c.warning, fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
     recentInfo: { flex: 1 },
     recentDate: { ...Typography.caption, color: c.textSecondary, marginBottom: 2 },
     recentExercises: { ...Typography.body, color: c.textPrimary, fontWeight: '500' },
@@ -1074,13 +1081,33 @@ function makeStyles(c: ColorScheme) {
       justifyContent: 'center', alignItems: 'center',
     },
 
+    // Active session banner
+    activeSessionBanner: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: c.accent + '12', borderRadius: 14, padding: 14, marginBottom: 12,
+      borderWidth: 1, borderColor: c.accent + '35',
+    },
+    activePulseDot: {
+      width: 10, height: 10, borderRadius: 5, backgroundColor: c.accent,
+    },
+    activeSessionTitle: {
+      fontSize: 11, fontWeight: '800', letterSpacing: 1, color: c.accent,
+    },
+    activeSessionTime: {
+      fontSize: 22, fontWeight: '700', color: c.textPrimary, marginTop: 2,
+      fontVariant: ['tabular-nums'] as any,
+    },
+    activeSessionCoach: {
+      fontSize: 12, color: c.textSecondary, fontWeight: '500',
+    },
+
     // Strike warning
     strikeBanner: {
       flexDirection: 'row', alignItems: 'center', gap: 8,
-      backgroundColor: '#FFA50012', borderRadius: 10, padding: 12, marginBottom: 12,
-      borderWidth: 1, borderColor: '#FFA50040',
+      backgroundColor: c.warning + '12', borderRadius: 10, padding: 12, marginBottom: 12,
+      borderWidth: 1, borderColor: c.warning + '40',
     },
-    strikeBannerText: { color: '#FFA500', fontSize: 13, fontWeight: '600', flex: 1 },
+    strikeBannerText: { color: c.warning, fontSize: 13, fontWeight: '600', flex: 1 },
 
     // Quick actions
     quickActions: { flexDirection: 'row', gap: 8, marginBottom: 12 },
@@ -1090,7 +1117,7 @@ function makeStyles(c: ColorScheme) {
       borderWidth: 1, borderColor: c.accent + '50',
       backgroundColor: c.accent + '08',
     },
-    quickBtnRenew: { borderColor: '#4CAF5050', backgroundColor: '#4CAF5008' },
+    quickBtnRenew: { borderColor: c.success + '50', backgroundColor: c.success + '08' },
     quickBtnText: { color: c.accent, fontWeight: '700', fontSize: 13 },
 
     // Pending requests banner
@@ -1108,14 +1135,14 @@ function makeStyles(c: ColorScheme) {
     pendingReqMeta: { ...Typography.caption, color: c.textSecondary, marginBottom: 1 },
     pendingReqDate: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic', marginTop: 2 },
     pendingReqCancelBtn: {
-      backgroundColor: '#FF4D4D20', borderWidth: 1, borderColor: '#FF4D4D50',
+      backgroundColor: c.danger + '20', borderWidth: 1, borderColor: c.danger + '50',
       borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7,
     },
-    pendingReqCancelText: { color: '#FF4D4D', fontSize: 12, fontWeight: '700' },
+    pendingReqCancelText: { color: c.danger, fontSize: 12, fontWeight: '700' },
 
     // Booking request modal (bottom sheet)
     modalOverlay: {
-      flex: 1, backgroundColor: 'rgba(0,0,0,0.7)',
+      flex: 1, backgroundColor: c.overlay,
       justifyContent: 'flex-end',
     },
     modalSheet: {
@@ -1192,20 +1219,20 @@ function makeStyles(c: ColorScheme) {
       borderWidth: 1, borderColor: c.border,
     },
     upcomingLockedText: { color: c.textSecondary, fontSize: 12, fontWeight: '500' },
-    upcomingRescheduledTo: { fontSize: 12, color: '#FFA500', fontWeight: '600', marginTop: 2 },
+    upcomingRescheduledTo: { fontSize: 12, color: c.warning, fontWeight: '600', marginTop: 2 },
 
     // Reschedule pending
     rescheduleBadge: {
-      backgroundColor: '#FFA50018', borderRadius: 6, borderWidth: 1,
-      borderColor: '#FFA50050', paddingHorizontal: 7, paddingVertical: 3,
+      backgroundColor: c.warning + '18', borderRadius: 6, borderWidth: 1,
+      borderColor: c.warning + '50', paddingHorizontal: 7, paddingVertical: 3,
     },
-    rescheduleBadgeText: { fontSize: 10, fontWeight: '700', color: '#FFA500' },
+    rescheduleBadgeText: { fontSize: 10, fontWeight: '700', color: c.warning },
     reschedulePending: {
-      backgroundColor: '#FFA50010', borderRadius: 12, borderWidth: 1,
-      borderColor: '#FFA50040', padding: 12, marginTop: 8, gap: 4,
+      backgroundColor: c.warning + '10', borderRadius: 12, borderWidth: 1,
+      borderColor: c.warning + '40', padding: 12, marginTop: 8, gap: 4,
     },
     rescheduleHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
-    rescheduleHeaderText: { fontSize: 13, fontWeight: '700', color: '#FFA500' },
+    rescheduleHeaderText: { fontSize: 13, fontWeight: '700', color: c.warning },
     rescheduleFrom: { fontSize: 12, color: c.textSecondary },
     rescheduleTo: { fontSize: 13, fontWeight: '600', color: c.textPrimary },
     rescheduleReason: { fontSize: 12, color: c.textSecondary, fontStyle: 'italic', marginTop: 2 },
@@ -1217,10 +1244,10 @@ function makeStyles(c: ColorScheme) {
     rescheduleAcceptText: { color: c.bg, fontSize: 13, fontWeight: '700' },
     rescheduleDeclineBtn: {
       flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-      gap: 5, backgroundColor: '#FF4D4D18', borderRadius: 10, paddingVertical: 10,
-      borderWidth: 1, borderColor: '#FF4D4D40',
+      gap: 5, backgroundColor: c.danger + '18', borderRadius: 10, paddingVertical: 10,
+      borderWidth: 1, borderColor: c.danger + '40',
     },
-    rescheduleDeclineText: { color: '#FF4D4D', fontSize: 13, fontWeight: '700' },
+    rescheduleDeclineText: { color: c.danger, fontSize: 13, fontWeight: '700' },
 
     // Empty states
     emptyCard: {

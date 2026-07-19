@@ -387,6 +387,7 @@ export default function LogSessionScreen() {
   const [showQRGate, setShowQRGate] = useState(false);
   const [qrConfirmFn, setQrConfirmFn] = useState<(() => void) | null>(null);
   const [loading, setLoading] = useState(false);
+  const savingRef = useRef(false);
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -476,6 +477,39 @@ export default function LogSessionScreen() {
 
   const handleSave = async () => {
     if (!canSave || !profile?.id || !pkg) return;
+    if (savingRef.current) return;
+    savingRef.current = true;
+
+    // Block if client already has a session on this date
+    const { data: dup } = await supabase
+      .from('workout_sessions')
+      .select('id')
+      .eq('client_id', selectedClientId)
+      .eq('session_date', sessionDate)
+      .neq('status', 'absent')
+      .limit(1)
+      .maybeSingle();
+
+    if (dup) {
+      const { data: runningSession } = await supabase
+        .from('active_sessions')
+        .select('id')
+        .eq('session_id', dup.id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      savingRef.current = false;
+      Alert.alert(
+        runningSession ? 'Session In Progress' : 'Session Already Logged',
+        runningSession
+          ? `${selectedClient?.name ?? 'This client'} already has an active session running today. Check your Dashboard to manage it.`
+          : `${selectedClient?.name ?? 'This client'} already has a session on ${sessionDate}. Only 1 session per client per day is allowed.`,
+        runningSession
+          ? [{ text: 'OK' }, { text: 'Go to Dashboard', onPress: () => router.back() }]
+          : [{ text: 'OK' }],
+      );
+      return;
+    }
 
     const validExercises = exercises
       .filter((e) => e.exercise_name.trim())
@@ -501,6 +535,7 @@ export default function LogSessionScreen() {
         exercises: validExercises,
         notes: sessionNotes.trim() || null,
         session_type: sessionType,
+        status: 'completed',
       }).select('id').single();
 
       if (error) {
@@ -565,11 +600,14 @@ export default function LogSessionScreen() {
         .maybeSingle();
 
       if (!existingActive && sessionData?.id) {
+        const sessionStart = sessionTime.trim()
+          ? (parseSessionDateTime(sessionDate, sessionTime.trim()) ?? new Date())
+          : new Date();
         await supabase.from('active_sessions').insert({
           coach_id: profile.id,
           client_id: selectedClientId,
           session_id: sessionData.id,
-          start_time: new Date().toISOString(),
+          start_time: sessionStart.toISOString(),
           original_duration: Number(duration),
           current_duration: Number(duration),
           is_active: true,
@@ -624,6 +662,7 @@ export default function LogSessionScreen() {
     } catch (err: unknown) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to save session');
     } finally {
+      savingRef.current = false;
       setLoading(false);
     }
   };
@@ -723,7 +762,7 @@ export default function LogSessionScreen() {
         {/* Package warning */}
         {selectedClient && pkg && pkg.sessions_remaining <= 3 && pkg.sessions_remaining > 0 && (
           <View style={styles.warningBanner}>
-            <Ionicons name="warning-outline" size={16} color="#FFA500" />
+            <Ionicons name="warning-outline" size={16} color={colors.warning} />
             <Text style={styles.warningText}>
               Only {pkg.sessions_remaining} session{pkg.sessions_remaining !== 1 ? 's' : ''} remaining in this package
             </Text>
@@ -1135,15 +1174,15 @@ function makeStyles(c: ColorScheme) {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#FFA50015',
+    backgroundColor: c.warning + '15',
     borderRadius: 10,
     padding: 12,
     marginTop: 8,
     borderWidth: 1,
-    borderColor: '#FFA50040',
+    borderColor: c.warning + '40',
   },
   errorBanner: { backgroundColor: c.danger + '15', borderColor: c.danger + '40' },
-  warningText: { ...Typography.caption, color: '#FFA500', flex: 1 },
+  warningText: { ...Typography.caption, color: c.warning, flex: 1 },
   row: { flexDirection: 'row', gap: 12 },
   field: { marginBottom: 16 },
   label: { ...Typography.label, color: c.textSecondary, marginBottom: 8 },
@@ -1198,7 +1237,7 @@ function makeStyles(c: ColorScheme) {
   addExBtnText: { color: c.bg, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: c.overlay,
     justifyContent: 'flex-end',
   },
   modalSheet: {

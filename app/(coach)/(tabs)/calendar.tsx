@@ -82,8 +82,8 @@ function formatTime(time: string | null): string | null {
 
 const STATUS_CONFIG = (colors: ColorScheme) => ({
   confirmed: { label: 'Confirmed', color: colors.accent },
-  pending:   { label: 'Pending',   color: '#FFA500' },
-  absent:    { label: 'Absent',    color: '#FF4D4D' },
+  pending:   { label: 'Pending',   color: colors.warning },
+  absent:    { label: 'Absent',    color: colors.danger },
 } as const);
 
 function isWithin3Hours(sessionDate: string, scheduledTime: string | null): boolean {
@@ -454,15 +454,41 @@ export default function CalendarScreen() {
   const handleAddLeave = async () => {
     if (!leaveDate.trim() || !profile?.id) return;
     setAddingLeave(true);
+    const dayDate = leaveDate.trim();
     const { error } = await supabase.from('coach_blocked_dates').insert({
       coach_id: profile.id,
-      date: leaveDate.trim(),
+      date: dayDate,
       type: leaveType,
       notes: leaveNotes.trim() || null,
       created_by: profile.id,
     });
     setAddingLeave(false);
     if (error) { Alert.alert('Error', error.message); return; }
+
+    // Notify clients who have sessions on this now-blocked day
+    const { data: affectedSessions } = await supabase
+      .from('scheduled_sessions')
+      .select('id, client_id')
+      .eq('coach_id', profile.id)
+      .gte('scheduled_at', `${dayDate}T00:00:00`)
+      .lte('scheduled_at', `${dayDate}T23:59:59`)
+      .in('status', ['pending', 'client_confirmed']);
+
+    if (affectedSessions && affectedSessions.length > 0) {
+      const { sendPushNotification } = await import('@/lib/pushNotifications');
+      const leaveLabel = ({ leave: 'Leave', meeting: 'Meeting', other: 'Day off' } as Record<string, string>)[leaveType] ?? 'Day off';
+      for (const session of affectedSessions) {
+        await sendPushNotification(session.client_id, {
+          title: '⚠️ Coach Unavailable',
+          body: `Your coach marked ${dayDate} as ${leaveLabel}. Your scheduled session may need to be rescheduled.`,
+        });
+      }
+      Alert.alert(
+        'Clients Notified',
+        `${affectedSessions.length} client${affectedSessions.length !== 1 ? 's' : ''} with sessions on this day ${affectedSessions.length !== 1 ? 'have' : 'has'} been notified.`,
+      );
+    }
+
     setShowLeaveModal(false);
     setLeaveDate('');
     setLeaveNotes('');
@@ -494,6 +520,8 @@ export default function CalendarScreen() {
   }
 
   const selectedScheduled = scheduledByDate[selectedDate] ?? [];
+
+  const selectedBlocked = myBlockedDates.find((bd) => bd.date === selectedDate) ?? null;
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
@@ -763,6 +791,24 @@ export default function CalendarScreen() {
           </Pressable>
         </View>
 
+        {/* ── Blocked day banner ───────────────────────────────── */}
+        {selectedBlocked && (() => {
+          const BLK_LABEL: Record<string, string> = { leave: 'Leave', meeting: 'Meeting', other: 'Other' };
+          return (
+            <View style={styles.blockedDayBanner}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="ban-outline" size={16} color={colors.danger} />
+                <Text style={styles.blockedDayBannerTitle}>
+                  {BLK_LABEL[selectedBlocked.type] ?? selectedBlocked.type} — Day Off
+                </Text>
+              </View>
+              {selectedBlocked.notes ? (
+                <Text style={styles.blockedDayBannerNotes}>{selectedBlocked.notes}</Text>
+              ) : null}
+            </View>
+          );
+        })()}
+
         {/* ── Scheduled sessions ─────────────────────────────── */}
         {selectedScheduled.map((ss) => {
           const isConfirmed = !!ss.client_confirmed_at;
@@ -772,8 +818,8 @@ export default function CalendarScreen() {
           return (
             <View key={ss.id} style={styles.scheduledCard}>
               <View style={styles.scheduledCardMain}>
-                <View style={[styles.avatar, { backgroundColor: '#4CAF5018', borderColor: '#4CAF5040' }]}>
-                  <Text style={[styles.avatarText, { color: '#4CAF50' }]}>{initials(ss.client_name)}</Text>
+                <View style={[styles.avatar, { backgroundColor: colors.success + '18', borderColor: colors.success + '40' }]}>
+                  <Text style={[styles.avatarText, { color: colors.success }]}>{initials(ss.client_name)}</Text>
                 </View>
                 <View style={styles.sessionInfo}>
                   <Text style={styles.clientName}>{ss.client_name}</Text>
@@ -784,12 +830,12 @@ export default function CalendarScreen() {
                 </View>
                 {ss.status === 'reschedule_pending' ? (
                   <View style={styles.awaitingRescheduleBadge}>
-                    <Ionicons name="time-outline" size={11} color="#FFA500" />
+                    <Ionicons name="time-outline" size={11} color={colors.warning} />
                     <Text style={styles.awaitingRescheduleText}>Pending</Text>
                   </View>
                 ) : isConfirmed ? (
                   <View style={styles.clientConfirmedBadge}>
-                    <Ionicons name="checkmark-circle" size={13} color="#4CAF50" />
+                    <Ionicons name="checkmark-circle" size={13} color={colors.success} />
                     <Text style={styles.clientConfirmedText}>Confirmed</Text>
                   </View>
                 ) : (
@@ -800,7 +846,7 @@ export default function CalendarScreen() {
               </View>
               {ss.status === 'reschedule_pending' && ss.reschedule_proposed_at ? (
                 <View style={styles.rescheduledToRow}>
-                  <Ionicons name="arrow-forward-outline" size={12} color="#FFA500" />
+                  <Ionicons name="arrow-forward-outline" size={12} color={colors.warning} />
                   <Text style={styles.rescheduledToText}>
                     Proposed: {new Date(ss.reschedule_proposed_at).toLocaleString('en-US', {
                       month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
@@ -845,7 +891,7 @@ export default function CalendarScreen() {
                     ])
                   }
                 >
-                  <Ionicons name="close" size={12} color="#FF4D4D" />
+                  <Ionicons name="close" size={12} color={colors.danger} />
                   <Text style={styles.scheduledActionCancelText}>Cancel</Text>
                 </Pressable>
               </View>
@@ -856,7 +902,7 @@ export default function CalendarScreen() {
         {/* ── Open slots banner ──────────────────────────────── */}
         {selectedSessions.some((s) => s.status === 'absent') && (
           <View style={styles.openSlotBanner}>
-            <Ionicons name="alert-circle-outline" size={16} color="#FFA500" />
+            <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
             <Text style={styles.openSlotText}>
               {selectedSessions.filter((s) => s.status === 'absent').length} open slot(s) — tap + to assign another client
             </Text>
@@ -865,11 +911,22 @@ export default function CalendarScreen() {
 
         {/* ── Session cards ────────────────────────────────────── */}
         {selectedSessions.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="calendar-outline" size={52} color={colors.border} />
-            <Text style={styles.emptyTitle}>No sessions scheduled</Text>
-            <Text style={styles.emptySub}>Tap + to log a session for this day</Text>
-          </View>
+          selectedBlocked ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="moon-outline" size={52} color={colors.danger + '60'} />
+              <Text style={[styles.emptyTitle, { color: colors.danger + 'cc' }]}>Day Off</Text>
+              <Text style={styles.emptySub}>
+                {({ leave: 'Leave', meeting: 'Meeting', other: 'Other' } as Record<string, string>)[selectedBlocked.type] ?? selectedBlocked.type}
+                {selectedBlocked.notes ? ` · ${selectedBlocked.notes}` : ''}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Ionicons name="calendar-outline" size={52} color={colors.border} />
+              <Text style={styles.emptyTitle}>No sessions scheduled</Text>
+              <Text style={styles.emptySub}>Tap + to log a session for this day</Text>
+            </View>
+          )
         ) : (
           selectedSessions.map((s) => {
             const cfg = statusConfig[s.status] ?? statusConfig.confirmed;
@@ -914,7 +971,7 @@ export default function CalendarScreen() {
                       style={styles.actionBtnAbsent}
                       onPress={() => handleMarkAbsent(s.id, s.client_id, s.client_name, s.scheduled_time, s.session_date)}
                     >
-                      <Ionicons name="close" size={13} color="#FF4D4D" />
+                      <Ionicons name="close" size={13} color={colors.danger} />
                       <Text style={styles.actionBtnAbsentText}>Absent</Text>
                     </Pressable>
                     <Pressable
@@ -932,7 +989,7 @@ export default function CalendarScreen() {
                 {/* Open slot notice — absent sessions */}
                 {s.status === 'absent' && (
                   <View style={styles.openSlotRow}>
-                    <Ionicons name="lock-open-outline" size={12} color="#FFA500" />
+                    <Ionicons name="lock-open-outline" size={12} color={colors.warning} />
                     <Text style={styles.openSlotRowText}>Slot open — assign another client via +</Text>
                   </View>
                 )}
@@ -1401,22 +1458,22 @@ function makeStyles(c: ColorScheme) {
     // Scheduled session card
     scheduledCard: {
       backgroundColor: c.surface, borderRadius: 14,
-      marginBottom: 10, borderWidth: 1, borderColor: '#4CAF5030', overflow: 'hidden',
+      marginBottom: 10, borderWidth: 1, borderColor: c.success + '30', overflow: 'hidden',
     },
     scheduledCardMain: {
       flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
     },
     clientConfirmedBadge: {
       flexDirection: 'row', alignItems: 'center', gap: 4,
-      backgroundColor: '#4CAF5015', borderRadius: 8,
-      paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#4CAF5040',
+      backgroundColor: c.success + '15', borderRadius: 8,
+      paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: c.success + '40',
     },
-    clientConfirmedText: { fontSize: 10, fontWeight: '700', color: '#4CAF50' },
+    clientConfirmedText: { fontSize: 10, fontWeight: '700', color: c.success },
     awaitingBadge: {
-      backgroundColor: '#FFA50015', borderRadius: 8,
-      paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#FFA50040',
+      backgroundColor: c.warning + '15', borderRadius: 8,
+      paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: c.warning + '40',
     },
-    awaitingText: { fontSize: 10, fontWeight: '700', color: '#FFA500' },
+    awaitingText: { fontSize: 10, fontWeight: '700', color: c.warning },
     scheduledActions: {
       flexDirection: 'row', gap: 8,
       paddingHorizontal: 14, paddingBottom: 12,
@@ -1428,10 +1485,10 @@ function makeStyles(c: ColorScheme) {
     scheduledActionLogText: { color: c.bg, fontSize: 12, fontWeight: '700' },
     scheduledActionCancel: {
       flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-      backgroundColor: '#FF4D4D15', borderRadius: 8, paddingVertical: 7,
-      borderWidth: 1, borderColor: '#FF4D4D40',
+      backgroundColor: c.danger + '15', borderRadius: 8, paddingVertical: 7,
+      borderWidth: 1, borderColor: c.danger + '40',
     },
-    scheduledActionCancelText: { color: '#FF4D4D', fontSize: 12, fontWeight: '700' },
+    scheduledActionCancelText: { color: c.danger, fontSize: 12, fontWeight: '700' },
     scheduledActionReschedule: {
       flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
       backgroundColor: c.accent + '15', borderRadius: 8, paddingVertical: 7,
@@ -1440,15 +1497,15 @@ function makeStyles(c: ColorScheme) {
     scheduledActionRescheduleText: { color: c.accent, fontSize: 12, fontWeight: '700' },
     awaitingRescheduleBadge: {
       flexDirection: 'row', alignItems: 'center', gap: 4,
-      backgroundColor: '#FFA50015', borderRadius: 8,
-      paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#FFA50050',
+      backgroundColor: c.warning + '15', borderRadius: 8,
+      paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: c.warning + '50',
     },
-    awaitingRescheduleText: { fontSize: 10, fontWeight: '700', color: '#FFA500' },
+    awaitingRescheduleText: { fontSize: 10, fontWeight: '700', color: c.warning },
     rescheduledToRow: {
       flexDirection: 'row', alignItems: 'center', gap: 5,
       paddingHorizontal: 14, paddingBottom: 6,
     },
-    rescheduledToText: { fontSize: 12, color: '#FFA500', fontWeight: '600' },
+    rescheduledToText: { fontSize: 12, color: c.warning, fontWeight: '600' },
 
     // Reschedule modal inputs
     rsLabel: { ...Typography.label, color: c.textSecondary, marginBottom: 6, marginTop: 14 },
@@ -1468,17 +1525,17 @@ function makeStyles(c: ColorScheme) {
     // Open slot banner
     openSlotBanner: {
       flexDirection: 'row', alignItems: 'center', gap: 8,
-      backgroundColor: '#FFA50015', borderRadius: 10, padding: 12,
-      marginBottom: 14, borderWidth: 1, borderColor: '#FFA50040',
+      backgroundColor: c.warning + '15', borderRadius: 10, padding: 12,
+      marginBottom: 14, borderWidth: 1, borderColor: c.warning + '40',
     },
-    openSlotText: { ...Typography.caption, color: '#FFA500', flex: 1 },
+    openSlotText: { ...Typography.caption, color: c.warning, flex: 1 },
 
     // Session card
     sessionCard: {
       backgroundColor: c.surface, borderRadius: 14,
       marginBottom: 10, borderWidth: 1, borderColor: c.border, overflow: 'hidden',
     },
-    sessionCardUrgent: { borderColor: '#FFA50060' },
+    sessionCardUrgent: { borderColor: c.warning + '60' },
     sessionCardMain: {
       flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
     },
@@ -1522,7 +1579,7 @@ function makeStyles(c: ColorScheme) {
       flexDirection: 'row', alignItems: 'center', gap: 6,
       paddingHorizontal: 14, paddingBottom: 8,
     },
-    openSlotRowText: { ...Typography.caption, color: '#FFA500' },
+    openSlotRowText: { ...Typography.caption, color: c.warning },
 
     // Waitlist row on each card
     waitlistRow: {
@@ -1555,7 +1612,7 @@ function makeStyles(c: ColorScheme) {
 
     // Modal
     modalRoot: { flex: 1, justifyContent: 'flex-end' },
-    modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
+    modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: c.overlay },
     modalSheet: {
       backgroundColor: c.surface,
       borderTopLeftRadius: 22, borderTopRightRadius: 22,
@@ -1626,6 +1683,28 @@ function makeStyles(c: ColorScheme) {
     clientPickInfo: { flex: 1 },
     clientPickName: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
     clientPickMeta: { ...Typography.caption, color: c.textSecondary },
+
+    // Blocked day banner (shown in day detail when selected day is blocked)
+    blockedDayBanner: {
+      backgroundColor: c.danger + '12',
+      borderWidth: 1,
+      borderColor: c.danger + '40',
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 14,
+      gap: 6,
+    },
+    blockedDayBannerTitle: {
+      ...Typography.body,
+      color: c.danger,
+      fontWeight: '700',
+    },
+    blockedDayBannerNotes: {
+      ...Typography.caption,
+      color: c.danger,
+      opacity: 0.65,
+      marginLeft: 24,
+    },
 
     // Blocked dates section
     blockHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },

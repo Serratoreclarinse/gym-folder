@@ -46,6 +46,8 @@ function ClientPickerModal({
   onClose: () => void;
   onSelect: (id: string) => void;
 }) {
+  const { colors } = useTheme();
+  const ps = useMemo(() => makePs(colors), [colors]);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={ps.container}>
@@ -66,7 +68,7 @@ function ClientPickerModal({
               const isActive = pkg?.status === 'active';
               const isExpired = pkg?.status === 'expired';
               const isLow = isActive && (pkg?.sessions_remaining ?? 0) <= 3;
-              const statusColor = isExpired ? '#E8001D' : isLow ? '#FF9800' : '#4CAF50';
+              const statusColor = isExpired ? colors.accent : isLow ? colors.warning : colors.success;
               const statusLabel = isExpired
                 ? 'EXPIRED'
                 : isActive
@@ -82,13 +84,20 @@ function ClientPickerModal({
                     <Text style={[ps.avatarText, { color }]}>{initials}</Text>
                   </View>
                   <View style={ps.rowInfo}>
-                    <Text style={ps.rowName} numberOfLines={1}>{c.name}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={ps.rowName} numberOfLines={1}>{c.name}</Text>
+                      {c.isRetention && (
+                        <View style={{ backgroundColor: '#C8FF0018', borderRadius: 4, borderWidth: 1, borderColor: '#C8FF0040', paddingHorizontal: 4, paddingVertical: 1 }}>
+                          <Text style={{ fontSize: 8, fontWeight: '800', color: '#C8FF00', letterSpacing: 0.5 }}>🔄</Text>
+                        </View>
+                      )}
+                    </View>
                     <View style={ps.rowStatusRow}>
                       <View style={[ps.statusDot, { backgroundColor: statusColor }]} />
                       <Text style={[ps.statusLabel, { color: statusColor }]}>{statusLabel}</Text>
                     </View>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color="#444" />
+                  <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
                 </Pressable>
               );
             })}
@@ -114,7 +123,7 @@ export default function CoachDashboard() {
   const { activeSession, nextSession, extendSession, endSession, cancelSession, refetch: refetchTimer } = useActiveSessionContext();
   const [pausedWorkout, setPausedWorkout] = useState<any | null>(null);
   const [showPicker, setShowPicker] = useState(false);
-  const [monthEarnings, setMonthEarnings] = useState<number | null>(null);
+
   const [atRiskClients, setAtRiskClients] = useState<{ id: string; name: string; daysSince: number; phone: string | null }[]>([]);
   const [incomingTransfers, setIncomingTransfers] = useState<{
     id: string; client_name: string; from_coach_id: string; from_coach_name: string;
@@ -186,19 +195,6 @@ export default function CoachDashboard() {
     ]);
   };
 
-  const fetchEarnings = useCallback(async () => {
-    if (!profile?.id) return;
-    const now   = new Date();
-    const start = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-    const { data } = await supabase
-      .from('payments')
-      .select('amount')
-      .eq('coach_id', profile.id)
-      .gte('paid_at', start);
-    const total = (data ?? []).reduce((s: number, r: any) => s + (r.amount ?? 0), 0);
-    setMonthEarnings(total);
-  }, [profile?.id]);
-
   const fetchAtRisk = useCallback(async () => {
     if (!profile?.id) return;
     const cutoff = new Date();
@@ -213,7 +209,7 @@ export default function CoachDashboard() {
         .gte('session_date', new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0]),
       supabase
         .from('packages')
-        .select('client_id, start_date, client:profiles!packages_client_id_fkey(name, phone)')
+        .select('client_id, start_date, client:profiles!packages_client_id_fkey(name, phone, deactivated_at)')
         .eq('coach_id', profile.id)
         .eq('status', 'active'),
     ]);
@@ -227,6 +223,7 @@ export default function CoachDashboard() {
     const today = new Date();
     const riskMap = new Map<string, { id: string; name: string; daysSince: number; phone: string | null }>();
     for (const pkg of pkgRes.data ?? []) {
+      if ((pkg.client as any)?.deactivated_at) continue;
       const clientId = pkg.client_id;
       const lastDate = lastSess.get(clientId);
       const refDate  = lastDate ?? pkg.start_date;
@@ -244,10 +241,10 @@ export default function CoachDashboard() {
   }, [profile?.id]);
 
   const refreshing = cLoading || sLoading;
-  const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers(); fetchEarnings(); fetchAtRisk(); };
+  const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers(); fetchAtRisk(); };
 
   useFocusEffect(useCallback(() => {
-    refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers(); fetchEarnings(); fetchAtRisk();
+    refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers(); fetchAtRisk();
     AsyncStorage.getItem('@elevat3/paused_workout').then((data) => {
       if (data) {
         const w = JSON.parse(data);
@@ -328,7 +325,7 @@ export default function CoachDashboard() {
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
           <Pressable style={styles.addBtn} onPress={() => setShowPicker(true)}>
-            <Ionicons name="menu-outline" size={22} color={colors.accent} />
+            <Ionicons name="people-outline" size={22} color={colors.accent} />
           </Pressable>
           <View style={{ flex: 1 }}>
             <Text style={styles.greeting} numberOfLines={1}>Hi Coach, {firstName} 👊</Text>
@@ -337,9 +334,6 @@ export default function CoachDashboard() {
             </Text>
           </View>
         </View>
-        <Pressable style={styles.iconBtn} onPress={() => router.push('/(coach)/announcements' as any)}>
-          <Ionicons name="megaphone-outline" size={18} color={colors.accent} />
-        </Pressable>
       </View>
 
       {(cError || sError) && (
@@ -348,20 +342,20 @@ export default function CoachDashboard() {
 
       {/* Compact stats strip */}
       <View style={styles.statsStrip}>
-        <View style={styles.statItem}>
+        <Pressable style={({ pressed }) => [styles.statItem, pressed && { opacity: 0.6 }]} onPress={() => router.push('/(coach)/(tabs)/clients')}>
           <Text style={styles.statValue}>{activeClients}</Text>
           <Text style={styles.statLabel}>Clients</Text>
-        </View>
+        </Pressable>
         <View style={styles.statDiv} />
-        <View style={styles.statItem}>
+        <Pressable style={({ pressed }) => [styles.statItem, pressed && { opacity: 0.6 }]} onPress={() => router.push('/(coach)/(tabs)/sessions')}>
           <Text style={styles.statValue}>{todaySessions}</Text>
           <Text style={styles.statLabel}>Today</Text>
-        </View>
+        </Pressable>
         <View style={styles.statDiv} />
-        <View style={styles.statItem}>
+        <Pressable style={({ pressed }) => [styles.statItem, pressed && { opacity: 0.6 }]} onPress={() => router.push('/(coach)/(tabs)/sessions')}>
           <Text style={styles.statValue}>{weekSessions}</Text>
           <Text style={styles.statLabel}>This Week</Text>
-        </View>
+        </Pressable>
       </View>
     </View>
 
@@ -374,10 +368,10 @@ export default function CoachDashboard() {
           <Ionicons
             name={salesBanner.level === 'warning' ? 'time-outline' : 'alert-circle'}
             size={18}
-            color={salesBanner.level === 'warning' ? '#FF9800' : '#FF4D4D'}
+            color={salesBanner.level === 'warning' ? colors.warning : colors.danger}
           />
           <View style={{ flex: 1 }}>
-            <Text style={[styles.salesBannerTitle, salesBanner.level === 'closing' && { color: '#FF4D4D' }]}>
+            <Text style={[styles.salesBannerTitle, salesBanner.level === 'closing' && { color: colors.danger }]}>
               {salesBanner.level === 'warning'
                 ? `Sales Closing in ${salesBanner.daysLeft} day${salesBanner.daysLeft !== 1 ? 's' : ''}`
                 : salesBanner.daysLeft === 0
@@ -395,22 +389,6 @@ export default function CoachDashboard() {
         </View>
       )}
 
-      {/* Earnings this month */}
-      {monthEarnings !== null && (
-        <Pressable
-          style={({ pressed }) => [styles.earningsCard, pressed && { opacity: 0.85 }]}
-          onPress={() => router.push('/(coach)/revenue')}
-        >
-          <View>
-            <Text style={styles.earningsLabel}>EARNINGS THIS MONTH</Text>
-            <Text style={styles.earningsValue}>
-              OMR {monthEarnings.toFixed(3).replace(/\.?0+$/, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-            </Text>
-          </View>
-          <Ionicons name="trending-up-outline" size={28} color={colors.accent} />
-        </Pressable>
-      )}
-
       {/* Quick actions */}
       <Pressable
         style={({ pressed }) => [styles.logSessionBtn, pressed && { opacity: 0.85 }]}
@@ -420,25 +398,8 @@ export default function CoachDashboard() {
         <Text style={styles.logSessionText}>LOG SESSION</Text>
       </Pressable>
 
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-        <Pressable
-          style={({ pressed }) => [styles.emergencyBtn, { flex: 1 }, pressed && { opacity: 0.8 }]}
-          onPress={() => router.push({ pathname: '/(coach)/announcements', params: { preset: 'emergency' } } as any)}
-        >
-          <Ionicons name="warning-outline" size={14} color={colors.danger} />
-          <Text style={styles.emergencyBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>EMERGENCY NOTICE</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.emergencyBtn, { flex: 1 }, pressed && { opacity: 0.8 }]}
-          onPress={() => router.push('/(coach)/form-checker' as any)}
-        >
-          <Ionicons name="scan-outline" size={16} color={colors.accent} />
-          <Text style={[styles.emergencyBtnText, { color: colors.accent }]}>FORM CHECKER</Text>
-        </Pressable>
-      </View>
-
-      {/* Resume paused workout */}
-      {pausedWorkout && (
+      {/* Resume paused workout — hide when active session card is showing (its FULL LOG button covers this) */}
+      {pausedWorkout && !activeSession && (
         <Pressable
           style={({ pressed }) => [styles.resumeCard, pressed && { opacity: 0.8 }]}
           onPress={() => router.push({
@@ -457,7 +418,7 @@ export default function CoachDashboard() {
           } as any)}
         >
           <View style={styles.resumeIcon}>
-            <Ionicons name="play-circle" size={28} color="#4CAF50" />
+            <Ionicons name="play-circle" size={28} color={colors.success} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.resumeTitle}>RESUME WORKOUT</Text>
@@ -570,9 +531,9 @@ export default function CoachDashboard() {
                   <Ionicons
                     name={req.type === 'renewal' ? 'refresh-outline' : 'calendar-outline'}
                     size={13}
-                    color={req.type === 'renewal' ? '#4CAF50' : colors.accent}
+                    color={req.type === 'renewal' ? colors.success : colors.accent}
                   />
-                  <Text style={[styles.reqTypeText, req.type === 'renewal' && { color: '#4CAF50' }]}>
+                  <Text style={[styles.reqTypeText, req.type === 'renewal' && { color: colors.success }]}>
                     {req.type === 'renewal' ? 'Renewal' : 'Booking'}
                   </Text>
                 </View>
@@ -608,7 +569,7 @@ export default function CoachDashboard() {
           </View>
           {strikeAlerts.map((alert) => {
             const isMax = alert.strike_count >= MAX_STRIKES;
-            const color = isMax ? colors.danger : '#FFA500';
+            const color = isMax ? colors.danger : colors.warning;
             const initials = alert.client_name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
             const latestDate = new Date(alert.latest_strike_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             return (
@@ -642,13 +603,13 @@ export default function CoachDashboard() {
         <>
           <View style={styles.strikeSectionHeader}>
             <Text style={styles.sectionTitle}>PACKAGE ALERTS</Text>
-            <View style={[styles.strikeBadge, { backgroundColor: '#FF980020', borderColor: '#FF980060' }]}>
-              <Text style={[styles.strikeBadgeText, { color: '#FF9800' }]}>{packageAlertClients.length}</Text>
+            <View style={[styles.strikeBadge, { backgroundColor: colors.warning + '20', borderColor: colors.warning + '60' }]}>
+              <Text style={[styles.strikeBadgeText, { color: colors.warning }]}>{packageAlertClients.length}</Text>
             </View>
           </View>
           {packageAlertClients.map((c) => {
             const isExpired = c.activePackage!.sessions_remaining === 0;
-            const color = isExpired ? colors.danger : '#FF9800';
+            const color = isExpired ? colors.danger : colors.warning;
             const initials = c.name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
             return (
               <Pressable
@@ -682,8 +643,8 @@ export default function CoachDashboard() {
         <>
           <View style={styles.strikeSectionHeader}>
             <Text style={styles.sectionTitle}>AT-RISK CLIENTS</Text>
-            <View style={[styles.strikeBadge, { backgroundColor: '#FF980020', borderColor: '#FF980060' }]}>
-              <Text style={[styles.strikeBadgeText, { color: '#FF9800' }]}>{atRiskClients.length}</Text>
+            <View style={[styles.strikeBadge, { backgroundColor: colors.warning + '20', borderColor: colors.warning + '60' }]}>
+              <Text style={[styles.strikeBadgeText, { color: colors.warning }]}>{atRiskClients.length}</Text>
             </View>
           </View>
           {atRiskClients.map((c) => {
@@ -691,18 +652,18 @@ export default function CoachDashboard() {
             return (
               <View
                 key={c.id}
-                style={[styles.strikeAlertCard, { borderColor: '#FF980050' }]}
+                style={[styles.strikeAlertCard, { borderColor: colors.warning + '50' }]}
               >
                 <Pressable
                   style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }, pressed && { opacity: 0.75 }]}
                   onPress={() => router.push(`/(coach)/client/${c.id}`)}
                 >
-                  <View style={[styles.strikeAvatar, { backgroundColor: '#FF980018', borderColor: '#FF980040' }]}>
-                    <Text style={[styles.strikeAvatarText, { color: '#FF9800' }]}>{ini}</Text>
+                  <View style={[styles.strikeAvatar, { backgroundColor: colors.warning + '18', borderColor: colors.warning + '40' }]}>
+                    <Text style={[styles.strikeAvatarText, { color: colors.warning }]}>{ini}</Text>
                   </View>
                   <View style={styles.strikeAlertInfo}>
                     <Text style={styles.strikeAlertName}>{c.name}</Text>
-                    <Text style={[styles.strikeAlertDate, { color: '#FF9800' }]}>
+                    <Text style={[styles.strikeAlertDate, { color: colors.warning }]}>
                       No session in {c.daysSince} day{c.daysSince !== 1 ? 's' : ''}
                     </Text>
                   </View>
@@ -712,7 +673,7 @@ export default function CoachDashboard() {
                     style={({ pressed }) => [styles.atRiskBtn, pressed && { opacity: 0.7 }]}
                     onPress={() => router.push(`/(coach)/log-session?clientId=${c.id}` as any)}
                   >
-                    <Ionicons name="add-circle-outline" size={13} color="#FF9800" />
+                    <Ionicons name="add-circle-outline" size={13} color={colors.warning} />
                     <Text style={styles.atRiskBtnText}>LOG</Text>
                   </Pressable>
                   {c.phone ? (
@@ -720,7 +681,7 @@ export default function CoachDashboard() {
                       style={({ pressed }) => [styles.atRiskBtn, pressed && { opacity: 0.7 }]}
                       onPress={() => Linking.openURL(`tel:${c.phone}`)}
                     >
-                      <Ionicons name="call-outline" size={13} color="#FF9800" />
+                      <Ionicons name="call-outline" size={13} color={colors.warning} />
                       <Text style={styles.atRiskBtnText}>CALL</Text>
                     </Pressable>
                   ) : null}
@@ -756,11 +717,11 @@ function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
     resumeCard: {
       flexDirection: 'row', alignItems: 'center', gap: 12,
-      backgroundColor: '#4CAF5015', borderWidth: 1.5, borderColor: '#4CAF5050',
+      backgroundColor: c.success + '15', borderWidth: 1.5, borderColor: c.success + '50',
       borderRadius: 16, padding: 14, marginBottom: 10,
     },
     resumeIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-    resumeTitle: { color: '#4CAF50', fontWeight: '800', fontSize: 13, letterSpacing: 0.5, marginBottom: 3 },
+    resumeTitle: { color: c.success, fontWeight: '800', fontSize: 13, letterSpacing: 0.5, marginBottom: 3 },
     resumeSub: { color: c.textSecondary, fontSize: 13 },
 
     fixedTop: {
@@ -804,9 +765,6 @@ function makeStyles(c: ColorScheme) {
     statValue: { ...Typography.title, color: c.textPrimary, fontSize: 22, fontWeight: '800' },
     statLabel: { ...Typography.caption, color: c.textSecondary, marginTop: 2 },
     statDiv: { width: 1, height: 32, backgroundColor: c.border },
-    earningsCard:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: c.accent + '30', padding: 16, marginBottom: 8 },
-    earningsLabel: { ...Typography.label, color: c.textSecondary, marginBottom: 4, fontSize: 10 },
-    earningsValue: { fontSize: 22, fontWeight: '800', color: c.accent },
     logSessionBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
       backgroundColor: c.accent, borderRadius: 14, paddingVertical: 16,
@@ -849,10 +807,10 @@ function makeStyles(c: ColorScheme) {
     atRiskActions: { flexDirection: 'row', gap: 6 },
     atRiskBtn: {
       flexDirection: 'row', alignItems: 'center', gap: 4,
-      backgroundColor: '#FF980018', borderWidth: 1, borderColor: '#FF980050',
+      backgroundColor: c.warning + '18', borderWidth: 1, borderColor: c.warning + '50',
       borderRadius: 8, paddingHorizontal: 9, paddingVertical: 6,
     },
-    atRiskBtnText: { fontSize: 11, fontWeight: '800', color: '#FF9800', letterSpacing: 0.5 },
+    atRiskBtnText: { fontSize: 11, fontWeight: '800', color: c.warning, letterSpacing: 0.5 },
     strikeCountBadge: {
       alignItems: 'center',
       gap: 6,
@@ -892,7 +850,7 @@ function makeStyles(c: ColorScheme) {
       paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
       backgroundColor: c.accent + '18', borderWidth: 1, borderColor: c.accent + '40',
     },
-    reqTypeBadgeRenew: { backgroundColor: '#4CAF5018', borderColor: '#4CAF5040' },
+    reqTypeBadgeRenew: { backgroundColor: c.success + '18', borderColor: c.success + '40' },
     reqTypeText: { fontSize: 12, fontWeight: '700', color: c.accent },
     reqClientName: { ...Typography.body, color: c.textPrimary, fontWeight: '700', flex: 1 },
     reqDateTime: { ...Typography.caption, color: c.textSecondary },
@@ -908,25 +866,17 @@ function makeStyles(c: ColorScheme) {
       backgroundColor: c.accent,
     },
     reqAcceptBtnText: { color: c.bg, fontWeight: '800', fontSize: 13 },
-    // Emergency button
-    emergencyBtn: {
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-      backgroundColor: c.danger + '15', borderRadius: 14, paddingVertical: 13,
-      borderWidth: 1, borderColor: c.danger + '50',
-    },
-    emergencyBtnText: { color: c.danger, fontSize: 12, fontWeight: '800', letterSpacing: 0.5, flexShrink: 1 },
-
     // Sales closing banner
     salesBanner: {
       flexDirection: 'row', alignItems: 'flex-start', gap: 10,
-      borderWidth: 1, borderColor: '#FF980055', borderRadius: 12,
-      padding: 13, marginBottom: 12, backgroundColor: '#FF980010',
+      borderWidth: 1, borderColor: c.warning + '55', borderRadius: 12,
+      padding: 13, marginBottom: 12, backgroundColor: c.warning + '10',
     },
     salesBannerFinal: {
-      borderColor: '#FF4D4D55', backgroundColor: '#FF4D4D10',
+      borderColor: c.danger + '55', backgroundColor: c.danger + '10',
     },
     salesBannerTitle: {
-      fontSize: 13, fontWeight: '800', color: '#FF9800', marginBottom: 2,
+      fontSize: 13, fontWeight: '800', color: c.warning, marginBottom: 2,
     },
     salesBannerSub: {
       fontSize: 12, color: c.textSecondary, lineHeight: 16,
@@ -946,47 +896,49 @@ function makeStyles(c: ColorScheme) {
   });
 }
 
-const ps = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: '#1A1A1A',
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingBottom: 32, maxHeight: '70%',
-    borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1,
-    borderColor: '#2A2A2A',
-  },
-  handle: {
-    width: 36, height: 4, borderRadius: 2,
-    backgroundColor: '#444', alignSelf: 'center', marginVertical: 12,
-  },
-  sheetHead: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 20, paddingBottom: 14,
-    borderBottomWidth: 1, borderBottomColor: '#2A2A2A', marginBottom: 4,
-  },
-  sheetTitle: {
-    fontSize: 12, fontWeight: '800', letterSpacing: 1.5,
-    color: '#888', flex: 1,
-  },
-  sheetBadge: {
-    backgroundColor: '#E8001D20', borderRadius: 10,
-    paddingHorizontal: 8, paddingVertical: 2,
-    borderWidth: 1, borderColor: '#E8001D40',
-  },
-  sheetBadgeText: { color: '#E8001D', fontSize: 11, fontWeight: '800' },
-  row: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    paddingHorizontal: 20, paddingVertical: 13,
-    borderBottomWidth: 1, borderBottomColor: '#242424',
-  },
-  avatar: {
-    width: 46, height: 46, borderRadius: 23,
-    justifyContent: 'center', alignItems: 'center', borderWidth: 2, flexShrink: 0,
-  },
-  avatarText: { fontSize: 15, fontWeight: '800' },
-  rowInfo: { flex: 1 },
-  rowName: { color: '#fff', fontWeight: '700', fontSize: 14, marginBottom: 4 },
-  rowStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  statusDot: { width: 7, height: 7, borderRadius: 4 },
-  statusLabel: { fontSize: 12, fontWeight: '600' },
-});
+function makePs(c: ColorScheme) {
+  return StyleSheet.create({
+    container: { flex: 1, justifyContent: 'flex-end' },
+    sheet: {
+      backgroundColor: c.surface,
+      borderTopLeftRadius: 24, borderTopRightRadius: 24,
+      paddingBottom: 32, maxHeight: '70%',
+      borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1,
+      borderColor: c.border,
+    },
+    handle: {
+      width: 36, height: 4, borderRadius: 2,
+      backgroundColor: c.border, alignSelf: 'center', marginVertical: 12,
+    },
+    sheetHead: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      paddingHorizontal: 20, paddingBottom: 14,
+      borderBottomWidth: 1, borderBottomColor: c.border, marginBottom: 4,
+    },
+    sheetTitle: {
+      fontSize: 12, fontWeight: '800', letterSpacing: 1.5,
+      color: c.textSecondary, flex: 1,
+    },
+    sheetBadge: {
+      backgroundColor: c.accent + '20', borderRadius: 10,
+      paddingHorizontal: 8, paddingVertical: 2,
+      borderWidth: 1, borderColor: c.accent + '40',
+    },
+    sheetBadgeText: { color: c.accent, fontSize: 11, fontWeight: '800' },
+    row: {
+      flexDirection: 'row', alignItems: 'center', gap: 14,
+      paddingHorizontal: 20, paddingVertical: 13,
+      borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    avatar: {
+      width: 46, height: 46, borderRadius: 23,
+      justifyContent: 'center', alignItems: 'center', borderWidth: 2, flexShrink: 0,
+    },
+    avatarText: { fontSize: 15, fontWeight: '800' },
+    rowInfo: { flex: 1 },
+    rowName: { color: c.textPrimary, fontWeight: '700', fontSize: 14, marginBottom: 4 },
+    rowStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    statusDot: { width: 7, height: 7, borderRadius: 4 },
+    statusLabel: { fontSize: 12, fontWeight: '600' },
+  });
+}

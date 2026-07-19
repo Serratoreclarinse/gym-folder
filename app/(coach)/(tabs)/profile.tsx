@@ -5,13 +5,14 @@ import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/lib/supabase';
+import { PhoneInput } from '@/components/PhoneInput';
 import { useAuth } from '@/context/AuthContext';
 import { ColorScheme, Typography } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 
 export default function CoachProfileScreen() {
   const { profile, signOut, refreshProfile } = useAuth();
-  const { isDark, toggleTheme, colors } = useTheme();
+  const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [editing, setEditing] = useState(false);
@@ -232,8 +233,20 @@ export default function CoachProfileScreen() {
 
       {editing ? (
         <View style={styles.editCard}>
-          <EditField icon="call-outline" label="PHONE" value={phone} onChangeText={setPhone} placeholder="+63 912 345 6789" keyboardType="phone-pad" colors={colors} />
-          <EditField icon="logo-whatsapp" label="WHATSAPP" value={whatsapp} onChangeText={setWhatsapp} placeholder="+63 912 345 6789" keyboardType="phone-pad" iconColor="#25D366" colors={colors} />
+          <View style={[styles.editField, styles.editFieldBorder]}>
+            <Ionicons name="call-outline" size={18} color={colors.textSecondary} style={styles.rowIcon} />
+            <View style={styles.rowContent}>
+              <Text style={styles.infoLabel}>PHONE</Text>
+              <PhoneInput value={phone} onChange={setPhone} colors={colors} inputStyle={{ backgroundColor: 'transparent', borderWidth: 0, paddingHorizontal: 0, paddingVertical: 2, ...Typography.body, color: colors.textPrimary }} />
+            </View>
+          </View>
+          <View style={[styles.editField, styles.editFieldBorder]}>
+            <Ionicons name="logo-whatsapp" size={18} color="#25D366" style={styles.rowIcon} />
+            <View style={styles.rowContent}>
+              <Text style={styles.infoLabel}>WHATSAPP</Text>
+              <PhoneInput value={whatsapp} onChange={setWhatsapp} colors={colors} inputStyle={{ backgroundColor: 'transparent', borderWidth: 0, paddingHorizontal: 0, paddingVertical: 2, ...Typography.body, color: colors.textPrimary }} placeholder="WhatsApp number" />
+            </View>
+          </View>
           <EditField icon="logo-instagram" label="INSTAGRAM" value={instagram} onChangeText={setInstagram} placeholder="@yourhandle" iconColor="#E1306C" last colors={colors} />
           <View style={styles.editActions}>
             <Pressable style={styles.cancelBtn} onPress={() => setEditing(false)}>
@@ -292,30 +305,6 @@ export default function CoachProfileScreen() {
           </View>
           <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
         </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.infoRow, styles.infoRowBorder, pressed && { opacity: 0.7 }]}
-          onPress={() => router.push('/(coach)/revenue')}
-        >
-          <Ionicons name="bar-chart-outline" size={18} color={colors.textSecondary} style={styles.rowIcon} />
-          <View style={styles.rowContent}>
-            <Text style={styles.infoLabel}>REVENUE</Text>
-            <Text style={styles.infoValue}>Earnings, packages & session breakdown</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
-        </Pressable>
-        <View style={styles.infoRow}>
-          <Ionicons name={isDark ? 'moon-outline' : 'sunny-outline'} size={18} color={colors.textSecondary} style={styles.rowIcon} />
-          <View style={styles.rowContent}>
-            <Text style={styles.infoLabel}>APPEARANCE</Text>
-            <Text style={styles.infoValue}>{isDark ? 'Dark Mode' : 'Light Mode'}</Text>
-          </View>
-          <Switch
-            value={!isDark}
-            onValueChange={toggleTheme}
-            trackColor={{ false: colors.border, true: colors.accent + '80' }}
-            thumbColor={!isDark ? colors.accent : colors.textSecondary}
-          />
-        </View>
       </View>
 
       {/* Account */}
@@ -444,24 +433,14 @@ export default function CoachProfileScreen() {
         </View>
       )}
 
-      {/* Guide */}
-      <Pressable
-        style={({ pressed }) => [styles.guideBtn, pressed && { opacity: 0.7 }]}
-        onPress={() => router.push('/(coach)/guide')}
-      >
-        <Ionicons name="book-outline" size={16} color={colors.accent} />
-        <Text style={styles.guideBtnText}>User Guide</Text>
-        <Ionicons name="chevron-forward" size={14} color={colors.accent} style={{ marginLeft: 'auto' }} />
-      </Pressable>
-
       {/* Equipment Request */}
       <Pressable
-        style={({ pressed }) => [styles.guideBtn, { borderColor: '#FF980050', backgroundColor: '#FF980008' }, pressed && { opacity: 0.7 }]}
+        style={({ pressed }) => [styles.guideBtn, { borderColor: colors.warning + '50', backgroundColor: colors.warning + '08' }, pressed && { opacity: 0.7 }]}
         onPress={() => setShowEqModal(true)}
       >
-        <Ionicons name="construct-outline" size={16} color="#FF9800" />
-        <Text style={[styles.guideBtnText, { color: '#FF9800' }]}>Request Equipment</Text>
-        <Ionicons name="chevron-forward" size={14} color="#FF9800" style={{ marginLeft: 'auto' }} />
+        <Ionicons name="construct-outline" size={16} color={colors.warning} />
+        <Text style={[styles.guideBtnText, { color: colors.warning }]}>Request Equipment</Text>
+        <Ionicons name="chevron-forward" size={14} color={colors.warning} style={{ marginLeft: 'auto' }} />
       </Pressable>
 
       {/* Recent equipment requests */}
@@ -469,10 +448,10 @@ export default function CoachProfileScreen() {
         <View style={styles.eqHistory}>
           {myRequests.map((r) => {
             const STATUS_DISPLAY: Record<string, { label: string; color: string }> = {
-              pending:   { label: 'PENDING',  color: '#FF9800' },
+              pending:   { label: 'PENDING',  color: colors.warning },
               approved:  { label: 'INCOMING', color: '#2196F3' },
-              fulfilled: { label: 'RECEIVED', color: '#4CAF50' },
-              rejected:  { label: 'REJECTED', color: '#F44336' },
+              fulfilled: { label: 'RECEIVED', color: colors.success },
+              rejected:  { label: 'REJECTED', color: colors.danger },
             };
             const { label, color } = STATUS_DISPLAY[r.status] ?? { label: r.status.toUpperCase(), color: colors.textSecondary };
             return (
@@ -722,7 +701,7 @@ function makeStyles(c: ColorScheme) {
     eqHistoryItem: { ...Typography.body, color: c.textPrimary, flex: 1, marginRight: 8 },
     eqStatusBadge: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
     eqStatusText: { fontSize: 10, fontWeight: '800' },
-    eqOverlay: { flex: 1, backgroundColor: '#00000070', justifyContent: 'flex-end' },
+    eqOverlay: { flex: 1, backgroundColor: c.overlay, justifyContent: 'flex-end' },
     eqSheet: {
       backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
       padding: 24, gap: 6,
@@ -736,7 +715,7 @@ function makeStyles(c: ColorScheme) {
       paddingHorizontal: 12, paddingVertical: 10,
     },
     eqSubmitBtn: {
-      backgroundColor: '#FF9800', borderRadius: 12,
+      backgroundColor: c.warning, borderRadius: 12,
       paddingVertical: 15, alignItems: 'center', marginTop: 16,
     },
     eqSubmitText: { color: '#fff', fontWeight: '800', fontSize: 15 },

@@ -155,7 +155,7 @@ function PaymentRow({
           {fmt(payment.amount)}
         </Text>
         <View style={[styles.statusPill, isPaid ? styles.statusPaid : styles.statusPending]}>
-          <Text style={[styles.statusText, { color: isPaid ? '#4CAF50' : '#FFA500' }]}>
+          <Text style={[styles.statusText, { color: isPaid ? colors.success : colors.warning }]}>
             {isPaid ? 'Paid' : 'Pending'}
           </Text>
         </View>
@@ -319,7 +319,7 @@ function ReportModal({
             {pendingCount > 0 && (
               <View style={rp.previewRow}>
                 <Text style={rp.previewLabel}>Pending</Text>
-                <Text style={[rp.previewValue, { color: '#FFA500' }]}>{pendingCount} record{pendingCount !== 1 ? 's' : ''}</Text>
+                <Text style={[rp.previewValue, { color: colors.warning }]}>{pendingCount} record{pendingCount !== 1 ? 's' : ''}</Text>
               </View>
             )}
             <Text style={rp.previewNote}>Exports as CSV — open in Excel, Sheets, or email to accounting.</Text>
@@ -666,7 +666,7 @@ export default function RevenueScreen() {
             <Text style={styles.cardLabel}>Packages This Month</Text>
           </View>
           <View style={styles.card}>
-            <Text style={[styles.cardValue, pendingCount > 0 && { color: '#FFA500' }]}>
+            <Text style={[styles.cardValue, pendingCount > 0 && { color: colors.warning }]}>
               {pendingCount > 0 ? `⚠ ${pendingCount}` : activeClientCount}
             </Text>
             <Text style={styles.cardLabel}>
@@ -871,8 +871,8 @@ function makeStyles(c: ColorScheme) {
   statusPill: {
     borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1,
   },
-  statusPaid: { backgroundColor: '#4CAF5015', borderColor: '#4CAF5040' },
-  statusPending: { backgroundColor: '#FFA50015', borderColor: '#FFA50040' },
+  statusPaid: { backgroundColor: c.success + '15', borderColor: c.success + '40' },
+  statusPending: { backgroundColor: c.warning + '15', borderColor: c.warning + '40' },
   statusText: { fontSize: 11, fontWeight: '700' },
 
   // Empty state
@@ -896,7 +896,7 @@ function makeStyles(c: ColorScheme) {
 function makeFmStyles(colors: ColorScheme) {
   return StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
   sheet: {
     backgroundColor: colors.surface,
     borderTopLeftRadius: 22, borderTopRightRadius: 22,
@@ -953,7 +953,7 @@ function makeFmStyles(colors: ColorScheme) {
     alignItems: 'center',
   },
   segActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  segPending: { backgroundColor: '#FFA50020', borderColor: '#FFA50060' },
+  segPending: { backgroundColor: colors.warning + '20', borderColor: colors.warning + '60' },
   segText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
   segTextActive: { color: colors.bg },
 
@@ -988,7 +988,7 @@ function makeFmStyles(colors: ColorScheme) {
 function makeRpStyles(colors: ColorScheme) {
   return StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
   sheet: {
     backgroundColor: colors.surface,
     borderTopLeftRadius: 22, borderTopRightRadius: 22,

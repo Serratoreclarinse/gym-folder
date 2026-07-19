@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Animated, Dimensions, Pressable, StyleSheet, Text, View,
+  Animated, Dimensions, Pressable, StyleSheet, Switch, Text, View,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,7 +13,7 @@ const DRAWER_W = Math.round(Dimensions.get('window').width * 0.72);
 type Props = { visible: boolean; onClose: () => void };
 
 export function ClientDrawer({ visible, onClose }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark, toggleTheme } = useTheme();
   const { profile, signOut } = useAuth();
   const insets = useSafeAreaInsets();
   const slideX   = useRef(new Animated.Value(-DRAWER_W)).current;
@@ -78,12 +78,23 @@ export function ClientDrawer({ visible, onClose }: Props) {
       >
         {/* Branding */}
         <View style={[styles.brand, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.brandName, { color: colors.accent }]}>ELEVATƎ</Text>
-          <Text style={[styles.brandSub,  { color: colors.textSecondary }]}>Personal Training</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.brandName, { color: colors.accent }]}>ELEVATƎ</Text>
+            <Text style={[styles.brandSub,  { color: colors.textSecondary }]}>Personal Training</Text>
+          </View>
+          <Switch
+            value={isDark}
+            onValueChange={toggleTheme}
+            trackColor={{ false: colors.border, true: colors.accent + '80' }}
+            thumbColor={isDark ? colors.accent : colors.textSecondary}
+          />
         </View>
 
-        {/* User info */}
-        <View style={[styles.userRow, { borderBottomColor: colors.border }]}>
+        {/* User info — tappable → profile */}
+        <Pressable
+          style={({ pressed }) => [styles.userRow, { borderBottomColor: colors.border }, pressed && { opacity: 0.7 }]}
+          onPress={() => go('/(client)/profile')}
+        >
           <View style={[styles.avatar, { backgroundColor: colors.accent + '18', borderColor: colors.accent + '40' }]}>
             <Text style={[styles.avatarText, { color: colors.accent }]}>{initials}</Text>
           </View>
@@ -93,13 +104,17 @@ export function ClientDrawer({ visible, onClose }: Props) {
             </Text>
             <Text style={[styles.userRole, { color: colors.textSecondary }]}>Client</Text>
           </View>
-        </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+        </Pressable>
 
         {/* Navigation */}
         <View style={styles.nav}>
-          <NavItem icon="calendar-outline"     label="Session History" onPress={() => go('/(client)/session-history')} colors={colors} />
-          <NavItem icon="book-outline"         label="User Guide"      onPress={() => go('/(client)/guide')}           colors={colors} />
-          <NavItem icon="notifications-outline" label="Notifications"  onPress={() => go('/(client)/notifications')}   colors={colors} />
+          <NavItem icon="trophy-outline"         label="Records"          onPress={() => go('/(client)/records')}          colors={colors} />
+          <NavItem icon="barbell-outline"        label="Workouts"         onPress={() => go('/(client)/workouts')}         colors={colors} />
+          <NavItem icon="calendar-outline"       label="Session History"  onPress={() => go('/(client)/session-history')}  colors={colors} />
+          <NavItem icon="refresh-circle-outline" label="Renewal History"  onPress={() => go('/(client)/renewal-history')}  colors={colors} />
+          <NavItem icon="book-outline"           label="User Guide"       onPress={() => go('/(client)/guide')}            colors={colors} />
+          <NavItem icon="notifications-outline"  label="Notifications"    onPress={() => go('/(client)/notifications')}    colors={colors} />
         </View>
 
         {/* Sign out */}
@@ -139,6 +154,8 @@ const styles = StyleSheet.create({
     elevation: 20,
   },
   brand: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 24,
     paddingVertical: 20,
     borderBottomWidth: 1,

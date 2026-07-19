@@ -19,8 +19,8 @@ function PackageBadge({ remaining, status }: { remaining: number; status: string
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const expired = status === 'expired';
   const warning = !expired && remaining <= 2;
-  const color = expired ? colors.textSecondary : warning ? '#FFA500' : colors.accent;
-  const bg = expired ? colors.border : warning ? '#FFA50020' : colors.accent + '18';
+  const color = expired ? colors.textSecondary : warning ? colors.warning : colors.accent;
+  const bg = expired ? colors.border : warning ? colors.warning + '20' : colors.accent + '18';
   return (
     <View style={[styles.badge, { backgroundColor: bg, borderColor: color + '60' }]}>
       <Text style={[styles.badgeText, { color }]}>

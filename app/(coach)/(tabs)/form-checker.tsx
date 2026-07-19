@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   FlatList,
   Modal,
@@ -10,11 +10,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
 import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Ellipse, Path, Line, G, Text as SvgText } from 'react-native-svg';
+import { useTheme } from '@/context/ThemeContext';
+import * as ImagePicker from 'expo-image-picker';
 
 const FORM_CHECKER_URL = 'https://serratoreclarinse.github.io/gym-folder/form-checker.html';
 
@@ -161,6 +162,12 @@ export default function FormCheckerScreen() {
   const [liveChecks, setLiveChecks] = useState<{ status: string; msg: string }[]>([]);
   const [showSilhouette, setShowSilhouette] = useState(false);
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+
+  useEffect(() => {
+    ImagePicker.requestCameraPermissionsAsync();
+  }, []);
+
   const silType = (() => {
     if (['deadlift','rdl','row','goodmorning','hiphinge'].includes(preset.key)) return 'hinge';
     if (['hipthrust','glutebridge','deadbug'].includes(preset.key)) return 'floor';
@@ -226,14 +233,11 @@ export default function FormCheckerScreen() {
 
       {/* Top controls */}
       <View style={[s.topBar, { paddingTop: insets.top + 8 }]}>
-        <Pressable style={s.topBtn} onPress={() => router.back()}>
-          <Ionicons name="close" size={22} color="#fff" />
-        </Pressable>
         <View style={s.presetLabel}>
           <Text style={s.presetLabelText}>{preset.label}</Text>
           <Text style={s.presetLabelSub}>Pose Detection</Text>
         </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
           <Pressable style={[s.topBtn, showGrid && s.topBtnActive]} onPress={() => setShowGrid(g => !g)}>
             <Ionicons name="grid-outline" size={18} color={showGrid ? '#000' : '#fff'} />
           </Pressable>
@@ -259,7 +263,7 @@ export default function FormCheckerScreen() {
       </View>
 
       {/* Legend */}
-      <View style={s.legend}>
+      <View style={[s.legend, { top: insets.top + 62 }]}>
         {[
           { color: 'rgba(100,210,255,0.95)', label: 'Skeleton' },
           { color: 'rgba(255,230,0,0.95)',   label: 'Focus' },
@@ -273,7 +277,7 @@ export default function FormCheckerScreen() {
 
       {/* Bottom exercise picker */}
       <Pressable
-        style={[s.bottomBar, { paddingBottom: insets.bottom + 12 }]}
+        style={[s.bottomBar, { paddingBottom: 12 }]}
         onPress={() => { setSearchQuery(''); setShowDropdown(true); }}
       >
         <Text style={s.bottomHint}>Exercise</Text>
@@ -479,7 +483,7 @@ export default function FormCheckerScreen() {
               {liveChecks.map((item, idx) => {
                 const isGood = item.status === 'good';
                 const isBad  = item.status === 'bad';
-                const dotColor = isGood ? '#4CAF50' : isBad ? '#F44336' : '#FF9800';
+                const dotColor = isGood ? colors.success : isBad ? colors.danger : colors.warning;
                 const textColor = isGood ? '#81C784' : isBad ? '#E57373' : '#FFB74D';
                 return (
                   <View key={idx} style={s.clRow}>
@@ -533,8 +537,8 @@ export default function FormCheckerScreen() {
                 {/* Angle badge */}
                 <View style={[
                   s.guideBadge,
-                  { backgroundColor: preset.angle === 'front' ? '#2196F318' : '#FF980018',
-                    borderColor:      preset.angle === 'front' ? '#2196F360' : '#FF980060' },
+                  { backgroundColor: preset.angle === 'front' ? '#2196F318' : colors.warning + '18',
+                    borderColor:      preset.angle === 'front' ? '#2196F360' : colors.warning + '60' },
                 ]}>
                   <Ionicons
                     name={preset.angle === 'front' ? 'person-outline' : 'swap-horizontal-outline'}
@@ -559,7 +563,7 @@ export default function FormCheckerScreen() {
                 <Text style={s.guideSection}>DO</Text>
                 {guide.dos.map((item, i) => (
                   <View key={i} style={s.guideRow}>
-                    <View style={[s.guideDot, { backgroundColor: '#4CAF50' }]} />
+                    <View style={[s.guideDot, { backgroundColor: colors.success }]} />
                     <Text style={s.guideRowText}>{item}</Text>
                   </View>
                 ))}
@@ -640,22 +644,22 @@ const s = StyleSheet.create({
   topBar: {
     position: 'absolute', top: 0, left: 0, right: 0,
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 14, paddingBottom: 10,
+    paddingHorizontal: 12, paddingBottom: 8,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    gap: 10,
+    gap: 8,
   },
   topBtn: {
-    width: 36, height: 36, borderRadius: 18,
+    width: 32, height: 32, borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center', justifyContent: 'center',
   },
   topBtnActive: { backgroundColor: '#fff' },
   presetLabel: { flex: 1 },
-  presetLabelText: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  presetLabelSub:  { color: 'rgba(255,255,255,0.55)', fontSize: 10, fontWeight: '600' },
+  presetLabelText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  presetLabelSub:  { color: 'rgba(255,255,255,0.55)', fontSize: 9, fontWeight: '600' },
 
   legend: {
-    position: 'absolute', top: 110, left: 12,
+    position: 'absolute', left: 12,
     flexDirection: 'column', gap: 5,
   },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },

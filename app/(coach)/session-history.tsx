@@ -296,6 +296,6 @@ function makeStyles(c: ColorScheme) {
       backgroundColor: c.accent, borderRadius: 10,
       paddingVertical: 11, marginTop: 12,
     },
-    restoreBtnText: { color: '#fff', fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
+    restoreBtnText: { color: c.bg, fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
   });
 }

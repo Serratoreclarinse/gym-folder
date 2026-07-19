@@ -87,11 +87,17 @@ function SessionCard({ session, showRateBadge, onRate, ratingExpired, submittedR
             />
           ))}
         </View>
+      ) : session.notes ? (
+        <View style={styles.notesBox}>
+          <Ionicons name="document-text-outline" size={13} color={colors.textSecondary} />
+          <Text style={styles.notesText}>{session.notes}</Text>
+        </View>
       ) : (
         <Text style={styles.noExercises}>No exercises recorded</Text>
       )}
 
-      {!isNoShow && session.notes ? (
+      {/* Only show notes box separately when exercises also exist (avoid duplicate) */}
+      {!isNoShow && session.exercises.length > 0 && session.notes ? (
         <View style={styles.notesBox}>
           <Ionicons name="document-text-outline" size={13} color={colors.textSecondary} />
           <Text style={styles.notesText}>{session.notes}</Text>
@@ -380,10 +386,10 @@ function makeStyles(c: ColorScheme) {
     monthCount: { ...Typography.caption, color: c.textSecondary },
 
     card: {
-      backgroundColor: c.surface, borderRadius: 18,
+      backgroundColor: c.surface, borderRadius: 14,
       padding: 16, marginBottom: 12, borderWidth: 1, borderColor: c.border,
     },
-    cardNoShow: { borderColor: '#FFA50040', backgroundColor: '#FFA50008' },
+    cardNoShow: { borderColor: c.warning + '40', backgroundColor: c.warning + '08' },
     cardHeader: {
       flexDirection: 'row', justifyContent: 'space-between',
       alignItems: 'flex-start', marginBottom: 14,
@@ -399,11 +405,11 @@ function makeStyles(c: ColorScheme) {
     },
     durationText: { fontSize: 12, fontWeight: '600', color: c.accent },
     noShowBadge: {
-      backgroundColor: '#FFA50020', borderRadius: 8,
-      paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: '#FFA50050',
+      backgroundColor: c.warning + '20', borderRadius: 8,
+      paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: c.warning + '50',
     },
-    noShowBadgeText: { color: '#FFA500', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
-    noShowNote: { ...Typography.caption, color: '#FFA500', fontStyle: 'italic' },
+    noShowBadgeText: { color: c.warning, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+    noShowNote: { ...Typography.caption, color: c.warning, fontStyle: 'italic' },
 
     exList:  { gap: 12 },
     exRow:   { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
@@ -440,7 +446,7 @@ function makeStyles(c: ColorScheme) {
 
     // Rating modal
     ratingBg: {
-      flex: 1, backgroundColor: 'rgba(0,0,0,0.75)',
+      flex: 1, backgroundColor: c.overlay,
       justifyContent: 'center', alignItems: 'center', padding: 24,
     },
     ratingCard: {
