@@ -2,7 +2,17 @@ import { Slot, useRouter } from 'expo-router';
 import { DarkTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef } from 'react';
-import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
+import { Alert, Animated, Platform, StyleSheet, Text, View } from 'react-native';
+import { GlobalAlert, showAppAlert } from '@/components/GlobalAlert';
+
+// Monkey-patch Alert.alert so all existing calls use the themed modal
+const _nativeAlert = Alert.alert.bind(Alert);
+(Alert as any).alert = (
+  title: string,
+  message?: string,
+  buttons?: Parameters<typeof Alert.alert>[2],
+  _options?: Parameters<typeof Alert.alert>[3],
+) => showAppAlert(title, message, buttons as any);
 import * as Linking from 'expo-linking';
 import * as Updates from 'expo-updates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -143,6 +153,7 @@ export default function RootLayout() {
               <ThemedStatusBar />
               <AuthNavigation />
               <Slot />
+              <GlobalAlert />
             </AuthProvider>
           </ThemeProvider>
         )}

@@ -245,13 +245,20 @@ export default function CoachDashboard() {
 
   useFocusEffect(useCallback(() => {
     refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers(); fetchAtRisk();
-    AsyncStorage.getItem('@elevat3/paused_workout').then((data) => {
+    AsyncStorage.getItem('@elevat3/paused_workout').then(async (data) => {
       if (data) {
         const w = JSON.parse(data);
-        if (Date.now() - w.savedAt < 24 * 60 * 60 * 1000) {
+        const SIX_HOURS = 6 * 60 * 60 * 1000;
+        if (Date.now() - w.savedAt < SIX_HOURS) {
           setPausedWorkout(w);
         } else {
-          AsyncStorage.removeItem('@elevat3/paused_workout');
+          // Expired — clean up local + server
+          await AsyncStorage.removeItem('@elevat3/paused_workout');
+          if (w.coachId) {
+            await supabase.from('active_sessions')
+              .update({ is_active: false, ended_at: new Date().toISOString() })
+              .eq('coach_id', w.coachId).eq('is_active', true);
+          }
           setPausedWorkout(null);
         }
       } else {
@@ -285,6 +292,35 @@ export default function CoachDashboard() {
       await AsyncStorage.setItem(todayKey, '1');
     })();
   }, [cLoading]);
+
+  // Schedule local push reminders for the coach's next session (3hr, 30min, 15min before)
+  useEffect(() => {
+    if (!nextSession) return;
+    const sessionDt = new Date(nextSession.scheduled_at);
+    const time = sessionDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const name = nextSession.client_name;
+    (async () => {
+      await Notifications.cancelScheduledNotificationAsync('coach-session-3hr').catch(() => {});
+      await Notifications.cancelScheduledNotificationAsync('coach-session-30min').catch(() => {});
+      await Notifications.cancelScheduledNotificationAsync('coach-session-15min').catch(() => {});
+      const now = Date.now();
+      const reminders = [
+        { id: 'coach-session-3hr',   ms: 3 * 60 * 60 * 1000, title: '📅 Upcoming Session',      body: `You have a session with ${name} at ${time}` },
+        { id: 'coach-session-30min', ms: 30 * 60 * 1000,      title: '⏰ Session in 30 Minutes', body: `Get ready! ${name}'s session starts at ${time}` },
+        { id: 'coach-session-15min', ms: 15 * 60 * 1000,      title: '🔔 Session in 15 Minutes', body: `${name}'s session starts in 15 minutes!` },
+      ];
+      for (const r of reminders) {
+        const fireAt = new Date(sessionDt.getTime() - r.ms);
+        if (fireAt.getTime() > now) {
+          await Notifications.scheduleNotificationAsync({
+            identifier: r.id,
+            content: { title: r.title, body: r.body, sound: true },
+            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: fireAt },
+          });
+        }
+      }
+    })();
+  }, [nextSession?.id]);
 
   const activeClients = clients.filter((c) => c.activePackage?.status === 'active').length;
   const packageAlertClients = clients.filter(
@@ -449,8 +485,14 @@ export default function CoachDashboard() {
         />
       )}
 
-      {/* Next scheduled session */}
-      {nextSession && (
+      {/* Next scheduled session — show only if today or tomorrow */}
+      {nextSession && (() => {
+        const sessionDate = new Date(nextSession.scheduled_at);
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() + 2);
+        cutoff.setHours(0, 0, 0, 0);
+        return sessionDate < cutoff;
+      })() && (
         <NextSessionCard nextSession={nextSession} />
       )}
 

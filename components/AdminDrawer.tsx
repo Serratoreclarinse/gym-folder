@@ -114,6 +114,7 @@ export function AdminDrawer({ visible, onClose }: Props) {
           <NavItem icon="refresh-circle-outline"  label="Renewal History"    onPress={() => go('/(admin)/renewals')}          colors={colors} />
           <NavItem icon="trash-outline"           label="Recycle Bin"        onPress={() => go('/(admin)/recycle-bin')}       colors={colors} />
           <NavItem icon="construct-outline"       label="Equipment Requests" onPress={() => go('/(admin)/equipment-requests')} colors={colors} />
+          <NavItem icon="bug-outline"             label="Bug Reports"        onPress={() => go('/(admin)/bug-reports')}       colors={colors} />
           <NavItem icon="notifications-outline"   label="Notifications"      onPress={() => go('/(admin)/notifications')}     colors={colors} />
         </ScrollView>
 

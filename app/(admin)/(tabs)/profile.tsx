@@ -3,6 +3,7 @@ import {
   ActivityIndicator, Alert, Image, Linking, Modal, Platform,
   Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
+import { BugReportModal } from '@/components/BugReportModal';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -32,6 +33,7 @@ export default function AdminProfileScreen() {
 
   // Change password
   const [pwModal, setPwModal] = useState(false);
+  const [bugModal, setBugModal] = useState(false);
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
   const [changingPw, setChangingPw] = useState(false);
@@ -247,13 +249,12 @@ export default function AdminProfileScreen() {
         {/* ── Bug report ── */}
         <Pressable
           style={({ pressed }) => [s.bugReportBtn, pressed && { opacity: 0.7 }]}
-          onPress={() => Linking.openURL(
-            `mailto:hr@jhe-group.com?subject=${encodeURIComponent('Bug Report - ELEVATƎ App v' + (Constants.expoConfig?.version ?? '1.0.0'))}&body=${encodeURIComponent('Describe the bug:\n\n')}`
-          )}
+          onPress={() => setBugModal(true)}
         >
           <Ionicons name="bug-outline" size={16} color="#888" />
           <Text style={s.bugReportText}>Report a Bug</Text>
         </Pressable>
+        <BugReportModal visible={bugModal} onClose={() => setBugModal(false)} />
 
         <Text style={s.versionText}>v{Constants.expoConfig?.version ?? '1.0.0'}</Text>
 

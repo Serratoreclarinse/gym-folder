@@ -549,7 +549,8 @@ export default function ClientDetailScreen() {
   const { clients, loading: clientsLoading, error: clientsError, refetch: refetchClients } = useClients();
   const { sessions, loading: sessionsLoading, error: sessionsError, refetch: refetchSessions } = useSessions(id);
   const { strikes, refetch: refetchStrikes, addStrike, removeStrike } = useStrikes(id);
-  const { sessions: scheduledSessions, scheduleSession, deleteSession: deleteScheduledSession } = useScheduledSessions(id);
+  const { sessions: scheduledSessions, scheduleSession, deleteSession: deleteScheduledSession, rescheduleSession } = useScheduledSessions(id);
+  const [reschedulingSession, setReschedulingSession] = useState<import('@/hooks/useScheduledSessions').ScheduledSession | null>(null);
 
   const client = clients.find((c) => c.id === id);
   const pkg = client?.activePackage;
@@ -725,6 +726,13 @@ export default function ClientDetailScreen() {
     if (error) { Alert.alert('Error', error); return; }
     if (session && client?.name) {
       scheduleSessionReminder(client.name, dt, session.id);
+      const dateStr = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+      const timeStr = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      await sendPushNotification(id as string, {
+        title: '📅 Session Scheduled',
+        body: `Your coach has scheduled a session for you on ${dateStr} at ${timeStr}.`,
+        data: { type: 'session_scheduled' },
+      });
     }
   };
 
@@ -778,6 +786,15 @@ export default function ClientDetailScreen() {
     });
     setSubmittingFreeze(false);
     if (error) { Alert.alert('Error', error.message); return; }
+    // Notify admin — they need to approve the freeze
+    const { data: adminForFreeze } = await supabase.from('profiles').select('id').eq('role', 'admin').limit(1);
+    if (adminForFreeze?.[0]?.id) {
+      await sendPushNotification(adminForFreeze[0].id, {
+        title: '❄️ Freeze Request',
+        body: `${profile?.name ?? 'A coach'} requested a freeze for ${client?.name ?? 'a client'} (${freezeStart} → ${freezeEnd}).`,
+        data: { type: 'freeze_request' },
+      });
+    }
     setShowFreezeModal(false);
     setFreezeStart('');
     setFreezeEnd('');
@@ -1018,19 +1035,7 @@ export default function ClientDetailScreen() {
       {/* Upcoming scheduled sessions */}
       <View style={[styles.sectionRow, { marginTop: 20, marginBottom: 10 }]}>
         <Text style={styles.sectionTitle}>UPCOMING SESSIONS</Text>
-        {!showScheduleForm && (
-          <Pressable style={styles.scheduleAddBtn} onPress={() => setShowScheduleForm(true)}>
-            <Ionicons name="add" size={14} color={colors.bg} />
-            <Text style={styles.scheduleAddBtnText}>SCHEDULE</Text>
-          </Pressable>
-        )}
       </View>
-      {showScheduleForm && (
-        <ScheduleForm
-          onConfirm={handleScheduleSession}
-          onCancel={() => setShowScheduleForm(false)}
-        />
-      )}
       {scheduledSessions.length === 0 && !showScheduleForm ? (
         <View style={[styles.emptyCard, { marginBottom: 20 }]}>
           <Text style={styles.emptyText}>No upcoming sessions scheduled</Text>
@@ -1040,31 +1045,82 @@ export default function ClientDetailScreen() {
           const dt = new Date(s.scheduled_at);
           const dateStr = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
           const timeStr = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const isPending = s.status === 'reschedule_pending';
           return (
-            <Pressable
-              key={s.id}
-              style={styles.scheduledCard}
-              onLongPress={() =>
-                Alert.alert('Remove Session', 'Delete this scheduled session?', [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Delete', style: 'destructive', onPress: () => {
-                      cancelSessionReminder(s.id);
-                      deleteScheduledSession(s.id);
-                    },
-                  },
-                ])
-              }
-            >
-              <View style={styles.scheduledIconWrap}>
-                <Ionicons name="calendar-outline" size={18} color={colors.accent} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.scheduledDate}>{dateStr} · {timeStr}</Text>
-                {s.notes ? <Text style={styles.scheduledNotes}>{s.notes}</Text> : null}
-              </View>
-              <Text style={styles.scheduledHold}>Hold to delete</Text>
-            </Pressable>
+            <View key={s.id}>
+              <Pressable
+                style={styles.scheduledCard}
+                onLongPress={() =>
+                  Alert.alert(
+                    isPending ? 'Reschedule Pending' : `Session · ${dateStr} ${timeStr}`,
+                    isPending ? 'Client has not yet accepted the new time.' : 'What do you want to do?',
+                    [
+                      { text: 'Keep It', style: 'cancel' },
+                      {
+                        text: 'Reschedule',
+                        onPress: () => setReschedulingSession(s),
+                      },
+                      {
+                        text: 'Cancel Session', style: 'destructive',
+                        onPress: () =>
+                          Alert.alert('Cancel Session', `Remove ${client?.name ?? 'this client'}'s session on ${dateStr}?`, [
+                            { text: 'Keep It', style: 'cancel' },
+                            {
+                              text: 'Cancel Session', style: 'destructive',
+                              onPress: async () => {
+                                cancelSessionReminder(s.id);
+                                await deleteScheduledSession(s.id);
+                                await sendPushNotification(id as string, {
+                                  title: '❌ Session Cancelled',
+                                  body: `Your session on ${dateStr} at ${timeStr} has been cancelled by your coach.`,
+                                  data: { type: 'session_cancelled' },
+                                });
+                              },
+                            },
+                          ]),
+                      },
+                    ],
+                  )
+                }
+              >
+                <View style={styles.scheduledIconWrap}>
+                  <Ionicons name={isPending ? 'time-outline' : 'calendar-outline'} size={18} color={isPending ? colors.warning : colors.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.scheduledDate}>{dateStr} · {timeStr}</Text>
+                  {isPending && s.reschedule_proposed_at ? (
+                    <Text style={[styles.scheduledNotes, { color: colors.warning }]}>
+                      → Proposed: {new Date(s.reschedule_proposed_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · {new Date(s.reschedule_proposed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  ) : s.notes ? (
+                    <Text style={styles.scheduledNotes}>{s.notes}</Text>
+                  ) : null}
+                </View>
+                <Text style={styles.scheduledHold}>Hold to edit</Text>
+              </Pressable>
+              {reschedulingSession?.id === s.id && (
+                <ScheduleForm
+                  onConfirm={async (date, time, notes) => {
+                    const newDt = new Date(`${date.trim()}T${time.trim()}:00`);
+                    if (isNaN(newDt.getTime()) || newDt <= new Date()) {
+                      Alert.alert('Invalid date', 'Enter a valid future date and time.');
+                      return;
+                    }
+                    const { error: rsErr } = await rescheduleSession(s.id, newDt);
+                    if (rsErr) { Alert.alert('Error', rsErr); return; }
+                    const newDateStr = newDt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                    const newTimeStr = newDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    await sendPushNotification(id as string, {
+                      title: '📅 Session Rescheduled',
+                      body: `Your coach proposed a new time: ${newDateStr} at ${newTimeStr}. Open the app to accept or decline.`,
+                      data: { type: 'reschedule_proposed' },
+                    });
+                    setReschedulingSession(null);
+                  }}
+                  onCancel={() => setReschedulingSession(null)}
+                />
+              )}
+            </View>
           );
         })
       )}

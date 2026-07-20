@@ -519,7 +519,12 @@ export default function CalendarScreen() {
     scheduledByDate[date].push(ss);
   }
 
-  const selectedScheduled = scheduledByDate[selectedDate] ?? [];
+  const selectedSessions = byDate[selectedDate] ?? [];
+
+  // Exclude scheduled_sessions entries where client already has a logged workout_session on the same day
+  const selectedScheduled = (scheduledByDate[selectedDate] ?? []).filter(
+    (ss) => !selectedSessions.some((s) => s.client_id === ss.client_id),
+  );
 
   const selectedBlocked = myBlockedDates.find((bd) => bd.date === selectedDate) ?? null;
 
@@ -530,8 +535,6 @@ export default function CalendarScreen() {
     const e = addDays(weekStart, 6).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     return `${s} – ${e}`;
   })();
-
-  const selectedSessions = byDate[selectedDate] ?? [];
 
   const selectedDateDisplay = parseLocalDate(selectedDate).toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric',
@@ -780,15 +783,6 @@ export default function CalendarScreen() {
               {selectedScheduled.length > 0 ? `  ·  ${selectedScheduled.length} scheduled` : ''}
             </Text>
           </View>
-          <Pressable
-            style={styles.scheduleBtn}
-            onPress={() =>
-              router.push({ pathname: '/(coach)/schedule-session' as any, params: { date: selectedDate } })
-            }
-          >
-            <Ionicons name="calendar-outline" size={13} color={colors.accent} />
-            <Text style={styles.scheduleBtnText}>Schedule</Text>
-          </Pressable>
         </View>
 
         {/* ── Blocked day banner ───────────────────────────────── */}

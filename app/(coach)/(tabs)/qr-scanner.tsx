@@ -42,6 +42,7 @@ type ModalState =
   | { type: 'not-assigned' }
   | { type: 'no-sessions'; client: { id: string; name: string } }
   | { type: 'web-link'; url: string; isInBody: boolean }
+  | { type: 'too-early'; clientName: string; scheduledTime: string; minutesUntil: number }
   | null;
 
 function isValidUUID(str: string): boolean {
@@ -348,6 +349,17 @@ export default function QRScannerScreen() {
       return;
     }
 
+    // Block scan if more than 30 minutes before scheduled time
+    const scheduledAt = new Date(scheduled.scheduled_at);
+    const minutesUntil = (scheduledAt.getTime() - now.getTime()) / 60000;
+    if (minutesUntil > 30) {
+      setProcessing(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      const scheduledTime = scheduledAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      setModalState({ type: 'too-early', clientName: client.name, scheduledTime, minutesUntil: Math.round(minutesUntil) });
+      return;
+    }
+
     // Scheduled session found — start the active timer automatically
     const duration = scheduled.duration_minutes ?? DEFAULT_DURATION;
     const notes = (scheduled.notes as string | null) ?? null;
@@ -602,6 +614,35 @@ export default function QRScannerScreen() {
                 </Pressable>
                 <Pressable style={[styles.primaryModalBtn, { backgroundColor: colors.danger }]} onPress={closeModal}>
                   <Text style={styles.primaryModalBtnText}>CLOSE</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
+      </Modal>
+
+      {/* ── MODAL: Too early to scan ─────────────────────────────── */}
+      <Modal visible={modalState?.type === 'too-early'} transparent animationType="fade">
+        {modalState?.type === 'too-early' && (
+          <View style={styles.modalBg}>
+            <View style={styles.modalCard}>
+              <View style={[styles.modalHeader, styles.modalHeaderWarning]}>
+                <Ionicons name="time-outline" size={28} color={colors.warning} />
+                <Text style={[styles.modalHeaderText, { color: colors.warning }]}>
+                  Too Early
+                </Text>
+              </View>
+              <Text style={styles.infoNote}>
+                {modalState.clientName}'s session is scheduled at {modalState.scheduledTime}.{'\n\n'}
+                QR scan is only allowed 30 minutes before the session starts.{'\n\n'}
+                Please try again in {modalState.minutesUntil - 30} min.
+              </Text>
+              <View style={styles.modalBtns}>
+                <Pressable
+                  style={[styles.primaryModalBtn, { backgroundColor: colors.warning }]}
+                  onPress={closeModal}
+                >
+                  <Text style={styles.primaryModalBtnText}>OK</Text>
                 </Pressable>
               </View>
             </View>

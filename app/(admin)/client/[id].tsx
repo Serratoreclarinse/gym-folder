@@ -390,6 +390,19 @@ export default function ClientDetailScreen() {
     // New package confirmed — now expire the previous one
     await supabase.from('packages').update({ status: 'expired' }).eq('id', renewTarget.id);
 
+    // Notify client
+    await sendPushNotification(client.id, {
+      title: '🎉 Package Renewed!',
+      body: `Your package has been renewed by admin. +${parseInt(renewTotal, 10)} sessions added.`,
+      data: { type: 'package_renewed' },
+    });
+    // Notify coach
+    await sendPushNotification(renewTarget.coachId, {
+      title: 'ℹ️ Package Renewed',
+      body: `Admin renewed ${client.name ?? 'a client'}'s package. +${parseInt(renewTotal, 10)} sessions.`,
+      data: { type: 'renewal_info' },
+    });
+
     setRenewing(false);
     setRenewModal(false);
     setRenewTotal('');
@@ -424,6 +437,18 @@ export default function ClientDetailScreen() {
     });
     setAssigning(false);
     if (error) { Alert.alert('Error', error.message); return; }
+    // Notify client
+    await sendPushNotification(client.id, {
+      title: '🎉 Package Assigned!',
+      body: `Your training package has been set up. ${parseInt(assignTotal, 10)} sessions ready to go!`,
+      data: { type: 'package_assigned' },
+    });
+    // Notify coach
+    await sendPushNotification(assignCoachId, {
+      title: '👤 New Client Package',
+      body: `Admin assigned ${client.name ?? 'a client'} to you with ${parseInt(assignTotal, 10)} sessions.`,
+      data: { type: 'package_assigned' },
+    });
     setAssignModal(false);
     load();
   };

@@ -1,5 +1,6 @@
 import { Alert, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { BugReportModal } from '@/components/BugReportModal';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -36,6 +37,7 @@ export default function CoachProfileScreen() {
 
   // Equipment request
   const [showEqModal, setShowEqModal] = useState(false);
+  const [bugModal, setBugModal] = useState(false);
   const [eqItem, setEqItem] = useState('');
   const [eqQty, setEqQty] = useState('1');
   const [eqNotes, setEqNotes] = useState('');
@@ -526,13 +528,12 @@ export default function CoachProfileScreen() {
       {/* Bug report */}
       <Pressable
         style={({ pressed }) => [styles.bugReportBtn, pressed && { opacity: 0.7 }]}
-        onPress={() => Linking.openURL(
-          `mailto:hr@jhe-group.com?subject=${encodeURIComponent('Bug Report - ELEVATƎ App v' + (Constants.expoConfig?.version ?? '1.0.0'))}&body=${encodeURIComponent('Describe the bug:\n\n')}`
-        )}
+        onPress={() => setBugModal(true)}
       >
         <Ionicons name="bug-outline" size={16} color={colors.textSecondary} />
         <Text style={styles.bugReportText}>Report a Bug</Text>
       </Pressable>
+      <BugReportModal visible={bugModal} onClose={() => setBugModal(false)} />
 
       <Text style={styles.versionText}>v{Constants.expoConfig?.version ?? '1.0.0'}</Text>
     </ScrollView>

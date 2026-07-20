@@ -184,7 +184,7 @@ export default function ClientProgressScreen() {
     if (user?.id) registerPushToken(user.id);
   }, [user?.id]);
 
-  // ── Session reminders (1 hr before each upcoming session) ───
+  // ── Session reminders (3hr, 30min, 15min before each upcoming session) ───
   useEffect(() => {
     if (!upcomingScheduled.length) return;
     let cancelled = false;
@@ -192,16 +192,21 @@ export default function ClientProgressScreen() {
       await Notifications.cancelAllScheduledNotificationsAsync();
       if (cancelled) return;
       for (const s of upcomingScheduled) {
-        const fireAt = new Date(new Date(s.scheduled_at).getTime() - 60 * 60 * 1000);
-        if (fireAt > new Date()) {
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: '⏰ Session in 1 hour',
-              body: `Your training session starts at ${new Date(s.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Get ready!`,
-              sound: true,
-            },
-            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: fireAt },
-          });
+        const sessionDt = new Date(s.scheduled_at);
+        const time = sessionDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const reminders = [
+          { ms: 3 * 60 * 60 * 1000, title: '📅 Session Reminder',      body: `Hi! Just a heads up — your training session is at ${time} today. See you there! 💪` },
+          { ms: 30 * 60 * 1000,      title: '⏰ Almost Time!',           body: `Your session starts in 30 minutes at ${time}. Time to get moving! 🏋️` },
+          { ms: 15 * 60 * 1000,      title: '🔔 15 Minutes to Go!',      body: `Your session is starting soon at ${time}. Don't forget to hydrate! 💧` },
+        ];
+        for (const r of reminders) {
+          const fireAt = new Date(sessionDt.getTime() - r.ms);
+          if (fireAt > new Date()) {
+            await Notifications.scheduleNotificationAsync({
+              content: { title: r.title, body: r.body, sound: true },
+              trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: fireAt },
+            });
+          }
         }
       }
     })();
@@ -243,6 +248,16 @@ export default function ClientProgressScreen() {
 
   useFocusEffect(useCallback(() => { fetchActiveSession(); }, [fetchActiveSession]));
 
+  // Realtime: auto-hide banner when coach ends session
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel(`client-active-session-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'active_sessions', filter: `client_id=eq.${user.id}` }, () => fetchActiveSession())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id, fetchActiveSession]);
+
   useEffect(() => {
     if (!clientActiveSession || clientActiveSession.is_paused) return;
     const endMs = new Date(clientActiveSession.start_time).getTime() + clientActiveSession.current_duration * 60_000;
@@ -251,6 +266,14 @@ export default function ClientProgressScreen() {
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
   }, [clientActiveSession?.start_time, clientActiveSession?.current_duration, clientActiveSession?.is_paused]);
+
+  // When timer hits 0 (and not paused), auto-dismiss after 60s grace period
+  // Realtime will dismiss sooner if the coach taps End Session
+  useEffect(() => {
+    if (sessionRemainingSecs > 0 || !clientActiveSession || clientActiveSession.is_paused) return;
+    const t = setTimeout(() => setClientActiveSession(null), 60_000);
+    return () => clearTimeout(t);
+  }, [sessionRemainingSecs > 0, !!clientActiveSession, clientActiveSession?.is_paused]);
 
   useEffect(() => {
     if (!clientActiveSession) return;
@@ -295,6 +318,15 @@ export default function ClientProgressScreen() {
         body: `${profile?.name ?? 'A client'} has sent a ${requestModal === 'renewal' ? 'renewal' : 'booking'} request.`,
       });
     }
+    // Notify admin — FYI
+    const { data: adminForReq } = await supabase.from('profiles').select('id').eq('role', 'admin').limit(1);
+    if (adminForReq?.[0]?.id) {
+      await sendPushNotification(adminForReq[0].id, {
+        title: requestModal === 'renewal' ? '🔄 Renewal Request' : '📅 Booking Request',
+        body: `${profile?.name ?? 'A client'} sent a ${requestModal === 'renewal' ? 'renewal' : 'booking'} request to their coach.`,
+        data: { type: 'client_request' },
+      });
+    }
     setRequestModal(null);
     setReqDate(''); setReqTime(''); setReqNotes('');
     Alert.alert('Sent!', `Your ${requestModal === 'renewal' ? 'renewal' : 'booking'} request has been sent to your coach.`);
@@ -305,6 +337,7 @@ export default function ClientProgressScreen() {
   const [confirming, setConfirming] = useState(false);
   const [localConfirmed, setLocalConfirmed] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [requestingReschedule, setRequestingReschedule] = useState<string | null>(null);
   const [acceptingReschedule, setAcceptingReschedule] = useState<string | null>(null);
   const [decliningReschedule, setDecliningReschedule] = useState<string | null>(null);
 
@@ -350,6 +383,15 @@ export default function ClientProgressScreen() {
     if (!err) {
       setLocalConfirmed(true);
       refetch();
+      if (pkg?.coach_id) {
+        const dateStr = new Date(nextScheduled.scheduled_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        const timeStr = new Date(nextScheduled.scheduled_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        await sendPushNotification(pkg.coach_id, {
+          title: '✅ Session Confirmed',
+          body: `${profile?.name ?? 'Your client'} confirmed attendance for ${dateStr} at ${timeStr}.`,
+          data: { type: 'session_confirmed', session_id: nextScheduled.id },
+        });
+      }
     } else {
       Alert.alert('Error', 'Could not confirm. Please try again.');
     }
@@ -404,6 +446,7 @@ export default function ClientProgressScreen() {
       </View>
 
       {error && <ErrorBanner message={error} onRetry={refetch} />}
+
 
       {/* Active session banner */}
       {clientActiveSession && (
@@ -568,24 +611,33 @@ export default function ClientProgressScreen() {
       {/* Next scheduled session */}
       {nextScheduled && (
         <View style={styles.nextCard}>
+          {/* Header row */}
           <View style={styles.nextCardTop}>
             <View style={styles.nextIcon}>
               <Ionicons name="calendar" size={18} color={colors.accent} />
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.nextLabel}>NEXT SESSION</Text>
-              <Text style={styles.nextDate}>{formatScheduled(nextScheduled.scheduled_at)}</Text>
-              {nextScheduled.notes ? (
-                <Text style={styles.nextNotes}>{nextScheduled.notes}</Text>
-              ) : null}
-            </View>
+            <Text style={styles.nextLabel}>NEXT SESSION</Text>
           </View>
 
-          {/* Live countdown */}
+          {/* Date + Time prominent display */}
+          <View style={styles.nextDateBlock}>
+            <Text style={styles.nextDateText}>
+              {new Date(nextScheduled.scheduled_at).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </Text>
+            <Text style={styles.nextTimeText}>
+              {new Date(nextScheduled.scheduled_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+            </Text>
+          </View>
+
+          {/* Big countdown */}
           <View style={styles.countdownRow}>
-            <Ionicons name="time-outline" size={13} color={colors.accent} />
+            <Ionicons name="timer-outline" size={16} color={colors.accent} />
             <Text style={styles.countdownText}>{formatCountdown(secondsUntil)}</Text>
           </View>
+
+          {nextScheduled.notes ? (
+            <Text style={styles.nextNotes}>{nextScheduled.notes}</Text>
+          ) : null}
 
           {/* Reschedule pending UI */}
           {nextScheduled.status === 'reschedule_pending' ? (
@@ -645,22 +697,46 @@ export default function ClientProgressScreen() {
                 </Pressable>
               )}
 
-              {/* Cancel button */}
-              {secondsUntil > 10800 ? (
+              {/* Reschedule button */}
+              {secondsUntil > 14400 ? (
                 <Pressable
-                  style={[styles.cancelBtn, cancelling === nextScheduled.id && { opacity: 0.5 }]}
-                  onPress={() => handleCancel(nextScheduled.id)}
-                  disabled={cancelling === nextScheduled.id}
+                  style={[styles.cancelBtn, requestingReschedule === nextScheduled.id && { opacity: 0.5 }]}
+                  onPress={() => {
+                    Alert.alert(
+                      'Request Reschedule',
+                      'Send your coach a request to move this session to a different time?',
+                      [
+                        { text: 'No', style: 'cancel' },
+                        {
+                          text: 'Request', onPress: async () => {
+                            setRequestingReschedule(nextScheduled.id);
+                            const dateStr = new Date(nextScheduled.scheduled_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                            const timeStr = new Date(nextScheduled.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                            if (pkg?.coach_id) {
+                              await sendPushNotification(pkg.coach_id, {
+                                title: '🔄 Reschedule Request',
+                                body: `${profile?.name ?? 'Your client'} wants to reschedule their session on ${dateStr} at ${timeStr}.`,
+                                data: { type: 'reschedule_request', session_id: nextScheduled.id },
+                              });
+                            }
+                            setRequestingReschedule(null);
+                            Alert.alert('Sent!', 'Your coach has been notified and will reach out with a new time.');
+                          },
+                        },
+                      ]
+                    );
+                  }}
+                  disabled={requestingReschedule === nextScheduled.id}
                 >
-                  <Ionicons name="close-circle-outline" size={15} color={colors.accent} />
+                  <Ionicons name="refresh-outline" size={15} color={colors.accent} />
                   <Text style={styles.cancelBtnText}>
-                    {cancelling === nextScheduled.id ? 'Cancelling…' : 'Cancel Session'}
+                    {requestingReschedule === nextScheduled.id ? 'Sending…' : 'Request Reschedule'}
                   </Text>
                 </Pressable>
               ) : (
                 <View style={styles.cancelBtnLocked}>
                   <Ionicons name="lock-closed-outline" size={13} color={colors.textSecondary} />
-                  <Text style={styles.cancelBtnLockedText}>Cannot cancel — less than 3 hrs away</Text>
+                  <Text style={styles.cancelBtnLockedText}>Cannot reschedule — less than 4 hrs away</Text>
                 </View>
               )}
             </>
@@ -674,7 +750,7 @@ export default function ClientProgressScreen() {
           <Text style={[styles.sectionTitle, { marginTop: 20 }]}>UPCOMING SESSIONS</Text>
           {upcomingScheduled.slice(1).map((s) => {
             const secsUntil = Math.max(0, Math.floor((new Date(s.scheduled_at).getTime() - Date.now()) / 1000));
-            const canCancel = secsUntil > 10800;
+            const canCancel = secsUntil > 14400;
             const isConfirmed = !!s.client_confirmed_at;
             return (
               <View key={s.id} style={styles.upcomingCard}>
@@ -738,19 +814,43 @@ export default function ClientProgressScreen() {
                   ) : null}
                   {s.status !== 'reschedule_pending' && (canCancel ? (
                     <Pressable
-                      style={[styles.upcomingCancelBtn, cancelling === s.id && { opacity: 0.5 }]}
-                      onPress={() => handleCancel(s.id)}
-                      disabled={cancelling === s.id}
+                      style={[styles.upcomingCancelBtn, requestingReschedule === s.id && { opacity: 0.5 }]}
+                      onPress={() => {
+                        Alert.alert(
+                          'Request Reschedule',
+                          'Send your coach a request to move this session to a different time?',
+                          [
+                            { text: 'No', style: 'cancel' },
+                            {
+                              text: 'Request', onPress: async () => {
+                                setRequestingReschedule(s.id);
+                                const dateStr = new Date(s.scheduled_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                                const timeStr = new Date(s.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                if (pkg?.coach_id) {
+                                  await sendPushNotification(pkg.coach_id, {
+                                    title: '🔄 Reschedule Request',
+                                    body: `${profile?.name ?? 'Your client'} wants to reschedule their session on ${dateStr} at ${timeStr}.`,
+                                    data: { type: 'reschedule_request', session_id: s.id },
+                                  });
+                                }
+                                setRequestingReschedule(null);
+                                Alert.alert('Sent!', 'Your coach has been notified and will reach out with a new time.');
+                              },
+                            },
+                          ],
+                        );
+                      }}
+                      disabled={requestingReschedule === s.id}
                     >
-                      <Ionicons name="close" size={13} color={colors.accent} />
+                      <Ionicons name="refresh-outline" size={13} color={colors.accent} />
                       <Text style={styles.upcomingCancelBtnText}>
-                        {cancelling === s.id ? 'Cancelling…' : 'Cancel'}
+                        {requestingReschedule === s.id ? 'Sending…' : 'Request Reschedule'}
                       </Text>
                     </Pressable>
                   ) : (
                     <View style={styles.upcomingLockedCancel}>
                       <Ionicons name="lock-closed-outline" size={12} color={colors.textSecondary} />
-                      <Text style={styles.upcomingLockedText}>Too late to cancel</Text>
+                      <Text style={styles.upcomingLockedText}>Too late to reschedule</Text>
                     </View>
                   ))}
                 </View>
@@ -919,25 +1019,28 @@ function makeStyles(c: ColorScheme) {
       borderColor: c.accent + '40',
       gap: 12,
     },
-    nextCardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+    nextCardTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     nextIcon: {
-      width: 36, height: 36, borderRadius: 18,
+      width: 32, height: 32, borderRadius: 16,
       backgroundColor: c.accent + '20',
       justifyContent: 'center', alignItems: 'center',
       flexShrink: 0,
     },
-    nextLabel: { ...Typography.label, color: c.accent, fontSize: 10, marginBottom: 3 },
+    nextLabel: { ...Typography.label, color: c.accent, fontSize: 11, flex: 1 },
+    nextDateBlock: { gap: 2 },
+    nextDateText: { ...Typography.body, color: c.textPrimary, fontWeight: '700', fontSize: 15 },
+    nextTimeText: { fontSize: 26, fontWeight: '800', color: c.accent, letterSpacing: 0.5 },
     nextDate:  { ...Typography.body, color: c.textPrimary, fontWeight: '700' },
-    nextNotes: { ...Typography.caption, color: c.textSecondary, marginTop: 3 },
+    nextNotes: { ...Typography.caption, color: c.textSecondary },
 
     // Countdown
     countdownRow: {
       flexDirection: 'row', alignItems: 'center', gap: 6,
-      backgroundColor: c.accent + '18', borderRadius: 8,
-      paddingHorizontal: 10, paddingVertical: 6,
-      alignSelf: 'flex-start',
+      backgroundColor: c.accent + '18', borderRadius: 10,
+      paddingHorizontal: 12, paddingVertical: 8,
+      alignSelf: 'stretch',
     },
-    countdownText: { ...Typography.label, color: c.accent, fontWeight: '800', fontSize: 13 },
+    countdownText: { ...Typography.label, color: c.accent, fontWeight: '800', fontSize: 16, flex: 1 },
 
     // Confirm
     confirmBtn: {

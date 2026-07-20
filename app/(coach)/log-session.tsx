@@ -27,13 +27,12 @@ import { ColorScheme, Typography } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 import { sendPushNotification } from '@/lib/pushNotifications';
 
+type SetData = { kg: string; reps: string; duration: string };
+
 type Exercise = {
   id: string;
   exercise_name: string;
-  sets: string;
-  reps: string;
-  weight: string;
-  duration: string;
+  sets_data: SetData[];
   notes: string;
   isSuperset: boolean;
 };
@@ -61,7 +60,8 @@ const TIME_SLOTS = [
 ] as const;
 const todayISO = () => new Date().toISOString().split('T')[0];
 const uid = () => Math.random().toString(36).slice(2);
-const blankExercise = (): Exercise => ({ id: uid(), exercise_name: '', sets: '', reps: '', weight: '', duration: '', notes: '', isSuperset: false });
+const blankSetData = (): SetData => ({ kg: '', reps: '', duration: '' });
+const blankExercise = (): Exercise => ({ id: uid(), exercise_name: '', sets_data: [blankSetData()], notes: '', isSuperset: false });
 
 function currentTimeStr(): string {
   const now = new Date();
@@ -139,6 +139,10 @@ function ExerciseCard({
   isLast,
   lastWeight,
   onChange,
+  onSetChange,
+  onAddSet,
+  onRemoveLastSet,
+  onBWToggle,
   onRemove,
   onToggleSuperset,
   onOpenPicker,
@@ -147,13 +151,19 @@ function ExerciseCard({
   lastWeight?: string;
   index: number;
   isLast: boolean;
-  onChange: (id: string, field: keyof Exercise, value: string) => void;
+  onChange: (id: string, field: 'exercise_name' | 'notes', value: string) => void;
+  onSetChange: (id: string, setIndex: number, field: keyof SetData, value: string) => void;
+  onAddSet: (id: string) => void;
+  onRemoveLastSet: (id: string) => void;
+  onBWToggle: (id: string) => void;
   onRemove: (id: string) => void;
   onToggleSuperset: (id: string) => void;
   onOpenPicker: (id: string) => void;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const allBW = exercise.sets_data.length > 0 && exercise.sets_data.every(s => s.kg === 'BW');
+
   return (
     <View style={styles.exCard}>
       <View style={styles.exCardHeader}>
@@ -175,65 +185,67 @@ function ExerciseCard({
         <Ionicons name="search-outline" size={16} color={colors.textSecondary} />
       </Pressable>
 
-      <View style={styles.exRow}>
-        <View style={styles.exSmallField}>
-          <Text style={styles.exLabel}>SETS</Text>
-          <TextInput
-            style={styles.exSmallInput}
-            placeholder="4"
-            placeholderTextColor={colors.textSecondary}
-            keyboardType="number-pad"
-            value={exercise.sets}
-            onChangeText={(v) => onChange(exercise.id, 'sets', v)}
-          />
-        </View>
-        <View style={styles.exSmallField}>
-          <Text style={styles.exLabel}>REPS</Text>
-          <TextInput
-            style={styles.exSmallInput}
-            placeholder="10"
-            placeholderTextColor={colors.textSecondary}
-            keyboardType="number-pad"
-            value={exercise.reps}
-            onChangeText={(v) => onChange(exercise.id, 'reps', v)}
-          />
-        </View>
-        <View style={styles.exSmallField}>
-          <Text style={styles.exLabel}>DURATION</Text>
-          <TextInput
-            style={styles.exSmallInput}
-            placeholder="30s"
-            placeholderTextColor={colors.textSecondary}
-            value={exercise.duration}
-            onChangeText={(v) => onChange(exercise.id, 'duration', v)}
-          />
-        </View>
+      {lastWeight ? <Text style={styles.lastWeightHint}>last: {lastWeight}</Text> : null}
+
+      {/* Column headers */}
+      <View style={styles.setHeaderRow}>
+        <View style={styles.setColSet} />
+        <Text style={[styles.setColLabel, styles.setColKg]}>KG</Text>
+        <Text style={[styles.setColLabel, styles.setColReps]}>REPS</Text>
+        <Text style={[styles.setColLabel, styles.setColDur]}>DUR.</Text>
       </View>
 
-      {/* Weight row with BW quick-fill */}
-      <View style={styles.exRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.exLabel}>WEIGHT</Text>
+      {/* Per-set rows */}
+      {exercise.sets_data.map((setRow, i) => (
+        <View key={i} style={styles.setDataRow}>
+          <Text style={[styles.setLabel, styles.setColSet]}>Set {i + 1}</Text>
           <TextInput
-            style={styles.exSmallInput}
-            placeholder="80kg / Body Weight"
-            placeholderTextColor={colors.textSecondary}
-            value={exercise.weight}
-            onChangeText={(v) => onChange(exercise.id, 'weight', v)}
+            style={[styles.setInput, styles.setColKg]}
+            placeholder="—"
+            placeholderTextColor={colors.border}
+            keyboardType="decimal-pad"
+            value={setRow.kg}
+            onChangeText={(v) => onSetChange(exercise.id, i, 'kg', v)}
           />
-          {lastWeight ? (
-            <Text style={styles.lastWeightHint}>last: {lastWeight}</Text>
-          ) : null}
+          <TextInput
+            style={[styles.setInput, styles.setColReps]}
+            placeholder="—"
+            placeholderTextColor={colors.border}
+            keyboardType="number-pad"
+            value={setRow.reps}
+            onChangeText={(v) => onSetChange(exercise.id, i, 'reps', v)}
+          />
+          <TextInput
+            style={[styles.setInput, styles.setColDur]}
+            placeholder="—"
+            placeholderTextColor={colors.border}
+            value={setRow.duration}
+            onChangeText={(v) => onSetChange(exercise.id, i, 'duration', v)}
+          />
         </View>
-        <View style={styles.bwBtnWrap}>
-          <Text style={styles.exLabel}> </Text>
-          <Pressable
-            style={[styles.bwBtn, exercise.weight === 'Body Weight' && styles.bwBtnActive]}
-            onPress={() => onChange(exercise.id, 'weight', exercise.weight === 'Body Weight' ? '' : 'Body Weight')}
-          >
-            <Text style={[styles.bwBtnText, exercise.weight === 'Body Weight' && styles.bwBtnTextActive]}>BW</Text>
-          </Pressable>
-        </View>
+      ))}
+
+      {/* Set controls: remove / count / add / BW */}
+      <View style={styles.setControlRow}>
+        <Pressable
+          style={[styles.setCtrlBtn, exercise.sets_data.length <= 1 && styles.setCtrlBtnDisabled]}
+          onPress={() => onRemoveLastSet(exercise.id)}
+          disabled={exercise.sets_data.length <= 1}
+        >
+          <Ionicons name="remove" size={16} color={exercise.sets_data.length <= 1 ? colors.border : colors.textSecondary} />
+        </Pressable>
+        <Text style={styles.setCountText}>
+          {exercise.sets_data.length} SET{exercise.sets_data.length !== 1 ? 'S' : ''}
+        </Text>
+        <Pressable style={styles.setCtrlBtn} onPress={() => onAddSet(exercise.id)}>
+          <Ionicons name="add" size={16} color={colors.textSecondary} />
+        </Pressable>
+        <Pressable
+          style={[styles.bwBtn, allBW && styles.bwBtnActive]}
+          onPress={() => onBWToggle(exercise.id)}
+        >
+          <Text style={[styles.bwBtnText, allBW && styles.bwBtnTextActive]}>BW</Text>
+        </Pressable>
       </View>
 
       <TextInput
@@ -364,16 +376,33 @@ export default function LogSessionScreen() {
       try {
         const parsed = JSON.parse(rawEx) as Array<Record<string, unknown>>;
         if (parsed.length > 0) {
-          return parsed.map((ex, i) => ({
-            id: String(i),
-            exercise_name: String(ex.exercise_name ?? ''),
-            sets: String(ex.sets ?? ''),
-            reps: String(ex.reps ?? ''),
-            weight: String(ex.weight ?? ''),
-            duration: String(ex.duration ?? ''),
-            notes: String(ex.notes ?? ''),
-            isSuperset: false,
-          }));
+          return parsed.map((ex, i) => {
+            if (Array.isArray(ex.sets_data)) {
+              return {
+                id: String(i),
+                exercise_name: String(ex.exercise_name ?? ''),
+                sets_data: (ex.sets_data as any[]).map((s: any) => ({
+                  kg: String(s.kg ?? ''),
+                  reps: String(s.reps ?? ''),
+                  duration: String(s.duration ?? ''),
+                })),
+                notes: String(ex.notes ?? ''),
+                isSuperset: false,
+              };
+            }
+            const numSets = Number(ex.sets) || 1;
+            return {
+              id: String(i),
+              exercise_name: String(ex.exercise_name ?? ''),
+              sets_data: Array.from({ length: numSets }, () => ({
+                kg: String(ex.weight ?? ''),
+                reps: String(ex.reps ?? ''),
+                duration: String(ex.duration ?? ''),
+              })),
+              notes: String(ex.notes ?? ''),
+              isSuperset: false,
+            };
+          });
         }
       } catch {
         Alert.alert('Restore Warning', 'Could not restore exercises from the previous session.');
@@ -407,9 +436,20 @@ export default function LogSessionScreen() {
   const addExercise = () => setExercises((prev) => [...prev, blankExercise()]);
 
   const addFromHistory = (item: RecentExercise) => {
+    const numSets = Number(item.sets) || 1;
     setExercises((prev) => [
       ...prev,
-      { id: uid(), exercise_name: item.exercise_name, sets: item.sets, reps: item.reps, weight: item.weight, duration: item.duration, notes: '', isSuperset: false },
+      {
+        id: uid(),
+        exercise_name: item.exercise_name,
+        sets_data: Array.from({ length: numSets }, () => ({
+          kg: item.weight || '',
+          reps: item.reps || '',
+          duration: item.duration || '',
+        })),
+        notes: '',
+        isSuperset: false,
+      },
     ]);
     setShowHistoryModal(false);
   };
@@ -421,16 +461,20 @@ export default function LogSessionScreen() {
     const doApply = () => {
       setExercises(
         tpl.exercises.length > 0
-          ? tpl.exercises.map((e) => ({
-              id: uid(),
-              exercise_name: e.exercise_name,
-              sets: e.sets != null ? String(e.sets) : '',
-              reps: e.reps != null ? String(e.reps) : '',
-              weight: e.weight ?? '',
-              duration: '',
-              notes: e.notes ?? '',
-              isSuperset: false,
-            }))
+          ? tpl.exercises.map((e) => {
+              const numSets = Number(e.sets) || 1;
+              return {
+                id: uid(),
+                exercise_name: e.exercise_name,
+                sets_data: Array.from({ length: numSets }, () => ({
+                  kg: e.weight ?? '',
+                  reps: e.reps != null ? String(e.reps) : '',
+                  duration: '',
+                })),
+                notes: e.notes ?? '',
+                isSuperset: false,
+              };
+            })
           : [blankExercise()]
       );
       markUsed(templateId);
@@ -452,8 +496,37 @@ export default function LogSessionScreen() {
     }
   };
 
-  const updateExercise = (id: string, field: keyof Exercise, value: string) => {
+  const updateExercise = (id: string, field: 'exercise_name' | 'notes', value: string) => {
     setExercises((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
+  };
+
+  const updateSetField = (id: string, setIndex: number, field: keyof SetData, value: string) => {
+    setExercises((prev) => prev.map((e) => {
+      if (e.id !== id) return e;
+      const newSetsData = [...e.sets_data];
+      newSetsData[setIndex] = { ...newSetsData[setIndex], [field]: value };
+      return { ...e, sets_data: newSetsData };
+    }));
+  };
+
+  const addSet = (id: string) => {
+    setExercises((prev) => prev.map((e) =>
+      e.id !== id ? e : { ...e, sets_data: [...e.sets_data, blankSetData()] }
+    ));
+  };
+
+  const removeLastSet = (id: string) => {
+    setExercises((prev) => prev.map((e) =>
+      e.id !== id || e.sets_data.length <= 1 ? e : { ...e, sets_data: e.sets_data.slice(0, -1) }
+    ));
+  };
+
+  const bwToggle = (id: string) => {
+    setExercises((prev) => prev.map((e) => {
+      if (e.id !== id) return e;
+      const allBW = e.sets_data.every(s => s.kg === 'BW');
+      return { ...e, sets_data: e.sets_data.map(s => ({ ...s, kg: allBW ? '' : 'BW' })) };
+    }));
   };
 
   const toggleSuperset = (id: string) => {
@@ -511,20 +584,115 @@ export default function LogSessionScreen() {
       return;
     }
 
+    // Time conflict check — coach can't have overlapping sessions (any client)
+    if (sessionTime.trim() && Number(duration) > 0) {
+      const newStart = parseSessionDateTime(sessionDate, sessionTime.trim());
+      if (newStart) {
+        const newEndMs = newStart.getTime() + Number(duration) * 60 * 1000;
+
+        // Check logged sessions for other clients on same date
+        const { data: sameDaySessions } = await supabase
+          .from('workout_sessions')
+          .select('id, scheduled_time, duration_minutes, client_id')
+          .eq('coach_id', profile.id)
+          .eq('session_date', sessionDate)
+          .neq('client_id', selectedClientId)
+          .neq('status', 'absent');
+
+        for (const sess of sameDaySessions ?? []) {
+          if (!sess.scheduled_time) continue;
+          const existStart = parseSessionDateTime(sessionDate, sess.scheduled_time);
+          if (!existStart) continue;
+          const existEndMs = existStart.getTime() + (sess.duration_minutes || 60) * 60 * 1000;
+          if (newStart.getTime() < existEndMs && newEndMs > existStart.getTime()) {
+            const conflictName = clients.find(c => c.id === sess.client_id)?.name ?? 'another client';
+            savingRef.current = false;
+            Alert.alert(
+              '⚠️ Time Conflict',
+              `You already have a session with ${conflictName} at ${sess.scheduled_time}.\n\n${sessionTime.trim()} overlaps with that session. Please choose a different time.`,
+              [{ text: 'OK' }],
+            );
+            return;
+          }
+        }
+
+        // Check scheduled (future) sessions for other clients on same date
+        const { data: schedConflicts } = await supabase
+          .from('scheduled_sessions')
+          .select('id, scheduled_at, client_id')
+          .eq('coach_id', profile.id)
+          .neq('client_id', selectedClientId)
+          .gte('scheduled_at', sessionDate + 'T00:00:00.000Z')
+          .lte('scheduled_at', sessionDate + 'T23:59:59.999Z')
+          .in('status', ['pending', 'client_confirmed', 'reschedule_pending']);
+
+        for (const ss of schedConflicts ?? []) {
+          const existStart = new Date(ss.scheduled_at);
+          const existEndMs = existStart.getTime() + 60 * 60 * 1000;
+          if (newStart.getTime() < existEndMs && newEndMs > existStart.getTime()) {
+            const conflictName = clients.find(c => c.id === ss.client_id)?.name ?? 'another client';
+            const conflictTime = existStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            savingRef.current = false;
+            Alert.alert(
+              '⚠️ Time Conflict',
+              `You already have a session with ${conflictName} scheduled at ${conflictTime}.\n\n${sessionTime.trim()} overlaps with that session. Please choose a different time.`,
+              [{ text: 'OK' }],
+            );
+            return;
+          }
+        }
+      }
+    }
+
     const validExercises = exercises
       .filter((e) => e.exercise_name.trim())
-      .map(({ id: _id, ...e }) => ({
-        exercise_name: e.exercise_name.trim(),
-        sets: e.sets ? Number(e.sets) : null,
-        reps: e.reps ? Number(e.reps) : null,
-        weight: e.weight.trim() || null,
-        duration: e.duration.trim() || null,
-        notes: e.notes.trim() || null,
-        isSuperset: e.isSuperset,
-      }));
+      .map(({ id: _id, sets_data, ...e }) => {
+        const maxKg = sets_data.reduce((mx, s) => { const n = parseFloat(s.kg || '0') || 0; return n > mx ? n : mx; }, 0);
+        const firstReps = sets_data.find(s => s.reps)?.reps ?? null;
+        const firstDur = sets_data.find(s => s.duration)?.duration ?? null;
+        return {
+          exercise_name: e.exercise_name.trim(),
+          sets: sets_data.length,
+          reps: firstReps ? Number(firstReps) : null,
+          weight: maxKg > 0 ? String(maxKg) : (sets_data.some(s => s.kg === 'BW') ? 'BW' : null),
+          duration: firstDur || null,
+          notes: e.notes.trim() || null,
+          isSuperset: e.isSuperset,
+          sets_data: sets_data.map((s, i) => ({
+            set: i + 1,
+            kg: s.kg || null,
+            reps: s.reps ? Number(s.reps) : null,
+            duration: s.duration || null,
+          })),
+        };
+      });
 
     setLoading(true);
     try {
+      // Future session: schedule only — no workout record, no session deduction
+      const _todayIso = new Date().toISOString().slice(0, 10);
+      if (sessionDate > _todayIso) {
+        const scheduledDt = parseSessionDateTime(sessionDate, sessionTime.trim() || '09:00');
+        if (scheduledDt && profile?.id) {
+          const { error: schedErr } = await supabase.from('scheduled_sessions').insert({
+            coach_id: profile.id,
+            client_id: selectedClientId,
+            scheduled_at: scheduledDt.toISOString(),
+            notes: sessionNotes.trim() || null,
+            status: 'pending',
+          });
+          if (schedErr) { Alert.alert('Error', schedErr.message); return; }
+        }
+        const dateLabel = new Date(sessionDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        Alert.alert(
+          'Session Scheduled!',
+          `${selectedClient?.name ?? 'Client'}'s session on ${dateLabel}${sessionTime.trim() ? ' at ' + sessionTime.trim() : ''} has been scheduled. The client will see a countdown on their dashboard.`,
+          [{ text: 'OK', onPress: () => router.back() }],
+        );
+        return;
+      }
+
+      // Past/today: create workout record and deduct session
       const { data: sessionData, error } = await supabase.from('workout_sessions').insert({
         package_id: pkg.id,
         client_id: selectedClientId,
@@ -542,6 +710,15 @@ export default function LogSessionScreen() {
         Alert.alert('Error', error.message);
         return;
       }
+
+      // Mark any scheduled_sessions on this day as completed
+      await supabase
+        .from('scheduled_sessions')
+        .update({ status: 'completed' })
+        .eq('client_id', selectedClientId)
+        .gte('scheduled_at', sessionDate + 'T00:00:00.000Z')
+        .lte('scheduled_at', sessionDate + 'T23:59:59.999Z')
+        .in('status', ['pending', 'client_confirmed', 'reschedule_pending']);
 
       if (sessionTime.trim()) {
         await scheduleSessionReminder(selectedClient?.name ?? 'Client', sessionDate, sessionTime.trim(), selectedClientId);
@@ -584,22 +761,82 @@ export default function LogSessionScreen() {
       // ─────────────────────────────────────────────────────────────────────────
 
       const sessionsLeft = pkg.sessions_remaining - 1;
+
+      // Fetch admin once — used for low-session + session-logged notifications
+      const { data: adminForSession } = await supabase.from('profiles').select('id').eq('role', 'admin').limit(1);
+      const adminId = adminForSession?.[0]?.id ?? null;
+
       if (sessionsLeft > 0 && sessionsLeft <= 3) {
         await sendPushNotification(selectedClientId, {
           title: '⚠️ Package Almost Empty',
           body: `Only ${sessionsLeft} session${sessionsLeft !== 1 ? 's' : ''} left in your package. Contact your coach to renew soon!`,
         });
+        await sendPushNotification(profile.id, {
+          title: '⚠️ Client Running Low',
+          body: `${selectedClient?.name ?? 'A client'} has ${sessionsLeft} session${sessionsLeft !== 1 ? 's' : ''} left. Time to offer a renewal!`,
+          data: { type: 'low_sessions', client_id: selectedClientId },
+        });
+        if (adminId) {
+          await sendPushNotification(adminId, {
+            title: '⚠️ Client Running Low',
+            body: `${selectedClient?.name ?? 'A client'} (coach: ${profile?.name ?? '?'}) has ${sessionsLeft} session${sessionsLeft !== 1 ? 's' : ''} left.`,
+            data: { type: 'low_sessions', client_id: selectedClientId },
+          });
+        }
+      }
+      if (sessionsLeft === 0) {
+        await sendPushNotification(selectedClientId, {
+          title: '🔴 Last Session Used',
+          body: 'You have no sessions left. Contact your coach to renew your package.',
+        });
+        await sendPushNotification(profile.id, {
+          title: '🔴 Client Out of Sessions',
+          body: `${selectedClient?.name ?? 'A client'} just used their last session. Follow up for renewal!`,
+          data: { type: 'no_sessions', client_id: selectedClientId },
+        });
+        if (adminId) {
+          await sendPushNotification(adminId, {
+            title: '🔴 Client Out of Sessions',
+            body: `${selectedClient?.name ?? 'A client'} (coach: ${profile?.name ?? '?'}) has no sessions left.`,
+            data: { type: 'no_sessions', client_id: selectedClientId },
+          });
+        }
+      }
+      if (adminId) {
+        await sendPushNotification(adminId, {
+          title: '📋 Session Logged',
+          body: `${profile?.name ?? 'A coach'} logged a session for ${selectedClient?.name ?? 'a client'}. ${sessionsLeft} session${sessionsLeft !== 1 ? 's' : ''} remaining.`,
+          data: { type: 'session_logged' },
+        });
       }
 
-      // Try to start the session timer
-      const { data: existingActive } = await supabase
+      // Start the timer only if we're within 3 hours of the session time
+      const sessionDateOnly = sessionDate.trim() || new Date().toISOString().slice(0, 10);
+      const todayOnly = new Date().toISOString().slice(0, 10);
+      const isPastDate = sessionDateOnly < todayOnly;
+      let isWithinStartWindow = isPastDate; // past sessions always ok
+      if (sessionDateOnly === todayOnly) {
+        if (sessionTime.trim()) {
+          const sessionDt = parseSessionDateTime(sessionDate, sessionTime.trim());
+          if (sessionDt) {
+            const hoursUntil = (sessionDt.getTime() - Date.now()) / (60 * 60 * 1000);
+            isWithinStartWindow = hoursUntil <= 3; // within 3 hours of session time
+          } else {
+            isWithinStartWindow = true;
+          }
+        } else {
+          isWithinStartWindow = true; // no time set (quick session) — allow immediately
+        }
+      }
+
+      const { data: existingActive } = !isWithinStartWindow ? { data: null } : await supabase
         .from('active_sessions')
         .select('id')
         .eq('coach_id', profile.id)
         .eq('is_active', true)
         .maybeSingle();
 
-      if (!existingActive && sessionData?.id) {
+      if (isWithinStartWindow && !existingActive && sessionData?.id) {
         const sessionStart = sessionTime.trim()
           ? (parseSessionDateTime(sessionDate, sessionTime.trim()) ?? new Date())
           : new Date();
@@ -653,9 +890,12 @@ export default function LogSessionScreen() {
           );
         }
       } else {
+        const futureNote = !isPastDate && sessionDateOnly === todayOnly && !isWithinStartWindow
+          ? '\n\nTimer will be available within 3 hours of the session time.'
+          : existingActive ? '\n\nNote: Timer not started — a session is already active.' : '';
         Alert.alert(
           'Session logged!' + (prLine ? ' 🏆' : ''),
-          `${selectedClient?.name}'s session recorded. Sessions remaining: ${pkg.sessions_remaining - 1}${existingActive ? '\n\nNote: Timer not started — a session is already active.' : ''}${prLine}`,
+          `${selectedClient?.name}'s session recorded. Sessions remaining: ${pkg.sessions_remaining - 1}${futureNote}${prLine}`,
           [{ text: 'OK', onPress: () => router.back() }]
         );
       }
@@ -671,15 +911,26 @@ export default function LogSessionScreen() {
     if (!canSave || !profile?.id || !pkg) return;
     const validExercises = exercises
       .filter((e) => e.exercise_name.trim())
-      .map(({ id: _id, ...e }) => ({
-        exercise_name: e.exercise_name.trim(),
-        sets: e.sets ? Number(e.sets) : 1,
-        reps: e.reps ? Number(e.reps) : null,
-        weight: e.weight.trim() || null,
-        duration: e.duration.trim() || null,
-        notes: e.notes.trim() || null,
-        isSuperset: e.isSuperset,
-      }));
+      .map(({ id: _id, sets_data, ...e }) => {
+        const maxKg = sets_data.reduce((mx, s) => { const n = parseFloat(s.kg || '0') || 0; return n > mx ? n : mx; }, 0);
+        const firstReps = sets_data.find(s => s.reps)?.reps ?? null;
+        const firstDur = sets_data.find(s => s.duration)?.duration ?? null;
+        return {
+          exercise_name: e.exercise_name.trim(),
+          sets: sets_data.length || 1,
+          reps: firstReps ? Number(firstReps) : null,
+          weight: maxKg > 0 ? String(maxKg) : (sets_data.some(s => s.kg === 'BW') ? 'BW' : null),
+          duration: firstDur || null,
+          notes: e.notes.trim() || null,
+          isSuperset: e.isSuperset,
+          sets_data: sets_data.map((s, i) => ({
+            set: i + 1,
+            kg: s.kg || null,
+            reps: s.reps ? Number(s.reps) : null,
+            duration: s.duration || null,
+          })),
+        };
+      });
     router.push({
       pathname: '/(coach)/guided-workout',
       params: {
@@ -948,6 +1199,10 @@ export default function LogSessionScreen() {
             isLast={i === exercises.length - 1}
             lastWeight={ex.exercise_name ? (getLastUsed(ex.exercise_name)?.weight ?? undefined) : undefined}
             onChange={updateExercise}
+            onSetChange={updateSetField}
+            onAddSet={addSet}
+            onRemoveLastSet={removeLastSet}
+            onBWToggle={bwToggle}
             onRemove={removeExercise}
             onToggleSuperset={toggleSuperset}
             onOpenPicker={(id) => { pickerTargetRef.current = id; setPickerTargetId(id); }}
@@ -977,23 +1232,6 @@ export default function LogSessionScreen() {
           </Text>
         </Pressable>
 
-        {/* Start Workout — full mode only */}
-        {mode === 'full' && (
-          <>
-            <Pressable
-              style={[styles.startWorkoutBtn, !canSave && styles.saveBtnDisabled]}
-              onPress={() => {
-                if (!canSave) return;
-                setQrConfirmFn(() => handleStartWorkout);
-                setShowQRGate(true);
-              }}
-              disabled={!canSave || loading}
-            >
-              <Ionicons name="play-circle-outline" size={20} color={colors.accent} />
-              <Text style={styles.startWorkoutBtnText}>START WORKOUT</Text>
-            </Pressable>
-          </>
-        )}
       </ScrollView>
 
       {/* Template Picker Modal */}
@@ -1053,14 +1291,14 @@ export default function LogSessionScreen() {
           const targetId = pickerTargetRef.current;
           if (targetId) {
             updateExercise(targetId, 'exercise_name', name);
-            // Auto-fill weight if field is currently empty
+            // Auto-fill kg into empty set rows from last usage
             const last = getLastUsed(name);
-            if (last) {
+            if (last?.weight) {
               setExercises((prev) => prev.map((e) => {
                 if (e.id !== targetId) return e;
                 return {
                   ...e,
-                  weight: e.weight.trim() ? e.weight : last.weight,
+                  sets_data: e.sets_data.map(s => ({ ...s, kg: s.kg.trim() ? s.kg : last.weight })),
                 };
               }));
             }
@@ -1212,8 +1450,8 @@ function makeStyles(c: ColorScheme) {
   },
   dateTriggerText: { ...Typography.body, color: c.textPrimary, fontWeight: '600', flex: 1 },
   notesInput: { minHeight: 80, textAlignVertical: 'top', paddingTop: 12 },
-  exHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  exHeaderBtns: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  exHeader: { marginBottom: 12, gap: 8 },
+  exHeaderBtns: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   historyBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1221,10 +1459,10 @@ function makeStyles(c: ColorScheme) {
     borderWidth: 1,
     borderColor: c.accent,
     borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
   },
-  historyBtnText: { color: c.accent, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
+  historyBtnText: { color: c.accent, fontSize: 11, fontWeight: '800', letterSpacing: 0.4 },
   addExBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1313,23 +1551,47 @@ function makeStyles(c: ColorScheme) {
     paddingVertical: 12,
   },
   exNameBtnText: { color: c.textPrimary, fontSize: 14, flex: 1, marginRight: 8 },
-  exRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  exSmallField: { flex: 1 },
-  bwBtnWrap: { justifyContent: 'flex-end', paddingBottom: 0 },
-  bwBtn: {
-    height: 40,
-    paddingHorizontal: 14,
-    borderRadius: 10,
+  // Per-set table styles
+  setHeaderRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, marginBottom: 4 },
+  setDataRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 5 },
+  setColSet: { width: 46 },
+  setColKg: { flex: 1 },
+  setColReps: { flex: 1 },
+  setColDur: { flex: 1 },
+  setColLabel: {
+    fontSize: 10, fontWeight: '800', color: c.textSecondary, letterSpacing: 0.5, textAlign: 'center',
+  },
+  setLabel: { fontSize: 11, color: c.textSecondary, fontWeight: '700' },
+  setInput: {
+    backgroundColor: c.bg,
     borderWidth: 1,
     borderColor: c.border,
-    backgroundColor: c.bg,
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+    color: c.textPrimary,
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  setControlRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10, marginTop: 8, marginBottom: 10,
+  },
+  setCtrlBtn: {
+    width: 30, height: 30, borderRadius: 15,
+    borderWidth: 1, borderColor: c.border, backgroundColor: c.bg,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  setCtrlBtnDisabled: { opacity: 0.3 },
+  setCountText: { fontSize: 12, fontWeight: '800', color: c.textPrimary, minWidth: 60, textAlign: 'center' },
+  bwBtn: {
+    paddingHorizontal: 12, height: 30, borderRadius: 15,
+    borderWidth: 1, borderColor: c.border, backgroundColor: c.bg,
+    justifyContent: 'center', alignItems: 'center',
   },
   bwBtnActive: { backgroundColor: c.accent, borderColor: c.accent },
-  bwBtnText: { fontSize: 12, fontWeight: '800', color: c.textSecondary },
+  bwBtnText: { fontSize: 11, fontWeight: '800', color: c.textSecondary },
   bwBtnTextActive: { color: c.bg },
-  exLabel: { ...Typography.label, color: c.textSecondary, fontSize: 10, marginBottom: 6 },
   supersetToggle: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
     marginTop: 10, paddingVertical: 8, borderRadius: 8,
@@ -1339,17 +1601,6 @@ function makeStyles(c: ColorScheme) {
   supersetToggleActive: { backgroundColor: c.accent, borderColor: c.accent },
   supersetToggleText: { color: c.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
   supersetToggleTextActive: { color: c.bg },
-  exSmallInput: {
-    backgroundColor: c.bg,
-    borderWidth: 1,
-    borderColor: c.border,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    color: c.textPrimary,
-    fontSize: 14,
-    textAlign: 'center',
-  },
   saveBtn: {
     backgroundColor: c.accent,
     borderRadius: 14,

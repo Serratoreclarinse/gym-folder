@@ -180,5 +180,17 @@ export function useClientData() {
 
   useEffect(() => { fetch(); }, [fetch]);
 
+  // Real-time: re-fetch when package or sessions change for this client
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel(`client-data-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'packages', filter: `client_id=eq.${user.id}` }, () => fetch())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'workout_sessions', filter: `client_id=eq.${user.id}` }, () => fetch())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'scheduled_sessions', filter: `client_id=eq.${user.id}` }, () => fetch())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id, fetch]);
+
   return { pkg, sessions, coachInfo, nextScheduled, upcomingScheduled, loading, error, refetch: fetch };
 }

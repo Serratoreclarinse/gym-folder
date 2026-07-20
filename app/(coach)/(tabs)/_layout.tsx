@@ -43,6 +43,7 @@ export default function CoachTabsLayout() {
           style={{ position: 'absolute', width: '100%', height: '100%', opacity: isDark ? 0.05 : 0.08 }}
           resizeMode="contain"
           tintColor={isDark ? undefined : '#000000'}
+          pointerEvents="none"
         />
         <Tabs
           screenOptions={{

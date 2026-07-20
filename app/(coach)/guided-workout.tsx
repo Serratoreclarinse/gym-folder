@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
+import { sendPushNotification } from '@/lib/pushNotifications';
 import { ColorScheme, Typography } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 
@@ -177,6 +178,24 @@ export default function GuidedWorkoutScreen() {
             router.replace('/(coach)');
           },
         },
+        {
+          text: 'Cancel Workout',
+          style: 'destructive',
+          onPress: async () => {
+            // Stop the active session timer
+            await supabase
+              .from('active_sessions')
+              .update({ is_active: false, ended_at: new Date().toISOString() })
+              .eq('coach_id', params.coachId)
+              .eq('is_active', true);
+            // Delete the workout_sessions row so session isn't deducted
+            if (params.sessionId) {
+              await supabase.from('workout_sessions').delete().eq('id', params.sessionId);
+            }
+            await AsyncStorage.removeItem(WORKOUT_KEY);
+            router.replace('/(coach)');
+          },
+        },
       ],
     );
   };
@@ -257,6 +276,15 @@ export default function GuidedWorkoutScreen() {
             .eq('id', params.sessionId);
           if (error) throw error;
         }
+        // Mark scheduled_sessions completed (session was pre-logged, now it's done)
+        const schedDateAlready = params.sessionDate || new Date().toISOString().slice(0, 10);
+        await supabase
+          .from('scheduled_sessions')
+          .update({ status: 'completed' })
+          .eq('client_id', params.clientId)
+          .gte('scheduled_at', schedDateAlready + 'T00:00:00.000Z')
+          .lte('scheduled_at', schedDateAlready + 'T23:59:59.999Z')
+          .in('status', ['pending', 'client_confirmed', 'reschedule_pending']);
       } else {
         const elapsed = Math.round((Date.now() - startTime) / 60000);
         const finalDuration = Math.max(Number(params.durationMinutes) || elapsed, elapsed);
@@ -271,13 +299,65 @@ export default function GuidedWorkoutScreen() {
           status: 'completed',
         });
         if (error) throw error;
+
+        // Mark any pending scheduled_sessions for this client on this date as completed
+        const schedDate = params.sessionDate || new Date().toISOString().slice(0, 10);
+        await supabase
+          .from('scheduled_sessions')
+          .update({ status: 'completed' })
+          .eq('client_id', params.clientId)
+          .gte('scheduled_at', schedDate + 'T00:00:00.000Z')
+          .lte('scheduled_at', schedDate + 'T23:59:59.999Z')
+          .in('status', ['pending', 'client_confirmed', 'reschedule_pending']);
+
+        // Send sessions-remaining notifications (only on fresh save, not update)
+        const { data: pkgData } = await supabase
+          .from('client_packages')
+          .select('sessions_remaining')
+          .eq('client_id', params.clientId)
+          .eq('status', 'active')
+          .maybeSingle();
+        const { data: adminRow } = await supabase.from('profiles').select('id').eq('role', 'admin').limit(1).maybeSingle();
+        const sessLeft = pkgData?.sessions_remaining ?? null;
+        if (sessLeft !== null && sessLeft <= 3 && sessLeft > 0) {
+          await sendPushNotification(params.clientId, {
+            title: '⚠️ Package Almost Empty',
+            body: `Only ${sessLeft} session${sessLeft !== 1 ? 's' : ''} left in your package. Contact your coach to renew soon!`,
+          });
+          if (params.coachId) await sendPushNotification(params.coachId, {
+            title: '⚠️ Client Running Low',
+            body: `Your client has ${sessLeft} session${sessLeft !== 1 ? 's' : ''} left.`,
+            data: { type: 'low_sessions' },
+          });
+          if (adminRow?.id) await sendPushNotification(adminRow.id, {
+            title: '⚠️ Client Running Low',
+            body: `A client has ${sessLeft} session${sessLeft !== 1 ? 's' : ''} left.`,
+            data: { type: 'low_sessions' },
+          });
+        }
+        if (sessLeft === 0) {
+          await sendPushNotification(params.clientId, {
+            title: '🔴 Last Session Used',
+            body: 'You have no sessions left. Contact your coach to renew your package.',
+          });
+          if (params.coachId) await sendPushNotification(params.coachId, {
+            title: '🔴 Client Out of Sessions',
+            body: 'Your client just used their last session.',
+            data: { type: 'no_sessions' },
+          });
+          if (adminRow?.id) await sendPushNotification(adminRow.id, {
+            title: '🔴 Client Out of Sessions',
+            body: 'A client just used their last session.',
+            data: { type: 'no_sessions' },
+          });
+        }
       }
       await AsyncStorage.removeItem(WORKOUT_KEY);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setPhase('summary');
     } catch (err: unknown) {
       setPhase('done');
-      Alert.alert('Error saving', err instanceof Error ? err.message : 'Unknown error');
+      Alert.alert('Error saving', err instanceof Error ? err.message : (err as any)?.message ?? JSON.stringify(err));
     }
   };
 

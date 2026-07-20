@@ -17,6 +17,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAvailability, type DayAvailability, type AvailabilityBreak } from '@/hooks/useAvailability';
 import { ColorScheme, Typography } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
+import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAYS_SHORT = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -52,50 +54,77 @@ function timeToY(t: string): number {
   return ((h + m / 60 - G_START) / G_SPAN) * GRID_H;
 }
 
-function WeeklyGrid({ days }: { days: DayAvailability[] }) {
+type BookedSlot = { start: string; end: string };
+
+function WeeklyGrid({ days, bookedSlots }: { days: DayAvailability[]; bookedSlots: Record<number, BookedSlot[]> }) {
   const { colors } = useTheme();
   const gridSt = useMemo(() => makeGridSt(colors), [colors]);
   const COL_W = 34;
   return (
-    <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
-      {/* Hour labels */}
-      <View style={{ width: 28, height: GRID_H, position: 'relative' }}>
-        {[5, 9, 13, 17, 21].map((h) => (
-          <Text
-            key={h}
-            style={[gridSt.hourLbl, { top: ((h - G_START) / G_SPAN) * GRID_H - 5 }]}
-          >
-            {h >= 12 ? `${h === 12 ? 12 : h - 12}p` : `${h}a`}
-          </Text>
-        ))}
-      </View>
-      {/* Day columns */}
-      {days.map((day) => {
-        const active = day.is_active;
-        const topY    = active ? Math.max(0, timeToY(day.start_time)) : 0;
-        const bottomY = active ? Math.min(GRID_H, timeToY(day.end_time)) : 0;
-        const barH    = Math.max(0, bottomY - topY);
+    <View>
+      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+        {/* Hour labels */}
+        <View style={{ width: 28, height: GRID_H, position: 'relative' }}>
+          {[5, 9, 13, 17, 21].map((h) => (
+            <Text
+              key={h}
+              style={[gridSt.hourLbl, { top: ((h - G_START) / G_SPAN) * GRID_H - 5 }]}
+            >
+              {h >= 12 ? `${h === 12 ? 12 : h - 12}p` : `${h}a`}
+            </Text>
+          ))}
+        </View>
+        {/* Day columns */}
+        {days.map((day) => {
+          const active = day.is_active;
+          const topY    = active ? Math.max(0, timeToY(day.start_time)) : 0;
+          const bottomY = active ? Math.min(GRID_H, timeToY(day.end_time)) : 0;
+          const barH    = Math.max(0, bottomY - topY);
+          const booked  = bookedSlots[day.day_of_week] ?? [];
 
-        return (
-          <View key={day.day_of_week} style={{ alignItems: 'center', gap: 4 }}>
-            <View style={{
-              width: COL_W, height: GRID_H,
-              backgroundColor: colors.surface,
-              borderRadius: 6, borderWidth: 1, borderColor: colors.border,
-              overflow: 'hidden',
-            }}>
-              {active && barH > 0 && (
-                <View style={{
-                  position: 'absolute', top: topY, height: barH, left: 2, right: 2,
-                  backgroundColor: colors.success + '40',
-                  borderRadius: 4, borderWidth: 1, borderColor: colors.success + '70',
-                }} />
-              )}
+          return (
+            <View key={day.day_of_week} style={{ alignItems: 'center', gap: 4 }}>
+              <View style={{
+                width: COL_W, height: GRID_H,
+                backgroundColor: colors.surface,
+                borderRadius: 6, borderWidth: 1, borderColor: colors.border,
+                overflow: 'hidden',
+              }}>
+                {active && barH > 0 && (
+                  <View style={{
+                    position: 'absolute', top: topY, height: barH, left: 2, right: 2,
+                    backgroundColor: colors.success + '40',
+                    borderRadius: 4, borderWidth: 1, borderColor: colors.success + '70',
+                  }} />
+                )}
+                {booked.map((slot, i) => {
+                  const sTop = Math.max(0, timeToY(slot.start));
+                  const sH   = Math.max(4, Math.min(GRID_H - sTop, timeToY(slot.end) - sTop));
+                  return (
+                    <View key={i} style={{
+                      position: 'absolute', top: sTop, height: sH, left: 2, right: 2,
+                      backgroundColor: 'rgba(255,77,77,0.55)',
+                      borderRadius: 3, borderWidth: 1, borderColor: 'rgba(255,77,77,0.85)',
+                    }} />
+                  );
+                })}
+              </View>
+              <Text style={gridSt.dayLbl}>{DAYS_SHORT[day.day_of_week]}</Text>
             </View>
-            <Text style={gridSt.dayLbl}>{DAYS_SHORT[day.day_of_week]}</Text>
-          </View>
-        );
-      })}
+          );
+        })}
+      </View>
+      {/* Legend */}
+      <View style={{ flexDirection: 'row', gap: 14, marginTop: 8, marginLeft: 36 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#4CAF5066' }} />
+          <Text style={gridSt.dayLbl}>Available</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: 'rgba(255,77,77,0.55)' }} />
+          <Text style={gridSt.dayLbl}>Booked</Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -117,11 +146,13 @@ function makeGridSt(colors: ColorScheme) {
 
 // ── Main screen ──────────────────────────────────────────────────────────────
 export default function AvailabilityScreen() {
+  const { profile } = useAuth();
   const { colors } = useTheme();
   const st = useMemo(() => makeStyles(colors), [colors]);
   const { availability, loading, refetch, saveDay } = useAvailability();
   const [days, setDays]           = useState<DayAvailability[]>([]);
   const [expandedDay, setExpanded] = useState<number | null>(null);
+  const [bookedSlots, setBookedSlots] = useState<Record<number, BookedSlot[]>>({});
   const [timePicker, setTimePicker] = useState<{
     dow: number;
     field: 'start' | 'end' | 'bk_start' | 'bk_end';
@@ -132,6 +163,34 @@ export default function AvailabilityScreen() {
   useEffect(() => {
     if (availability.length > 0) setDays(availability);
   }, [availability]);
+
+  // Fetch this week's booked sessions
+  useEffect(() => {
+    if (!profile?.id) return;
+    const now = new Date();
+    const weekLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    supabase
+      .from('scheduled_sessions')
+      .select('scheduled_at, duration_minutes')
+      .eq('coach_id', profile.id)
+      .gte('scheduled_at', now.toISOString())
+      .lte('scheduled_at', weekLater.toISOString())
+      .in('status', ['pending', 'client_confirmed'])
+      .then(({ data }) => {
+        if (!data) return;
+        const slots: Record<number, BookedSlot[]> = {};
+        data.forEach((s: any) => {
+          const dt  = new Date(s.scheduled_at);
+          const dow = dt.getDay();
+          const start = `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
+          const endDt = new Date(dt.getTime() + (s.duration_minutes ?? 60) * 60000);
+          const end   = `${String(endDt.getHours()).padStart(2, '0')}:${String(endDt.getMinutes()).padStart(2, '0')}`;
+          if (!slots[dow]) slots[dow] = [];
+          slots[dow].push({ start, end });
+        });
+        setBookedSlots(slots);
+      });
+  }, [profile?.id]);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const apply = (updated: DayAvailability) => {
@@ -390,7 +449,7 @@ export default function AvailabilityScreen() {
           <>
             <Text style={[st.sectionLabel, { marginTop: 28 }]}>WEEKLY OVERVIEW</Text>
             <View style={st.gridCard}>
-              <WeeklyGrid days={days} />
+              <WeeklyGrid days={days} bookedSlots={bookedSlots} />
               <View style={st.gridLegend}>
                 <View style={[st.legendDot, { backgroundColor: colors.success }]} />
                 <Text style={st.legendTxt}>Available</Text>
