@@ -44,16 +44,20 @@ export function useClientFiles(clientId: string) {
     label: string,
     description: string,
     date: string,
+    mimeType = 'image/jpeg',
   ): Promise<{ error: string | null }> => {
     if (!profile?.id) return { error: 'Not authenticated' };
 
+    const isPdf = mimeType === 'application/pdf' || uri.toLowerCase().endsWith('.pdf');
     const rawExt = uri.split('.').pop()?.toLowerCase()?.split('?')[0] ?? 'jpg';
-    const safeExt = ['jpg', 'jpeg', 'png', 'heic', 'heif', 'webp'].includes(rawExt) ? rawExt : 'jpg';
+    const safeExt = isPdf ? 'pdf' : (['jpg', 'jpeg', 'png', 'heic', 'heif', 'webp'].includes(rawExt) ? rawExt : 'jpg');
+    const contentType = isPdf ? 'application/pdf' : 'image/jpeg';
+    const fileType: 'image' | 'pdf' = isPdf ? 'pdf' : 'image';
     const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${safeExt}`;
     const storagePath = `${profile.id}/${clientId}/${fileName}`;
 
     const formData = new FormData();
-    formData.append('file', { uri, name: fileName, type: 'image/jpeg' } as any);
+    formData.append('file', { uri, name: fileName, type: contentType } as any);
 
     const { error: uploadError } = await supabase.storage
       .from('client-files')
@@ -71,7 +75,7 @@ export function useClientFiles(clientId: string) {
         client_id: clientId,
         coach_id: profile.id,
         file_url: publicUrl,
-        file_type: 'image',
+        file_type: fileType,
         category,
         label: label.trim() || null,
         description: description.trim() || null,

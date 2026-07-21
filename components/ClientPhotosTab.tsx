@@ -4,14 +4,12 @@ import {
   Image,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useClientProgressPhotos, type ProgressPhoto } from '@/hooks/useProgressPhotos';
-import { useClientCheckins } from '@/hooks/useWeeklyCheckins';
 import { ColorScheme, Typography } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 
@@ -22,32 +20,21 @@ const GAP = 3;
 const COLS = 3;
 const THUMB = (SCREEN_W - PAD * 2 - GAP * (COLS - 1)) / COLS;
 
-const MOOD_EMOJI  = ['😞','😕','😐','🙂','😄'];
-const SLEEP_EMOJI = ['😴','😪','😑','😌','🌙'];
-const ENERGY_EMOJI = ['🪫','😓','😐','💪','⚡'];
-
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
   });
 }
 
-function fmtWeek(iso: string) {
-  const d = new Date(iso + 'T00:00:00');
-  return `Week of ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-}
-
 export function ClientPhotosTab({ clientId }: { clientId: string }) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
-  const { photos, loading: photosLoading } = useClientProgressPhotos(clientId);
-  const { checkins, loading: checkinsLoading } = useClientCheckins(clientId);
+  const { photos, loading } = useClientProgressPhotos(clientId);
 
   const [viewing, setViewing] = useState<ProgressPhoto | null>(null);
   const [compareMode, setCompareMode] = useState(false);
   const [compareSelected, setCompareSelected] = useState<string[]>([]);
   const [comparePhotos, setComparePhotos] = useState<[ProgressPhoto, ProgressPhoto] | null>(null);
-  const [showCheckins, setShowCheckins] = useState(false);
 
   function toggleSelect(photo: ProgressPhoto) {
     setCompareSelected((prev) => {
@@ -57,126 +44,76 @@ export function ClientPhotosTab({ clientId }: { clientId: string }) {
     });
   }
 
-  if (photosLoading || checkinsLoading) {
+  if (loading) {
     return <View style={s.center}><Text style={s.muted}>Loading…</Text></View>;
+  }
+
+  if (photos.length === 0) {
+    return (
+      <View style={s.empty}>
+        <Ionicons name="camera-outline" size={52} color={colors.border} />
+        <Text style={s.emptyTitle}>No photos yet</Text>
+        <Text style={s.emptySub}>Client sends progress photos from their Records screen</Text>
+      </View>
+    );
   }
 
   return (
     <View style={s.wrap}>
-      {/* ── Tab selector ── */}
-      <View style={s.tabRow}>
-        <Pressable style={[s.tab, !showCheckins && s.tabActive]} onPress={() => setShowCheckins(false)}>
-          <Text style={[s.tabText, !showCheckins && s.tabTextActive]}>Photos ({photos.length})</Text>
-        </Pressable>
-        <Pressable style={[s.tab, showCheckins && s.tabActive]} onPress={() => setShowCheckins(true)}>
-          <Text style={[s.tabText, showCheckins && s.tabTextActive]}>Check-ins ({checkins.length})</Text>
-        </Pressable>
+      {/* Toolbar */}
+      <View style={s.toolbar}>
+        <Text style={s.count}>{photos.length} photo{photos.length !== 1 ? 's' : ''}</Text>
+        {photos.length >= 2 && (
+          <Pressable
+            style={[s.compareToggle, compareMode && { backgroundColor: colors.accent + '20', borderColor: colors.accent }]}
+            onPress={() => { setCompareMode((v) => !v); setCompareSelected([]); setComparePhotos(null); }}
+          >
+            <Ionicons name="git-compare-outline" size={14} color={colors.accent} />
+            <Text style={s.compareToggleText}>{compareMode ? 'Cancel' : 'Compare'}</Text>
+          </Pressable>
+        )}
       </View>
 
-      {/* ── Photos tab ── */}
-      {!showCheckins && (
-        <>
-          {photos.length === 0 ? (
-            <View style={s.empty}>
-              <Ionicons name="camera-outline" size={52} color={colors.border} />
-              <Text style={s.emptyTitle}>No photos yet</Text>
-              <Text style={s.emptySub}>Client sends progress photos from their Records screen</Text>
-            </View>
-          ) : (
-            <>
-              <View style={s.toolbar}>
-                <Text style={s.count}>{photos.length} photo{photos.length !== 1 ? 's' : ''}</Text>
-                {photos.length >= 2 && (
-                  <Pressable
-                    style={[s.compareToggle, compareMode && { backgroundColor: colors.accent + '20', borderColor: colors.accent }]}
-                    onPress={() => { setCompareMode((v) => !v); setCompareSelected([]); setComparePhotos(null); }}
-                  >
-                    <Ionicons name="git-compare-outline" size={14} color={colors.accent} />
-                    <Text style={s.compareToggleText}>{compareMode ? 'Cancel' : 'Compare'}</Text>
-                  </Pressable>
-                )}
-              </View>
+      {compareMode && (
+        <Text style={s.compareHint}>
+          {compareSelected.length === 0 ? 'Tap 2 photos to compare'
+            : compareSelected.length === 1 ? 'Select 1 more'
+            : 'Ready — tap View'}
+        </Text>
+      )}
 
+      <View style={s.grid}>
+        {photos.map((p) => {
+          const isSelected = compareSelected.includes(p.id);
+          return (
+            <Pressable
+              key={p.id}
+              onPress={() => compareMode ? toggleSelect(p) : setViewing(p)}
+              style={s.thumbWrap}
+            >
+              <Image source={{ uri: p.file_url }} style={s.thumb} resizeMode="cover" />
               {compareMode && (
-                <Text style={s.compareHint}>
-                  {compareSelected.length === 0 ? 'Tap 2 photos to compare'
-                    : compareSelected.length === 1 ? 'Select 1 more'
-                    : 'Ready — tap View'}
-                </Text>
-              )}
-
-              <View style={s.grid}>
-                {photos.map((p) => {
-                  const isSelected = compareSelected.includes(p.id);
-                  return (
-                    <Pressable
-                      key={p.id}
-                      onPress={() => compareMode ? toggleSelect(p) : setViewing(p)}
-                      style={s.thumbWrap}
-                    >
-                      <Image source={{ uri: p.file_url }} style={s.thumb} resizeMode="cover" />
-                      {compareMode && (
-                        <View style={[s.checkCircle, isSelected && { backgroundColor: colors.accent, borderColor: colors.accent }]}>
-                          {isSelected && <Ionicons name="checkmark" size={12} color="#fff" />}
-                        </View>
-                      )}
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              {compareMode && compareSelected.length === 2 && (
-                <Pressable style={s.compareBtn} onPress={() => {
-                  const p1 = photos.find((p) => p.id === compareSelected[0])!;
-                  const p2 = photos.find((p) => p.id === compareSelected[1])!;
-                  setComparePhotos([p1, p2]);
-                }}>
-                  <Ionicons name="git-compare-outline" size={16} color="#fff" />
-                  <Text style={s.compareBtnText}>VIEW COMPARISON</Text>
-                </Pressable>
-              )}
-            </>
-          )}
-        </>
-      )}
-
-      {/* ── Check-ins tab ── */}
-      {showCheckins && (
-        <>
-          {checkins.length === 0 ? (
-            <View style={s.empty}>
-              <Ionicons name="clipboard-outline" size={52} color={colors.border} />
-              <Text style={s.emptyTitle}>No check-ins yet</Text>
-              <Text style={s.emptySub}>Client fills in weekly check-ins from their Records screen</Text>
-            </View>
-          ) : (
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {checkins.map((c) => (
-                <View key={c.id} style={s.checkinCard}>
-                  <Text style={s.checkinWeek}>{fmtWeek(c.week_date)}</Text>
-                  <View style={s.checkinRow}>
-                    <Text style={s.checkinItem}>
-                      {MOOD_EMOJI[(c.mood ?? 3) - 1]} Mood {c.mood}/5
-                    </Text>
-                    <Text style={s.checkinItem}>
-                      {SLEEP_EMOJI[(c.sleep_quality ?? 3) - 1]} Sleep {c.sleep_quality}/5
-                    </Text>
-                    <Text style={s.checkinItem}>
-                      {ENERGY_EMOJI[(c.energy_level ?? 3) - 1]} Energy {c.energy_level}/5
-                    </Text>
-                  </View>
-                  {c.weight_kg != null && (
-                    <Text style={s.checkinWeight}>⚖️ {c.weight_kg} kg</Text>
-                  )}
-                  {c.notes ? <Text style={s.checkinNotes}>{c.notes}</Text> : null}
+                <View style={[s.checkCircle, isSelected && { backgroundColor: colors.accent, borderColor: colors.accent }]}>
+                  {isSelected && <Ionicons name="checkmark" size={12} color="#fff" />}
                 </View>
-              ))}
-            </ScrollView>
-          )}
-        </>
+              )}
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {compareMode && compareSelected.length === 2 && (
+        <Pressable style={s.compareBtn} onPress={() => {
+          const p1 = photos.find((p) => p.id === compareSelected[0])!;
+          const p2 = photos.find((p) => p.id === compareSelected[1])!;
+          setComparePhotos([p1, p2]);
+        }}>
+          <Ionicons name="git-compare-outline" size={16} color="#fff" />
+          <Text style={s.compareBtnText}>VIEW COMPARISON</Text>
+        </Pressable>
       )}
 
-      {/* ── Fullscreen photo viewer ── */}
+      {/* Fullscreen photo viewer */}
       <Modal visible={!!viewing} transparent animationType="fade" onRequestClose={() => setViewing(null)}>
         <View style={s.overlay}>
           <Pressable style={s.closeBtn} onPress={() => setViewing(null)}>
@@ -194,8 +131,13 @@ export function ClientPhotosTab({ clientId }: { clientId: string }) {
         </View>
       </Modal>
 
-      {/* ── Comparison modal ── */}
-      <Modal visible={!!comparePhotos} transparent animationType="fade" onRequestClose={() => { setComparePhotos(null); setCompareSelected([]); setCompareMode(false); }}>
+      {/* Comparison modal */}
+      <Modal
+        visible={!!comparePhotos}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { setComparePhotos(null); setCompareSelected([]); setCompareMode(false); }}
+      >
         <View style={s.compareOverlay}>
           <Pressable style={s.closeBtn} onPress={() => { setComparePhotos(null); setCompareSelected([]); setCompareMode(false); }}>
             <Ionicons name="close" size={26} color="#fff" />
@@ -225,16 +167,6 @@ function makeStyles(c: ColorScheme) {
     wrap: { paddingTop: 8 },
     center: { padding: 40, alignItems: 'center' },
     muted: { ...Typography.body, color: c.textSecondary },
-
-    tabRow: { flexDirection: 'row', paddingHorizontal: PAD, marginBottom: 16, gap: 8 },
-    tab: {
-      flex: 1, paddingVertical: 8, borderRadius: 10,
-      alignItems: 'center', backgroundColor: c.surface,
-      borderWidth: 1, borderColor: c.border,
-    },
-    tabActive: { backgroundColor: c.accent + '15', borderColor: c.accent },
-    tabText: { ...Typography.caption, color: c.textSecondary, fontWeight: '600' },
-    tabTextActive: { color: c.accent },
 
     empty: { alignItems: 'center', paddingVertical: 60, paddingHorizontal: 32, gap: 10 },
     emptyTitle: { ...Typography.subtitle, color: c.textPrimary },
@@ -281,16 +213,5 @@ function makeStyles(c: ColorScheme) {
     compareImg: { width: (SCREEN_W - 2) / 2, height: SCREEN_W * 0.7 },
     splitDivider: { width: 2, backgroundColor: 'rgba(255,255,255,0.15)' },
     compareDate: { ...Typography.caption, color: 'rgba(255,255,255,0.5)', marginTop: 6, textAlign: 'center' },
-
-    checkinCard: {
-      marginHorizontal: PAD, marginBottom: 10,
-      backgroundColor: c.surface, borderRadius: 14,
-      borderWidth: 1, borderColor: c.border, padding: 14,
-    },
-    checkinWeek: { ...Typography.label, color: c.textSecondary, marginBottom: 8 },
-    checkinRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 6 },
-    checkinItem: { ...Typography.caption, color: c.textPrimary },
-    checkinWeight: { ...Typography.caption, color: c.textSecondary, marginBottom: 4 },
-    checkinNotes: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic' },
   });
 }

@@ -45,74 +45,76 @@ export default function CoachMessagesScreen() {
   const load = useCallback(async () => {
     if (!user?.id) return;
     setLoading(true);
+    try {
+      const [clientsRes, msgsRes] = await Promise.all([
+        // All active clients under this coach
+        supabase
+          .from('packages')
+          .select('client_id, profiles!packages_client_id_fkey(id, name)')
+          .eq('coach_id', user.id)
+          .eq('status', 'active'),
+        // All messages this coach is part of
+        supabase
+          .from('messages')
+          .select('id, sender_id, receiver_id, content, attachment_type, created_at, read_at')
+          .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+          .order('created_at', { ascending: false }),
+      ]);
 
-    const [clientsRes, msgsRes] = await Promise.all([
-      // All active clients under this coach
-      supabase
-        .from('packages')
-        .select('client_id, profiles!packages_client_id_fkey(id, name)')
-        .eq('coach_id', user.id)
-        .eq('status', 'active'),
-      // All messages this coach is part of
-      supabase
-        .from('messages')
-        .select('id, sender_id, receiver_id, content, attachment_type, created_at, read_at')
-        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
-        .order('created_at', { ascending: false }),
-    ]);
+      const clients = (clientsRes.data ?? []).map((row: any) => ({
+        id: (row.profiles as any)?.id ?? row.client_id,
+        name: (row.profiles as any)?.name ?? 'Unknown',
+      }));
 
-    const clients = (clientsRes.data ?? []).map((row: any) => ({
-      id: (row.profiles as any)?.id ?? row.client_id,
-      name: (row.profiles as any)?.name ?? 'Unknown',
-    }));
+      const msgs = msgsRes.data ?? [];
 
-    const msgs = msgsRes.data ?? [];
+      // Build a map: clientId → { last message info, unread count }
+      const msgMap: Record<string, {
+        content: string; attachmentType: string | null; at: string; unread: number; fromMe: boolean;
+      }> = {};
 
-    // Build a map: clientId → { last message info, unread count }
-    const msgMap: Record<string, {
-      content: string; attachmentType: string | null; at: string; unread: number; fromMe: boolean;
-    }> = {};
-
-    for (const msg of msgs) {
-      const partnerId = msg.sender_id === user.id ? msg.receiver_id : msg.sender_id;
-      if (!msgMap[partnerId]) {
-        // First entry per partner = most recent (already ordered desc)
-        msgMap[partnerId] = {
-          content: msg.content,
-          attachmentType: msg.attachment_type ?? null,
-          at: msg.created_at,
-          unread: 0,
-          fromMe: msg.sender_id === user.id,
-        };
+      for (const msg of msgs) {
+        const partnerId = msg.sender_id === user.id ? msg.receiver_id : msg.sender_id;
+        if (!msgMap[partnerId]) {
+          // First entry per partner = most recent (already ordered desc)
+          msgMap[partnerId] = {
+            content: msg.content,
+            attachmentType: msg.attachment_type ?? null,
+            at: msg.created_at,
+            unread: 0,
+            fromMe: msg.sender_id === user.id,
+          };
+        }
+        // Count unread messages sent TO me
+        if (msg.receiver_id === user.id && !msg.read_at) {
+          msgMap[partnerId].unread += 1;
+        }
       }
-      // Count unread messages sent TO me
-      if (msg.receiver_id === user.id && !msg.read_at) {
-        msgMap[partnerId].unread += 1;
-      }
+
+      const convos: ConversationItem[] = clients.map((c) => ({
+        clientId: c.id,
+        clientName: c.name,
+        lastMessage: msgMap[c.id]?.content || null,
+        lastMessageType: msgMap[c.id]?.attachmentType ?? null,
+        lastMessageAt: msgMap[c.id]?.at ?? null,
+        unreadCount: msgMap[c.id]?.unread ?? 0,
+        isFromMe: msgMap[c.id]?.fromMe ?? false,
+      }));
+
+      // Sort: clients with messages first (most recent first), rest alphabetically
+      convos.sort((a, b) => {
+        if (a.lastMessageAt && b.lastMessageAt) {
+          return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
+        }
+        if (a.lastMessageAt) return -1;
+        if (b.lastMessageAt) return 1;
+        return a.clientName.localeCompare(b.clientName);
+      });
+
+      setConversations(convos);
+    } finally {
+      setLoading(false);
     }
-
-    const convos: ConversationItem[] = clients.map((c) => ({
-      clientId: c.id,
-      clientName: c.name,
-      lastMessage: msgMap[c.id]?.content || null,
-      lastMessageType: msgMap[c.id]?.attachmentType ?? null,
-      lastMessageAt: msgMap[c.id]?.at ?? null,
-      unreadCount: msgMap[c.id]?.unread ?? 0,
-      isFromMe: msgMap[c.id]?.fromMe ?? false,
-    }));
-
-    // Sort: clients with messages first (most recent first), rest alphabetically
-    convos.sort((a, b) => {
-      if (a.lastMessageAt && b.lastMessageAt) {
-        return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
-      }
-      if (a.lastMessageAt) return -1;
-      if (b.lastMessageAt) return 1;
-      return a.clientName.localeCompare(b.clientName);
-    });
-
-    setConversations(convos);
-    setLoading(false);
   }, [user?.id]);
 
   useEffect(() => { load(); }, [load]);

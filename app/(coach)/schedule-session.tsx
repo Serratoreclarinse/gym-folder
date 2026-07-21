@@ -109,7 +109,7 @@ export default function ScheduleSessionScreen() {
 
     const scheduledAt = buildScheduledAt(sessionDate, sessionTime);
 
-    const { error } = await supabase.from('scheduled_sessions').insert({
+    const { data: sessionData, error } = await supabase.from('scheduled_sessions').insert({
       coach_id: profile.id,
       client_id: selectedClientId,
       package_id: pkgData?.id ?? null,
@@ -117,7 +117,7 @@ export default function ScheduleSessionScreen() {
       duration_minutes: duration,
       session_type: sessionType,
       notes: notes.trim() || null,
-    });
+    }).select('id').single();
 
     setSaving(false);
 
@@ -129,10 +129,25 @@ export default function ScheduleSessionScreen() {
     const formattedTime = new Date(scheduledAt).toLocaleTimeString('en-US', {
       hour: 'numeric', minute: '2-digit',
     });
-    await sendPushNotification(selectedClientId, {
-      title: '📅 Session Scheduled',
-      body: `Your coach scheduled a session on ${formattedDate} at ${formattedTime} (${duration} min${sessionType === 'home' ? ' · Home' : ''}).`,
-    });
+
+    await Promise.all([
+      sendPushNotification(selectedClientId, {
+        title: '📅 Session Scheduled',
+        body: `Your coach scheduled a session on ${formattedDate} at ${formattedTime} (${duration} min${sessionType === 'home' ? ' · Home' : ''}).`,
+      }),
+      supabase.from('messages').insert({
+        sender_id: profile.id,
+        receiver_id: selectedClientId,
+        content: `Session scheduled for ${formattedDate} at ${formattedTime} (${duration} min${sessionType === 'home' ? ' · Home' : ''})`,
+        attachment_type: 'session_invite',
+        metadata: {
+          session_id: sessionData?.id ?? null,
+          scheduled_at: scheduledAt,
+          duration_minutes: duration,
+          session_type: sessionType,
+        },
+      }),
+    ]);
 
     router.back();
   };

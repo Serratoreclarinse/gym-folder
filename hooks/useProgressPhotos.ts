@@ -68,7 +68,7 @@ export function useMyProgressPhotos(clientId: string | null) {
 
     const { error: uploadError } = await supabase.storage
       .from('client-files')
-      .upload(storagePath, formData, { upsert: false, contentType: 'multipart/form-data' });
+      .upload(storagePath, formData, { upsert: false, contentType: 'image/jpeg' });
 
     if (uploadError) return { error: uploadError.message };
 

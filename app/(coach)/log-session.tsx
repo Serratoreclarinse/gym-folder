@@ -464,15 +464,22 @@ export default function LogSessionScreen() {
       setExercises(
         tpl.exercises.length > 0
           ? tpl.exercises.map((e) => {
-              const numSets = Number(e.sets) || 1;
+              const setsData =
+                e.set_rows.length > 0
+                  ? e.set_rows.map((r) => ({
+                      kg: r.weight ?? '',
+                      reps: r.reps != null ? String(r.reps) : '',
+                      duration: '',
+                    }))
+                  : Array.from({ length: Number(e.sets) || 1 }, () => ({
+                      kg: e.weight ?? '',
+                      reps: e.reps != null ? String(e.reps) : '',
+                      duration: '',
+                    }));
               return {
                 id: uid(),
                 exercise_name: e.exercise_name,
-                sets_data: Array.from({ length: numSets }, () => ({
-                  kg: e.weight ?? '',
-                  reps: e.reps != null ? String(e.reps) : '',
-                  duration: '',
-                })),
+                sets_data: setsData,
                 notes: e.notes ?? '',
                 isSuperset: false,
               };

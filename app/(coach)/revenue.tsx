@@ -5,6 +5,7 @@ import {
   Dimensions,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -14,6 +15,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import Svg, { G, Rect, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useClients } from '@/hooks/useClients';
@@ -366,6 +368,7 @@ function PaymentFormModal({ visible, editing, clients, onClose, onSave }: FormPr
   const [status, setStatus] = useState<PaymentStatus>('paid');
   const [notes, setNotes] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -491,16 +494,36 @@ function PaymentFormModal({ visible, editing, clients, onClose, onSave }: FormPr
             </View>
 
             {/* Date */}
-            <Text style={fm.label}>DATE (YYYY-MM-DD)</Text>
-            <TextInput
-              style={fm.input}
-              value={date}
-              onChangeText={setDate}
-              placeholder="2025-06-01"
-              placeholderTextColor={colors.textSecondary + '60'}
-              keyboardType="numbers-and-punctuation"
-              maxLength={10}
-            />
+            <Text style={fm.label}>DATE</Text>
+            {Platform.OS === 'ios' ? (
+              <DateTimePicker
+                value={new Date(date + 'T00:00:00')}
+                mode="date"
+                display="compact"
+                onChange={(_, selected) => {
+                  if (selected) setDate(selected.toISOString().split('T')[0]);
+                }}
+                style={{ alignSelf: 'flex-start', marginLeft: -8 }}
+              />
+            ) : (
+              <>
+                <Pressable style={fm.datePressable} onPress={() => setShowDatePicker(true)}>
+                  <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+                  <Text style={fm.datePressableText}>{fmtDate(date)}</Text>
+                </Pressable>
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={new Date(date + 'T00:00:00')}
+                    mode="date"
+                    display="default"
+                    onChange={(_, selected) => {
+                      setShowDatePicker(false);
+                      if (selected) setDate(selected.toISOString().split('T')[0]);
+                    }}
+                  />
+                )}
+              </>
+            )}
 
             {/* Status */}
             <Text style={fm.label}>STATUS</Text>
@@ -565,7 +588,7 @@ export default function RevenueScreen() {
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [showReport, setShowReport] = useState(false);
 
-  useFocusEffect(useCallback(() => { refetch(); }, []));
+  useFocusEffect(useCallback(() => { refetch(); }, [refetch]));
 
   const toggleExpand = (key: string) =>
     setExpandedKeys((prev) => {
@@ -939,6 +962,13 @@ function makeFmStyles(colors: ColorScheme) {
     paddingHorizontal: 14, paddingVertical: 12,
     color: colors.textPrimary, fontSize: 15,
   },
+  datePressable: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: colors.surfaceRaised, borderRadius: 10,
+    borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: 14, paddingVertical: 12,
+  },
+  datePressableText: { ...Typography.body, color: colors.textPrimary },
   inputMulti: { height: 80, textAlignVertical: 'top' },
   amountWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   peso: { ...Typography.body, color: colors.accent, fontWeight: '800' },

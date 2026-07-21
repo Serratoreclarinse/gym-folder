@@ -425,10 +425,10 @@ export default function ClientWorkoutsScreen() {
               <SessionCard
                 key={s.id}
                 session={s}
-                showRateBadge={unratedSession?.id === s.id}
+                showRateBadge={unratedSession?.id === s.id && !s.rating}
                 onRate={() => { setSelectedRating(0); setShowRatingModal(true); }}
                 ratingExpired={ratingExpiredSession?.id === s.id}
-                submittedRating={submittedRatings[s.id]}
+                submittedRating={submittedRatings[s.id] ?? (s.rating ?? undefined)}
                 styles={styles}
                 colors={colors}
               />

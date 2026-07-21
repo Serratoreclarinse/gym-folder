@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useClientData, type ClientPackage } from '@/hooks/useClientData';
 import { useClientAnnouncements } from '@/hooks/useClientAnnouncements';
 import { useClientBookingRequests } from '@/hooks/useBookingRequests';
+import { useCoachSlots, type SlotInfo } from '@/hooks/useCoachSlots';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { MilestonesSection } from '@/components/MilestonesSection';
 import { supabase } from '@/lib/supabase';
@@ -304,10 +305,43 @@ export default function ClientProgressScreen() {
 
   // ── Booking request modal ────────────────────────────────────
   const [requestModal, setRequestModal] = useState<'booking' | 'renewal' | null>(null);
-  const [reqDate, setReqDate] = useState('');
-  const [reqTime, setReqTime] = useState('');
+  const [reqDate, setReqDate] = useState('');     // YYYY-MM-DD (slot picker) or free text (renewal)
+  const [reqTime, setReqTime] = useState('');     // "09:00" from slot picker
   const [reqNotes, setReqNotes] = useState('');
   const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [slots, setSlots] = useState<SlotInfo[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const { getSlots } = useCoachSlots(pkg?.coach_id ?? null);
+
+  // Generate next 14 days starting tomorrow
+  const next14Days = useMemo(() => {
+    const days: Date[] = [];
+    for (let i = 1; i <= 14; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      days.push(d);
+    }
+    return days;
+  }, []);
+
+  const localDateStr = (d: Date): string => {
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    const dy = String(d.getDate()).padStart(2, '0');
+    return `${y}-${mo}-${dy}`;
+  };
+
+  const DAY_ABBR = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+  // Load slots whenever selected date changes (booking only)
+  useEffect(() => {
+    if (!reqDate || requestModal !== 'booking' || !pkg?.coach_id) {
+      setSlots([]);
+      return;
+    }
+    setSlotsLoading(true);
+    getSlots(reqDate).then((s) => { setSlots(s); setSlotsLoading(false); });
+  }, [reqDate, requestModal, pkg?.coach_id, getSlots]);
 
   const handleSubmitRequest = async () => {
     if (!requestModal) return;
@@ -340,7 +374,7 @@ export default function ClientProgressScreen() {
       });
     }
     setRequestModal(null);
-    setReqDate(''); setReqTime(''); setReqNotes('');
+    setReqDate(''); setReqTime(''); setReqNotes(''); setSlots([]);
     Alert.alert('Sent!', `Your ${requestModal === 'renewal' ? 'renewal' : 'booking'} request has been sent to your coach.`);
   };
 
@@ -528,23 +562,95 @@ export default function ClientProgressScreen() {
               {requestModal === 'renewal' ? 'Request Package Renewal' : 'Request a Session'}
             </Text>
 
-            <Text style={styles.reqLabel}>PREFERRED DATE</Text>
-            <TextInput
-              style={styles.reqInput}
-              value={reqDate}
-              onChangeText={setReqDate}
-              placeholder="e.g. July 5, 2025 (optional)"
-              placeholderTextColor={colors.textSecondary + '60'}
-            />
+            {requestModal === 'booking' ? (
+              <>
+                {/* ── Day chips ── */}
+                <Text style={styles.reqLabel}>PICK A DATE</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dayScroll}>
+                  {next14Days.map((d) => {
+                    const ds = localDateStr(d);
+                    const sel = reqDate === ds;
+                    return (
+                      <Pressable
+                        key={ds}
+                        style={[styles.dayChip, sel && styles.dayChipSel]}
+                        onPress={() => { setReqDate(ds); setReqTime(''); }}
+                      >
+                        <Text style={[styles.dayChipDay, sel && styles.dayChipDaySel]}>
+                          {DAY_ABBR[d.getDay()]}
+                        </Text>
+                        <Text style={[styles.dayChipDate, sel && styles.dayChipDateSel]}>
+                          {d.getDate()}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
 
-            <Text style={styles.reqLabel}>PREFERRED TIME</Text>
-            <TextInput
-              style={styles.reqInput}
-              value={reqTime}
-              onChangeText={setReqTime}
-              placeholder="e.g. 9:00 AM (optional)"
-              placeholderTextColor={colors.textSecondary + '60'}
-            />
+                {/* ── Time slot chips ── */}
+                {reqDate ? (
+                  <>
+                    <Text style={[styles.reqLabel, { marginTop: 16 }]}>AVAILABLE TIMES</Text>
+                    {slotsLoading ? (
+                      <Text style={styles.slotsNote}>Loading…</Text>
+                    ) : slots.length === 0 ? (
+                      <Text style={styles.slotsNote}>Coach has no availability this day.</Text>
+                    ) : (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.slotScroll}>
+                        {slots.map((slot) => {
+                          const isSel = reqTime === slot.time;
+                          return (
+                            <Pressable
+                              key={slot.time}
+                              style={[
+                                styles.slotChip,
+                                isSel && styles.slotChipSel,
+                                !slot.isAvailable && styles.slotChipTaken,
+                              ]}
+                              onPress={() => slot.isAvailable && setReqTime(isSel ? '' : slot.time)}
+                              disabled={!slot.isAvailable}
+                            >
+                              <Text style={[
+                                styles.slotChipTxt,
+                                isSel && styles.slotChipTxtSel,
+                                !slot.isAvailable && styles.slotChipTxtTaken,
+                              ]}>
+                                {slot.label}
+                              </Text>
+                              {!slot.isAvailable && (
+                                <Text style={styles.takenBadge}>TAKEN</Text>
+                              )}
+                            </Pressable>
+                          );
+                        })}
+                      </ScrollView>
+                    )}
+                  </>
+                ) : (
+                  <Text style={styles.slotsNote}>Select a date to see available times.</Text>
+                )}
+              </>
+            ) : (
+              /* Renewal: keep simple date/time text inputs */
+              <>
+                <Text style={styles.reqLabel}>PREFERRED DATE</Text>
+                <TextInput
+                  style={styles.reqInput}
+                  value={reqDate}
+                  onChangeText={setReqDate}
+                  placeholder="e.g. July 5, 2025 (optional)"
+                  placeholderTextColor={colors.textSecondary + '60'}
+                />
+                <Text style={styles.reqLabel}>PREFERRED TIME</Text>
+                <TextInput
+                  style={styles.reqInput}
+                  value={reqTime}
+                  onChangeText={setReqTime}
+                  placeholder="e.g. 9:00 AM (optional)"
+                  placeholderTextColor={colors.textSecondary + '60'}
+                />
+              </>
+            )}
 
             <Text style={styles.reqLabel}>NOTES</Text>
             <TextInput
@@ -567,7 +673,7 @@ export default function ClientProgressScreen() {
             </Pressable>
             <Pressable
               style={styles.reqCancelBtn}
-              onPress={() => { setRequestModal(null); setReqDate(''); setReqTime(''); setReqNotes(''); }}
+              onPress={() => { setRequestModal(null); setReqDate(''); setReqTime(''); setReqNotes(''); setSlots([]); }}
             >
               <Text style={styles.reqCancelBtnText}>Cancel</Text>
             </Pressable>
@@ -1285,6 +1391,32 @@ function makeStyles(c: ColorScheme) {
     reqSubmitBtnText: { color: c.bg, fontWeight: '800', fontSize: 16 },
     reqCancelBtn: { paddingVertical: 12, alignItems: 'center' },
     reqCancelBtnText: { color: c.textSecondary, fontSize: 14 },
+
+    // Day + slot chips
+    dayScroll: { marginBottom: 4 },
+    dayChip: {
+      alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8,
+      borderRadius: 12, borderWidth: 1, borderColor: c.border,
+      backgroundColor: c.bg, marginRight: 8, minWidth: 44,
+    },
+    dayChipSel: { backgroundColor: c.accent + '18', borderColor: c.accent },
+    dayChipDay: { fontSize: 10, fontWeight: '700', color: c.textSecondary, letterSpacing: 0.5 },
+    dayChipDaySel: { color: c.accent },
+    dayChipDate: { fontSize: 16, fontWeight: '700', color: c.textPrimary, marginTop: 2 },
+    dayChipDateSel: { color: c.accent },
+    slotScroll: { marginBottom: 4 },
+    slotChip: {
+      paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10,
+      borderWidth: 1, borderColor: c.accent + '60',
+      backgroundColor: c.bg, marginRight: 8, alignItems: 'center',
+    },
+    slotChipSel: { backgroundColor: c.accent, borderColor: c.accent },
+    slotChipTaken: { borderColor: c.border, backgroundColor: c.surface, opacity: 0.55 },
+    slotChipTxt: { fontSize: 13, fontWeight: '600', color: c.textPrimary },
+    slotChipTxtSel: { color: c.bg },
+    slotChipTxtTaken: { color: c.textSecondary },
+    takenBadge: { fontSize: 9, fontWeight: '700', color: c.textSecondary, letterSpacing: 0.5, marginTop: 2 },
+    slotsNote: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic', marginBottom: 4 },
 
     // Cancel button (next session card)
     cancelBtn: {

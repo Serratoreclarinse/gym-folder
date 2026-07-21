@@ -622,6 +622,30 @@ function BubbleItem({ msg, mine, colors, s, onImagePress, onLongPress }: {
     );
   }
 
+  if (msg.attachment_type === 'session_invite') {
+    const meta = (msg.metadata ?? {}) as Record<string, any>;
+    const dt = meta.scheduled_at ? new Date(meta.scheduled_at) : null;
+    const dateStr = dt ? dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '—';
+    const timeStr = dt ? dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—';
+    return (
+      <View style={[s.bubbleWrap, mine ? s.bubbleWrapMine : s.bubbleWrapTheirs]}>
+        <View style={s.inviteCard}>
+          <View style={s.inviteHeader}>
+            <Ionicons name="calendar-outline" size={16} color={colors.accent} />
+            <Text style={[s.inviteTitle, { color: colors.textPrimary }]}>Session Scheduled</Text>
+          </View>
+          <Text style={[s.inviteDate, { color: colors.textPrimary }]}>{dateStr}</Text>
+          <Text style={[s.inviteTime, { color: colors.textSecondary }]}>
+            {timeStr} · {meta.duration_minutes ?? '—'} min{meta.session_type === 'home' ? ' · Home' : ''}
+          </Text>
+          <Text style={[s.bubbleTime, s.bubbleTimeTheirs, { marginTop: 6, textAlign: 'right' }]}>
+            {fmtTime(msg.created_at)}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   const hasAttachment = !!msg.attachment_url;
   const isImage = msg.attachment_type === 'image';
   const isVideo = msg.attachment_type === 'video';
@@ -847,6 +871,15 @@ function makeStyles(c: ColorScheme) {
       width: 36, height: 36, borderRadius: 18,
       backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center',
     },
+
+    inviteCard: {
+      maxWidth: '80%', borderRadius: 14, padding: 14,
+      backgroundColor: c.surface, borderWidth: 1, borderColor: c.accent + '55',
+    },
+    inviteHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+    inviteTitle: { fontSize: 13, fontWeight: '700' },
+    inviteDate: { fontSize: 16, fontWeight: '800', marginBottom: 2 },
+    inviteTime: { fontSize: 13 },
 
     galleryRoot: { flex: 1 },
     galleryHeader: {

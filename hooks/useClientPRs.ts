@@ -10,12 +10,6 @@ export type PersonalRecord = {
   session_count: number;
 };
 
-function parseWeight(w: string | null | undefined): number {
-  if (!w) return 0;
-  const match = w.match(/[\d.]+/);
-  return match ? parseFloat(match[0]) : 0;
-}
-
 export function useClientPRs() {
   const { user } = useAuth();
   const [prs, setPRs] = useState<PersonalRecord[]>([]);
@@ -26,52 +20,49 @@ export function useClientPRs() {
     setLoading(true);
 
     const { data } = await supabase
-      .from('workout_sessions')
-      .select('exercises, session_date')
+      .from('exercise_records')
+      .select('exercise_name, best_kg, best_reps, recorded_at')
       .eq('client_id', user.id)
-      .neq('status', 'absent')
-      .order('session_date', { ascending: true });
+      .order('recorded_at', { ascending: true });
 
     if (!data) { setLoading(false); return; }
 
     const map = new Map<string, PersonalRecord>();
 
-    for (const session of data) {
-      const exs = (session.exercises ?? []) as Array<{
-        exercise_name: string;
-        weight: string | null;
-      }>;
-      for (const ex of exs) {
-        const name = ex.exercise_name?.trim();
-        if (!name) continue;
-        const key = name.toLowerCase();
-        const w = parseWeight(ex.weight);
-        const existing = map.get(key);
+    for (const record of data) {
+      const name = record.exercise_name?.trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      const kg = record.best_kg ?? 0;
+      const date = (record.recorded_at as string).slice(0, 10);
+      const existing = map.get(key);
 
-        if (!existing) {
-          map.set(key, {
-            exercise_name: name,
-            best_weight: w,
-            best_weight_str: ex.weight ?? '',
-            achieved_date: session.session_date,
-            session_count: 1,
-          });
-        } else {
-          const newBest = w > existing.best_weight;
-          map.set(key, {
-            exercise_name: existing.exercise_name,
-            best_weight: newBest ? w : existing.best_weight,
-            best_weight_str: newBest ? (ex.weight ?? '') : existing.best_weight_str,
-            achieved_date: newBest ? session.session_date : existing.achieved_date,
-            session_count: existing.session_count + 1,
-          });
-        }
+      const weightStr = kg > 0
+        ? `${kg} kg`
+        : (record.best_reps ? `${record.best_reps} reps BW` : 'BW');
+
+      if (!existing) {
+        map.set(key, {
+          exercise_name: name,
+          best_weight: kg,
+          best_weight_str: weightStr,
+          achieved_date: date,
+          session_count: 1,
+        });
+      } else {
+        const newBest = kg > existing.best_weight;
+        map.set(key, {
+          ...existing,
+          best_weight: newBest ? kg : existing.best_weight,
+          best_weight_str: newBest ? weightStr : existing.best_weight_str,
+          achieved_date: newBest ? date : existing.achieved_date,
+          session_count: existing.session_count + 1,
+        });
       }
     }
 
     const result = [...map.values()]
-      .filter((pr) => pr.best_weight > 0)
-      .sort((a, b) => b.best_weight - a.best_weight);
+      .sort((a, b) => b.best_weight - a.best_weight || a.exercise_name.localeCompare(b.exercise_name));
 
     setPRs(result);
     setLoading(false);

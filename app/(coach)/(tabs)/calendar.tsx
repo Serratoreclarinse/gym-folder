@@ -16,6 +16,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -136,6 +137,7 @@ export default function CalendarScreen() {
   const [rescheduleTime, setRescheduleTime] = useState('');
   const [rescheduleReason, setRescheduleReason] = useState('');
   const [rescheduling, setRescheduling] = useState(false);
+  const [showRescheduleDatePicker, setShowRescheduleDatePicker] = useState(false);
 
   // Blocked dates / leave state
   type BlockedDate = { id: string; date: string; type: string; notes: string | null };
@@ -144,6 +146,7 @@ export default function CalendarScreen() {
   const [leaveDate, setLeaveDate] = useState('');
   const [leaveType, setLeaveType] = useState<'leave' | 'meeting' | 'other'>('leave');
   const [leaveNotes, setLeaveNotes] = useState('');
+  const [showLeaveDatePicker, setShowLeaveDatePicker] = useState(false);
   const [addingLeave, setAddingLeave] = useState(false);
 
   // Month picker dropdown
@@ -1197,16 +1200,40 @@ export default function CalendarScreen() {
               </Text>
             )}
 
-            <Text style={styles.rsLabel}>NEW DATE (YYYY-MM-DD)</Text>
-            <TextInput
-              style={styles.rsInput}
-              value={rescheduleDate}
-              onChangeText={setRescheduleDate}
-              placeholder="e.g. 2025-08-10"
-              placeholderTextColor={colors.textSecondary + '60'}
-              keyboardType="numbers-and-punctuation"
-              autoCorrect={false}
-            />
+            <Text style={styles.rsLabel}>NEW DATE</Text>
+            {Platform.OS === 'ios' ? (
+              <DateTimePicker
+                value={rescheduleDate ? new Date(rescheduleDate + 'T00:00:00') : new Date()}
+                mode="date"
+                display="compact"
+                onChange={(_, selected) => {
+                  if (selected) setRescheduleDate(selected.toISOString().split('T')[0]);
+                }}
+                style={{ alignSelf: 'flex-start', marginLeft: -8, marginBottom: 12 }}
+              />
+            ) : (
+              <>
+                <Pressable style={styles.datePressable} onPress={() => setShowRescheduleDatePicker(true)}>
+                  <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+                  <Text style={styles.datePressableText}>
+                    {rescheduleDate
+                      ? new Date(rescheduleDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                      : 'Select new date'}
+                  </Text>
+                </Pressable>
+                {showRescheduleDatePicker && (
+                  <DateTimePicker
+                    value={rescheduleDate ? new Date(rescheduleDate + 'T00:00:00') : new Date()}
+                    mode="date"
+                    display="default"
+                    onChange={(_, selected) => {
+                      setShowRescheduleDatePicker(false);
+                      if (selected) setRescheduleDate(selected.toISOString().split('T')[0]);
+                    }}
+                  />
+                )}
+              </>
+            )}
 
             <Text style={styles.rsLabel}>NEW TIME</Text>
             <TextInput
@@ -1259,17 +1286,40 @@ export default function CalendarScreen() {
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>BLOCK A DATE</Text>
 
-            <Text style={styles.rsLabel}>DATE (YYYY-MM-DD)</Text>
-            <TextInput
-              style={styles.rsInput}
-              value={leaveDate}
-              onChangeText={setLeaveDate}
-              placeholder="e.g. 2026-07-20"
-              placeholderTextColor={colors.textSecondary + '60'}
-              keyboardType="numbers-and-punctuation"
-              autoCorrect={false}
-              autoFocus
-            />
+            <Text style={styles.rsLabel}>DATE</Text>
+            {Platform.OS === 'ios' ? (
+              <DateTimePicker
+                value={leaveDate ? new Date(leaveDate + 'T00:00:00') : new Date()}
+                mode="date"
+                display="compact"
+                onChange={(_, selected) => {
+                  if (selected) setLeaveDate(selected.toISOString().split('T')[0]);
+                }}
+                style={{ alignSelf: 'flex-start', marginLeft: -8, marginBottom: 12 }}
+              />
+            ) : (
+              <>
+                <Pressable style={styles.datePressable} onPress={() => setShowLeaveDatePicker(true)}>
+                  <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+                  <Text style={styles.datePressableText}>
+                    {leaveDate
+                      ? new Date(leaveDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                      : 'Select date'}
+                  </Text>
+                </Pressable>
+                {showLeaveDatePicker && (
+                  <DateTimePicker
+                    value={leaveDate ? new Date(leaveDate + 'T00:00:00') : new Date()}
+                    mode="date"
+                    display="default"
+                    onChange={(_, selected) => {
+                      setShowLeaveDatePicker(false);
+                      if (selected) setLeaveDate(selected.toISOString().split('T')[0]);
+                    }}
+                  />
+                )}
+              </>
+            )}
 
             <Text style={styles.rsLabel}>TYPE</Text>
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 4 }}>
@@ -1508,6 +1558,13 @@ function makeStyles(c: ColorScheme) {
       borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11,
       color: c.textPrimary, fontSize: 14,
     },
+    datePressable: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      paddingVertical: 8, paddingHorizontal: 12, marginBottom: 4,
+      borderRadius: 8, borderWidth: 1, borderColor: c.accent + '50',
+      backgroundColor: c.accent + '10', alignSelf: 'flex-start',
+    },
+    datePressableText: { fontSize: 14, fontWeight: '600', color: c.accent },
     rsSubmitBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
       backgroundColor: c.accent, borderRadius: 12, paddingVertical: 14, marginTop: 20,

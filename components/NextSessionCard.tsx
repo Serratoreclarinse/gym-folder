@@ -1,10 +1,12 @@
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { NextSession } from '@/hooks/useActiveSession';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
-function getDayLabel(scheduledAt: string): { label: string; color: string } {
+function getDayLabel(scheduledAt: string, textSecondary: string): { label: string; color: string } {
   const sessionDate = new Date(scheduledAt);
   const now = new Date();
   const sessionDay = sessionDate.toDateString();
@@ -17,7 +19,7 @@ function getDayLabel(scheduledAt: string): { label: string; color: string } {
   if (sessionDay === tomorrowDay) return { label: 'TOMORROW', color: '#4CAF50' };
   return {
     label: sessionDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-    color: Colors.textSecondary,
+    color: textSecondary,
   };
 }
 
@@ -37,9 +39,11 @@ function fmtTime(iso: string): string {
 }
 
 export function NextSessionCard({ nextSession }: { nextSession: NextSession }) {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const initials = nextSession.client_name
     .split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
-  const { label: dayLabel, color: dayColor } = getDayLabel(nextSession.scheduled_at);
+  const { label: dayLabel, color: dayColor } = getDayLabel(nextSession.scheduled_at, colors.textSecondary);
   const isToday = dayLabel === 'TODAY';
 
   return (
@@ -48,7 +52,7 @@ export function NextSessionCard({ nextSession }: { nextSession: NextSession }) {
       onPress={() => router.push(`/(coach)/client/${nextSession.client_id}` as any)}
     >
       <View style={s.topRow}>
-        <Ionicons name="calendar-outline" size={13} color={Colors.textSecondary} />
+        <Ionicons name="calendar-outline" size={13} color={colors.textSecondary} />
         <Text style={s.label}>NEXT SESSION</Text>
         <View style={[s.dayBadge, { backgroundColor: dayColor + '20', borderColor: dayColor + '50' }]}>
           <Text style={[s.dayBadgeText, { color: dayColor }]}>{dayLabel}</Text>
@@ -65,34 +69,36 @@ export function NextSessionCard({ nextSession }: { nextSession: NextSession }) {
             {fmtTime(nextSession.scheduled_at)} · {timeUntilLabel(nextSession.scheduled_at)}
           </Text>
         </View>
-        <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
+        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
       </View>
     </Pressable>
   );
 }
 
-const s = StyleSheet.create({
-  card: {
-    backgroundColor: Colors.surface,
-    borderRadius: 14, borderWidth: 1, borderColor: Colors.border,
-    padding: 14, marginBottom: 10,
-  },
-  cardToday: {
-    borderColor: '#FF980050',
-    backgroundColor: '#FF980008',
-  },
-  topRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10 },
-  label: { ...Typography.label, color: Colors.textSecondary, flex: 1 },
-  dayBadge: {
-    borderRadius: 8, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 3,
-  },
-  dayBadgeText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
-  clientRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  avatar: {
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: Colors.border, alignItems: 'center', justifyContent: 'center',
-  },
-  avatarText: { color: Colors.textSecondary, fontWeight: '800', fontSize: 14 },
-  clientName: { ...Typography.subtitle, color: Colors.textPrimary, marginBottom: 2 },
-  meta: { ...Typography.caption, color: Colors.textSecondary },
-});
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    card: {
+      backgroundColor: c.surface,
+      borderRadius: 14, borderWidth: 1, borderColor: c.border,
+      padding: 14, marginBottom: 10,
+    },
+    cardToday: {
+      borderColor: '#FF980050',
+      backgroundColor: '#FF980008',
+    },
+    topRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10 },
+    label: { ...Typography.label, color: c.textSecondary, flex: 1 },
+    dayBadge: {
+      borderRadius: 8, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 3,
+    },
+    dayBadgeText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+    clientRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    avatar: {
+      width: 38, height: 38, borderRadius: 19,
+      backgroundColor: c.border, alignItems: 'center', justifyContent: 'center',
+    },
+    avatarText: { color: c.textSecondary, fontWeight: '800', fontSize: 14 },
+    clientName: { ...Typography.subtitle, color: c.textPrimary, marginBottom: 2 },
+    meta: { ...Typography.caption, color: c.textSecondary },
+  });
+}

@@ -24,6 +24,7 @@ export type ClientSession = {
   coach_name: string;
   coach_id: string;
   status: string | null;
+  rating: number | null;
 };
 
 export type CoachInfo = {
@@ -95,7 +96,8 @@ export function useClientData() {
           exercises,
           notes,
           status,
-          coach:profiles!workout_sessions_coach_id_fkey ( name )
+          coach:profiles!workout_sessions_coach_id_fkey ( name ),
+          session_ratings ( rating )
         `)
         .eq('client_id', user.id)
         .lte('session_date', new Date().toISOString().split('T')[0])
@@ -152,6 +154,7 @@ export function useClientData() {
           notes: row.notes,
           coach_name: (row.coach as { name: string } | null)?.name ?? pkgCoachName ?? 'Your coach',
           status: row.status ?? null,
+          rating: (row as any).session_ratings?.[0]?.rating ?? null,
         })),
       );
     }

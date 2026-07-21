@@ -17,22 +17,25 @@ import { Typography, ColorScheme } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 import { ExercisePickerModal } from '@/components/ExercisePickerModal';
 
+type SetRowField = {
+  id: string;
+  reps: string;
+  weight: string;
+};
+
 type ExField = {
   id: string;
   exercise_name: string;
-  sets: string;
-  reps: string;
-  weight: string;
+  setRows: SetRowField[];
   notes: string;
 };
 
 const uid = () => Math.random().toString(36).slice(2);
+const blankRow = (): SetRowField => ({ id: uid(), reps: '', weight: '' });
 const blank = (): ExField => ({
   id: uid(),
   exercise_name: '',
-  sets: '',
-  reps: '',
-  weight: '',
+  setRows: [blankRow()],
   notes: '',
 });
 
@@ -40,7 +43,11 @@ const blank = (): ExField => ({
 function ExCard({
   ex,
   index,
-  onChange,
+  onChangeName,
+  onChangeNotes,
+  onSetRowChange,
+  onAddSet,
+  onRemoveSet,
   onRemove,
   onOpenPicker,
   styles,
@@ -48,7 +55,11 @@ function ExCard({
 }: {
   ex: ExField;
   index: number;
-  onChange: (id: string, field: keyof ExField, v: string) => void;
+  onChangeName: (id: string, v: string) => void;
+  onChangeNotes: (id: string, v: string) => void;
+  onSetRowChange: (exId: string, rowId: string, field: 'reps' | 'weight', v: string) => void;
+  onAddSet: (exId: string) => void;
+  onRemoveSet: (exId: string, rowId: string) => void;
   onRemove: (id: string) => void;
   onOpenPicker: (id: string) => void;
   styles: ReturnType<typeof makeStyles>;
@@ -62,6 +73,7 @@ function ExCard({
           <Ionicons name="trash-outline" size={18} color={colors.danger} />
         </Pressable>
       </View>
+
       <Pressable
         style={[styles.exInput, styles.exNameBtn]}
         onPress={() => onOpenPicker(ex.id)}
@@ -74,46 +86,54 @@ function ExCard({
         </Text>
         <Ionicons name="search-outline" size={15} color={colors.textSecondary} />
       </Pressable>
-      <View style={styles.exRow}>
-        <View style={styles.exSmall}>
-          <Text style={styles.exLabel}>SETS</Text>
+
+      <View style={styles.setHeader}>
+        <Text style={[styles.exLabel, { flex: 0.3 }]}>#</Text>
+        <Text style={[styles.exLabel, { flex: 1 }]}>REPS</Text>
+        <Text style={[styles.exLabel, { flex: 1 }]}>WEIGHT</Text>
+        <View style={{ width: 28 }} />
+      </View>
+
+      {ex.setRows.map((row, ri) => (
+        <View key={row.id} style={styles.setRow}>
+          <Text style={styles.setNum}>{ri + 1}</Text>
           <TextInput
-            style={styles.exSmallInput}
-            placeholder="4"
-            placeholderTextColor={colors.textSecondary}
-            keyboardType="number-pad"
-            value={ex.sets}
-            onChangeText={(v) => onChange(ex.id, 'sets', v)}
-          />
-        </View>
-        <View style={styles.exSmall}>
-          <Text style={styles.exLabel}>REPS</Text>
-          <TextInput
-            style={styles.exSmallInput}
+            style={[styles.exSmallInput, { flex: 1 }]}
             placeholder="10"
             placeholderTextColor={colors.textSecondary}
             keyboardType="number-pad"
-            value={ex.reps}
-            onChangeText={(v) => onChange(ex.id, 'reps', v)}
+            value={row.reps}
+            onChangeText={(v) => onSetRowChange(ex.id, row.id, 'reps', v)}
           />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.exLabel}>WEIGHT</Text>
           <TextInput
-            style={styles.exSmallInput}
-            placeholder="80kg"
+            style={[styles.exSmallInput, { flex: 1 }]}
+            placeholder="60kg"
             placeholderTextColor={colors.textSecondary}
-            value={ex.weight}
-            onChangeText={(v) => onChange(ex.id, 'weight', v)}
+            value={row.weight}
+            onChangeText={(v) => onSetRowChange(ex.id, row.id, 'weight', v)}
           />
+          <Pressable
+            onPress={() => onRemoveSet(ex.id, row.id)}
+            hitSlop={6}
+            disabled={ex.setRows.length === 1}
+            style={[styles.removeSetBtn, ex.setRows.length === 1 && { opacity: 0.25 }]}
+          >
+            <Ionicons name="remove-circle-outline" size={18} color={colors.danger} />
+          </Pressable>
         </View>
-      </View>
+      ))}
+
+      <Pressable style={styles.addSetBtn} onPress={() => onAddSet(ex.id)}>
+        <Ionicons name="add" size={14} color={colors.accent} />
+        <Text style={styles.addSetText}>ADD SET</Text>
+      </Pressable>
+
       <TextInput
         style={[styles.exInput, styles.exNotes]}
         placeholder="Notes (optional)"
         placeholderTextColor={colors.textSecondary}
         value={ex.notes}
-        onChangeText={(v) => onChange(ex.id, 'notes', v)}
+        onChangeText={(v) => onChangeNotes(ex.id, v)}
         multiline
         numberOfLines={2}
       />
@@ -144,9 +164,18 @@ export default function TemplateFormScreen() {
           ? existing.exercises.map((e) => ({
               id: uid(),
               exercise_name: e.exercise_name,
-              sets: e.sets != null ? String(e.sets) : '',
-              reps: e.reps != null ? String(e.reps) : '',
-              weight: e.weight ?? '',
+              setRows:
+                e.set_rows.length > 0
+                  ? e.set_rows.map((r) => ({
+                      id: uid(),
+                      reps: r.reps != null ? String(r.reps) : '',
+                      weight: r.weight ?? '',
+                    }))
+                  : Array.from({ length: e.sets ?? 1 }, () => ({
+                      id: uid(),
+                      reps: e.reps != null ? String(e.reps) : '',
+                      weight: e.weight ?? '',
+                    })),
               notes: e.notes ?? '',
             }))
           : [blank()]
@@ -155,18 +184,43 @@ export default function TemplateFormScreen() {
     }
   }, [isEdit, existing, ready]);
 
-  const updateEx = (id: string, field: keyof ExField, v: string) => {
-    setExercises((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: v } : e)));
-  };
+  const onChangeName = (id: string, v: string) =>
+    setExercises((prev) => prev.map((e) => (e.id === id ? { ...e, exercise_name: v } : e)));
+
+  const onChangeNotes = (id: string, v: string) =>
+    setExercises((prev) => prev.map((e) => (e.id === id ? { ...e, notes: v } : e)));
+
+  const onSetRowChange = (exId: string, rowId: string, field: 'reps' | 'weight', v: string) =>
+    setExercises((prev) =>
+      prev.map((e) =>
+        e.id === exId
+          ? { ...e, setRows: e.setRows.map((r) => (r.id === rowId ? { ...r, [field]: v } : r)) }
+          : e
+      )
+    );
+
+  const onAddSet = (exId: string) =>
+    setExercises((prev) =>
+      prev.map((e) => (e.id === exId ? { ...e, setRows: [...e.setRows, blankRow()] } : e))
+    );
+
+  const onRemoveSet = (exId: string, rowId: string) =>
+    setExercises((prev) =>
+      prev.map((e) =>
+        e.id === exId && e.setRows.length > 1
+          ? { ...e, setRows: e.setRows.filter((r) => r.id !== rowId) }
+          : e
+      )
+    );
 
   const openPicker = (id: string) => {
     setPickerTargetId(id);
     setPickerVisible(true);
   };
 
-  const handlePickerSelect = (name: string) => {
+  const handlePickerSelect = (exName: string) => {
     if (pickerTargetId) {
-      updateEx(pickerTargetId, 'exercise_name', name);
+      onChangeName(pickerTargetId, exName);
     }
     setPickerVisible(false);
     setPickerTargetId(null);
@@ -188,11 +242,15 @@ export default function TemplateFormScreen() {
       .filter((e) => e.exercise_name.trim())
       .map((e, i) => ({
         exercise_name: e.exercise_name.trim(),
-        sets: e.sets ? Number(e.sets) : null,
-        reps: e.reps ? Number(e.reps) : null,
-        weight: e.weight.trim() || null,
+        sets: e.setRows.length,
+        reps: null,
+        weight: null,
         notes: e.notes.trim() || null,
         order_index: i,
+        set_rows: e.setRows.map((r) => ({
+          reps: r.reps ? Number(r.reps) : null,
+          weight: r.weight.trim() || null,
+        })),
       }));
 
     setSaving(true);
@@ -241,7 +299,20 @@ export default function TemplateFormScreen() {
         </View>
 
         {exercises.map((ex, i) => (
-          <ExCard key={ex.id} ex={ex} index={i} onChange={updateEx} onRemove={removeEx} onOpenPicker={openPicker} styles={s} colors={colors} />
+          <ExCard
+            key={ex.id}
+            ex={ex}
+            index={i}
+            onChangeName={onChangeName}
+            onChangeNotes={onChangeNotes}
+            onSetRowChange={onSetRowChange}
+            onAddSet={onAddSet}
+            onRemoveSet={onRemoveSet}
+            onRemove={removeEx}
+            onOpenPicker={openPicker}
+            styles={s}
+            colors={colors}
+          />
         ))}
 
         <Pressable
@@ -336,10 +407,28 @@ function makeStyles(c: ColorScheme) {
       fontWeight: '500',
       marginRight: 8,
     },
-    exNotes: { minHeight: 56, textAlignVertical: 'top', marginBottom: 0 },
-    exRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-    exSmall: { flex: 1 },
-    exLabel: { ...Typography.label, color: c.textSecondary, fontSize: 10, marginBottom: 6 },
+    exNotes: { minHeight: 56, textAlignVertical: 'top', marginBottom: 0, marginTop: 8 },
+    setHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 4,
+      marginTop: 4,
+    },
+    exLabel: { ...Typography.label, color: c.textSecondary, fontSize: 10 },
+    setRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 6,
+    },
+    setNum: {
+      ...Typography.label,
+      color: c.textSecondary,
+      fontSize: 11,
+      width: 20,
+      textAlign: 'center',
+    },
     exSmallInput: {
       backgroundColor: c.bg,
       borderWidth: 1,
@@ -350,6 +439,26 @@ function makeStyles(c: ColorScheme) {
       color: c.textPrimary,
       fontSize: 14,
       textAlign: 'center',
+    },
+    removeSetBtn: {
+      width: 28,
+      alignItems: 'center',
+    },
+    addSetBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      alignSelf: 'flex-start',
+      marginTop: 2,
+      marginBottom: 2,
+      paddingVertical: 4,
+      paddingHorizontal: 2,
+    },
+    addSetText: {
+      color: c.accent,
+      fontSize: 11,
+      fontWeight: '700',
+      letterSpacing: 0.5,
     },
     saveBtn: {
       backgroundColor: c.accent,

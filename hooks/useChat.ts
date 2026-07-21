@@ -8,7 +8,7 @@ export type Message = {
   receiver_id: string;
   content: string;
   attachment_url: string | null;
-  attachment_type: 'image' | 'video' | 'file' | null;
+  attachment_type: 'image' | 'video' | 'file' | 'session_invite' | null;
   attachment_name: string | null;
   read_at: string | null;
   created_at: string;
@@ -16,6 +16,7 @@ export type Message = {
   edited_at: string | null;
   deleted_for_sender: boolean;
   deleted_for_receiver: boolean;
+  metadata: Record<string, any> | null;
 };
 
 export function useChat(otherUserId: string) {
@@ -56,6 +57,7 @@ export function useChat(otherUserId: string) {
   const sendMessage = useCallback(async (
     content: string,
     attachment?: { url: string; type: 'image' | 'video' | 'file'; name?: string },
+    metadata?: Record<string, any>,
   ) => {
     if (!myId || !otherUserId || (!content.trim() && !attachment)) return;
     const { data, error } = await supabase
@@ -67,6 +69,7 @@ export function useChat(otherUserId: string) {
         attachment_url: attachment?.url ?? null,
         attachment_type: attachment?.type ?? null,
         attachment_name: attachment?.name ?? null,
+        metadata: metadata ?? null,
       })
       .select()
       .single();

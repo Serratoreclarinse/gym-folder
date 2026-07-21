@@ -28,7 +28,6 @@ import { useStrikes } from '@/hooks/useStrikes';
 import { useScheduledSessions } from '@/hooks/useScheduledSessions';
 import { scheduleSessionReminder, cancelSessionReminder } from '@/lib/notifications';
 import { ErrorBanner } from '@/components/ErrorBanner';
-import { ClientProgressTab } from '@/components/ClientProgressTab';
 import { ClientNotesTab } from '@/components/ClientNotesTab';
 import { ClientFilesTab } from '@/components/ClientFilesTab';
 import { ClientGoalsTab } from '@/components/ClientGoalsTab';
@@ -72,7 +71,7 @@ const METHOD_LABEL: Record<string, string> = {
   hsbc: 'HSBC Oman', bank_nizwa: 'Bank Nizwa', other: 'Other',
 };
 
-type Tab = 'overview' | 'sessions' | 'progress' | 'goals' | 'notes' | 'files' | 'photos' | 'measurements' | 'checkins';
+type Tab = 'overview' | 'sessions' | 'goals' | 'notes' | 'files' | 'photos' | 'measurements' | 'checkins';
 
 const MAX_STRIKES = 3;
 
@@ -452,20 +451,45 @@ function ScheduleForm({
   const [date, setDate] = useState(tomorrow.toISOString().slice(0, 10));
   const [time, setTime] = useState('09:00');
   const [notes, setNotes] = useState('');
+  const [showDatePickerSheet, setShowDatePickerSheet] = useState(false);
   return (
     <View style={styles.scheduleCard}>
       <Text style={styles.scheduleFormTitle}>SCHEDULE SESSION</Text>
-      <Text style={styles.scheduleFormLabel}>Date (YYYY-MM-DD)</Text>
-      <TextInput
-        style={styles.scheduleFormInput}
-        value={date}
-        onChangeText={setDate}
-        placeholder="2024-01-15"
-        placeholderTextColor={colors.textSecondary}
-        keyboardType="numbers-and-punctuation"
-        maxLength={10}
-        autoFocus
-      />
+      <Text style={styles.scheduleFormLabel}>DATE</Text>
+      {Platform.OS === 'ios' ? (
+        <DateTimePicker
+          value={new Date(date + 'T00:00:00')}
+          mode="date"
+          display="compact"
+          onChange={(_, selected) => {
+            if (selected) setDate(selected.toISOString().split('T')[0]);
+          }}
+          style={{ alignSelf: 'flex-start', marginLeft: -8, marginBottom: 12 }}
+        />
+      ) : (
+        <>
+          <Pressable
+            style={styles.datePressable}
+            onPress={() => setShowDatePickerSheet(true)}
+          >
+            <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+            <Text style={styles.datePressableText}>
+              {new Date(date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            </Text>
+          </Pressable>
+          {showDatePickerSheet && (
+            <DateTimePicker
+              value={new Date(date + 'T00:00:00')}
+              mode="date"
+              display="default"
+              onChange={(_, selected) => {
+                setShowDatePickerSheet(false);
+                if (selected) setDate(selected.toISOString().split('T')[0]);
+              }}
+            />
+          )}
+        </>
+      )}
       <Text style={styles.scheduleFormLabel}>Time (24h, e.g. 14:30)</Text>
       <TextInput
         style={styles.scheduleFormInput}
@@ -523,6 +547,8 @@ export default function ClientDetailScreen() {
   const [freezeEnd, setFreezeEnd] = useState('');
   const [freezeReason, setFreezeReason] = useState('');
   const [submittingFreeze, setSubmittingFreeze] = useState(false);
+  const [showFreezeStartPicker, setShowFreezeStartPicker] = useState(false);
+  const [showFreezeEndPicker, setShowFreezeEndPicker] = useState(false);
 
   type Payment = { id: string; amount: number; payment_method: string; notes: string | null; paid_at: string; receipt_url: string | null };
   const [clientPayments, setClientPayments] = useState<Payment[]>([]);
@@ -1637,27 +1663,75 @@ export default function ClientDetailScreen() {
             Package end date will be extended by the number of frozen days.
           </Text>
 
-          <Text style={styles.transferNotesLabel}>FREEZE START (YYYY-MM-DD)</Text>
-          <TextInput
-            style={styles.renewInput}
-            value={freezeStart}
-            onChangeText={setFreezeStart}
-            placeholder="e.g. 2026-07-20"
-            placeholderTextColor={colors.textSecondary}
-            keyboardType="numbers-and-punctuation"
-            autoCapitalize="none"
-          />
+          <Text style={styles.transferNotesLabel}>FREEZE START</Text>
+          {Platform.OS === 'ios' ? (
+            <DateTimePicker
+              value={freezeStart ? new Date(freezeStart + 'T00:00:00') : new Date()}
+              mode="date"
+              display="compact"
+              onChange={(_, selected) => {
+                if (selected) setFreezeStart(selected.toISOString().split('T')[0]);
+              }}
+              style={{ alignSelf: 'flex-start', marginLeft: -8, marginBottom: 12 }}
+            />
+          ) : (
+            <>
+              <Pressable style={styles.datePressable} onPress={() => setShowFreezeStartPicker(true)}>
+                <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+                <Text style={styles.datePressableText}>
+                  {freezeStart
+                    ? new Date(freezeStart + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : 'Select start date'}
+                </Text>
+              </Pressable>
+              {showFreezeStartPicker && (
+                <DateTimePicker
+                  value={freezeStart ? new Date(freezeStart + 'T00:00:00') : new Date()}
+                  mode="date"
+                  display="default"
+                  onChange={(_, selected) => {
+                    setShowFreezeStartPicker(false);
+                    if (selected) setFreezeStart(selected.toISOString().split('T')[0]);
+                  }}
+                />
+              )}
+            </>
+          )}
 
-          <Text style={styles.transferNotesLabel}>FREEZE END (YYYY-MM-DD)</Text>
-          <TextInput
-            style={styles.renewInput}
-            value={freezeEnd}
-            onChangeText={setFreezeEnd}
-            placeholder="e.g. 2026-08-03"
-            placeholderTextColor={colors.textSecondary}
-            keyboardType="numbers-and-punctuation"
-            autoCapitalize="none"
-          />
+          <Text style={styles.transferNotesLabel}>FREEZE END</Text>
+          {Platform.OS === 'ios' ? (
+            <DateTimePicker
+              value={freezeEnd ? new Date(freezeEnd + 'T00:00:00') : new Date()}
+              mode="date"
+              display="compact"
+              onChange={(_, selected) => {
+                if (selected) setFreezeEnd(selected.toISOString().split('T')[0]);
+              }}
+              style={{ alignSelf: 'flex-start', marginLeft: -8, marginBottom: 12 }}
+            />
+          ) : (
+            <>
+              <Pressable style={styles.datePressable} onPress={() => setShowFreezeEndPicker(true)}>
+                <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+                <Text style={styles.datePressableText}>
+                  {freezeEnd
+                    ? new Date(freezeEnd + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : 'Select end date'}
+                </Text>
+              </Pressable>
+              {showFreezeEndPicker && (
+                <DateTimePicker
+                  value={freezeEnd ? new Date(freezeEnd + 'T00:00:00') : new Date()}
+                  mode="date"
+                  display="default"
+                  onChange={(_, selected) => {
+                    setShowFreezeEndPicker(false);
+                    if (selected) setFreezeEnd(selected.toISOString().split('T')[0]);
+                  }}
+                />
+              )}
+            </>
+          )}
 
           <Text style={styles.transferNotesLabel}>REASON — optional</Text>
           <TextInput
@@ -1794,7 +1868,7 @@ export default function ClientDetailScreen() {
         style={styles.tabBar}
         contentContainerStyle={styles.tabBarContent}
       >
-        {(['overview', 'sessions', 'progress', 'goals', 'notes', 'files', 'photos', 'measurements', 'checkins'] as Tab[]).map((tab) => (
+        {(['overview', 'sessions', 'goals', 'notes', 'files', 'photos', 'measurements', 'checkins'] as Tab[]).map((tab) => (
           <Pressable
             key={tab}
             style={[styles.tabBtn, activeTab === tab && styles.tabBtnActive]}
@@ -1803,7 +1877,6 @@ export default function ClientDetailScreen() {
             <Text style={[styles.tabLabel, activeTab === tab && styles.tabLabelActive]}>
               {tab === 'overview' ? 'Overview'
                 : tab === 'sessions' ? `Sessions${sessions.length > 0 ? ` (${sessions.length})` : ''}`
-                : tab === 'progress' ? 'Progress'
                 : tab === 'goals' ? 'Goals'
                 : tab === 'notes' ? 'Notes'
                 : tab === 'files' ? 'Files'
@@ -1818,7 +1891,6 @@ export default function ClientDetailScreen() {
       {/* Tab content */}
       {activeTab === 'overview' && <OverviewContent />}
       {activeTab === 'sessions' && <SessionsContent />}
-      {activeTab === 'progress' && <ClientProgressTab clientId={id} />}
       {activeTab === 'goals' && <ClientGoalsTab clientId={id} />}
       {activeTab === 'notes' && <ClientNotesTab clientId={id} />}
       {activeTab === 'files' && <ClientFilesTab clientId={id} />}
@@ -2078,6 +2150,13 @@ function makeStyles(c: ColorScheme) {
     backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
     borderRadius: 10, padding: 11, color: c.textPrimary, fontSize: 15, marginBottom: 12,
   },
+  datePressable: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 8, paddingHorizontal: 12, marginBottom: 12,
+    borderRadius: 8, borderWidth: 1, borderColor: c.accent + '50',
+    backgroundColor: c.accent + '10', alignSelf: 'flex-start',
+  },
+  datePressableText: { fontSize: 14, fontWeight: '600', color: c.accent },
   scheduleBtns: { flexDirection: 'row', gap: 8 },
   scheduleCancel: {
     flex: 1, paddingVertical: 11, borderRadius: 10,

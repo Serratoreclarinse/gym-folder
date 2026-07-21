@@ -640,6 +640,52 @@ function BubbleItem({ msg, mine, colors, s, onImagePress, onLongPress }: {
     );
   }
 
+  if (msg.attachment_type === 'session_invite') {
+    const meta = (msg.metadata ?? {}) as Record<string, any>;
+    const dt = meta.scheduled_at ? new Date(meta.scheduled_at) : null;
+    const dateStr = dt ? dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '—';
+    const timeStr = dt ? dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—';
+
+    const handleConfirm = async () => {
+      if (!meta.session_id) return;
+      const { error } = await supabase
+        .from('scheduled_sessions')
+        .update({ status: 'client_confirmed' })
+        .eq('id', meta.session_id);
+      if (error) {
+        Alert.alert('Error', 'Could not confirm session. Please try again.');
+      } else {
+        Alert.alert('Confirmed!', 'Your session has been confirmed.');
+      }
+    };
+
+    return (
+      <View style={[s.bubbleWrap, mine ? s.bubbleWrapMine : s.bubbleWrapTheirs]}>
+        <View style={s.inviteCard}>
+          <View style={s.inviteHeader}>
+            <Ionicons name="calendar-outline" size={16} color={colors.accent} />
+            <Text style={[s.inviteTitle, { color: colors.textPrimary }]}>Session Scheduled</Text>
+          </View>
+          <Text style={[s.inviteDate, { color: colors.textPrimary }]}>{dateStr}</Text>
+          <Text style={[s.inviteTime, { color: colors.textSecondary }]}>
+            {timeStr} · {meta.duration_minutes ?? '—'} min{meta.session_type === 'home' ? ' · Home' : ''}
+          </Text>
+          {!mine && (
+            <Pressable
+              style={[s.inviteConfirmBtn, { backgroundColor: colors.accent }]}
+              onPress={handleConfirm}
+            >
+              <Text style={s.inviteConfirmTxt}>Confirm Session</Text>
+            </Pressable>
+          )}
+          <Text style={[s.bubbleTime, s.bubbleTimeTheirs, { marginTop: 6, textAlign: 'right' }]}>
+            {fmtTime(msg.created_at)}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   const isImage = msg.attachment_type === 'image';
   const isVideo = msg.attachment_type === 'video';
   const isFile  = msg.attachment_type === 'file';
@@ -824,6 +870,20 @@ function makeStyles(c: ColorScheme) {
     bubbleTime: { fontSize: 10 },
     bubbleTimeMine: { color: 'rgba(255,255,255,0.75)' },
     bubbleTimeTheirs: { color: c.textSecondary },
+
+    inviteCard: {
+      maxWidth: '80%', borderRadius: 14, padding: 14,
+      backgroundColor: c.surface, borderWidth: 1, borderColor: c.accent + '55',
+    },
+    inviteHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+    inviteTitle: { fontSize: 13, fontWeight: '700' },
+    inviteDate: { fontSize: 16, fontWeight: '800', marginBottom: 2 },
+    inviteTime: { fontSize: 13 },
+    inviteConfirmBtn: {
+      marginTop: 12, borderRadius: 10, paddingVertical: 10,
+      alignItems: 'center',
+    },
+    inviteConfirmTxt: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
     empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingTop: 80 },
     emptyText: { ...Typography.body, color: c.textSecondary, textAlign: 'center' },
