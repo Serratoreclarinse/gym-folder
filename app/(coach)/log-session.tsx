@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ExercisePickerModal } from '@/components/ExercisePickerModal';
 import { QRScanModal } from '@/components/QRScanModal';
+import { PRSummaryModal, PRBeat } from '@/components/PRSummaryModal';
 import * as Notifications from 'expo-notifications';
 import {
   Alert,
@@ -423,6 +424,7 @@ export default function LogSessionScreen() {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [pickerTargetId, setPickerTargetId] = useState<string | null>(null);
+  const [prBeats, setPrBeats] = useState<PRBeat[]>([]);
   const pickerTargetRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -724,39 +726,60 @@ export default function LogSessionScreen() {
         await scheduleSessionReminder(selectedClient?.name ?? 'Client', sessionDate, sessionTime.trim(), selectedClientId);
       }
 
-      // ── PR Detection ─────────────────────────────────────────────────────────
-      let prLine = '';
+      // ── PR Detection + exercise_records save ────────────────────────────────
+      const newPRBeats: PRBeat[] = [];
       try {
-        const { data: pastSessions } = await supabase
-          .from('workout_sessions')
-          .select('exercises')
-          .eq('client_id', selectedClientId)
-          .neq('id', sessionData!.id);
+        // Fetch previous best per exercise for this client
+        const { data: prevRecords } = await supabase
+          .from('exercise_records')
+          .select('exercise_name, best_kg, best_reps, best_duration')
+          .eq('client_id', selectedClientId);
 
-        const maxWeights = new Map<string, number>();
-        for (const sess of (pastSessions ?? [])) {
-          const exs: any[] = Array.isArray(sess.exercises) ? sess.exercises
-            : typeof sess.exercises === 'string'
-              ? (() => { try { return JSON.parse(sess.exercises); } catch { return []; } })()
-              : [];
-          for (const ex of exs) {
-            const w = parseFloat(ex.weight ?? '');
-            if (!ex.exercise_name || isNaN(w)) continue;
-            const key = ex.exercise_name.toLowerCase().trim();
-            if (w > (maxWeights.get(key) ?? 0)) maxWeights.set(key, w);
+        // Build map: exercise key → all-time best values so far
+        type BestMap = { kg: number | null; reps: number | null; dur: number | null };
+        const bestMap = new Map<string, BestMap>();
+        for (const r of (prevRecords ?? [])) {
+          const key = r.exercise_name.toLowerCase().trim();
+          const cur = bestMap.get(key) ?? { kg: null, reps: null, dur: null };
+          bestMap.set(key, {
+            kg:   Math.max(cur.kg ?? 0,   r.best_kg       ?? 0) || null,
+            reps: Math.max(cur.reps ?? 0, r.best_reps     ?? 0) || null,
+            dur:  Math.max(cur.dur ?? 0,  r.best_duration ?? 0) || null,
+          });
+        }
+
+        // Compute this session's best per exercise + detect PRs
+        const recordsToInsert = validExercises.map((ex) => {
+          const sets = ex.sets_data as Array<{ kg: string | null; reps: number | null; duration: string | null }>;
+          const maxKgVal  = sets.reduce((mx, s) => { const n = s.kg && s.kg !== 'BW' ? parseFloat(String(s.kg)) || 0 : 0; return n > mx ? n : mx; }, 0);
+          const maxRepsVal = sets.reduce((mx, s) => Math.max(mx, s.reps ?? 0), 0);
+          const maxDurVal  = sets.reduce((mx, s) => { const n = s.duration ? parseInt(String(s.duration)) || 0 : 0; return n > mx ? n : mx; }, 0);
+
+          const key  = ex.exercise_name.toLowerCase().trim();
+          const prev = bestMap.get(key) ?? { kg: null, reps: null, dur: null };
+
+          if (maxKgVal > 0 && (prev.kg === null || maxKgVal > prev.kg)) {
+            newPRBeats.push({ exercise: ex.exercise_name, metric: 'kg',       prev: prev.kg,   next: maxKgVal });
+          } else if (maxRepsVal > 0 && (prev.reps === null || maxRepsVal > prev.reps)) {
+            newPRBeats.push({ exercise: ex.exercise_name, metric: 'reps',     prev: prev.reps, next: maxRepsVal });
+          } else if (maxDurVal > 0 && (prev.dur === null || maxDurVal > prev.dur)) {
+            newPRBeats.push({ exercise: ex.exercise_name, metric: 'duration', prev: prev.dur,  next: maxDurVal });
           }
-        }
 
-        const prs: string[] = [];
-        for (const ex of validExercises) {
-          if (!ex.weight) continue;
-          const w = parseFloat(ex.weight);
-          if (isNaN(w) || w <= 0) continue;
-          const key = ex.exercise_name.toLowerCase().trim();
-          const prev = maxWeights.get(key) ?? null;
-          if (prev === null || w > prev) prs.push(`🏆 ${ex.exercise_name} — ${w} kg`);
+          return {
+            client_id:     selectedClientId,
+            session_id:    sessionData!.id,
+            exercise_name: ex.exercise_name,
+            best_kg:       maxKgVal  > 0 ? maxKgVal  : null,
+            best_reps:     maxRepsVal > 0 ? maxRepsVal : null,
+            best_duration: maxDurVal  > 0 ? maxDurVal  : null,
+          };
+        });
+
+        // Save this session's exercise records
+        if (recordsToInsert.length > 0) {
+          await supabase.from('exercise_records').insert(recordsToInsert);
         }
-        if (prs.length > 0) prLine = '\n\n' + prs.join('\n');
       } catch {}
       // ─────────────────────────────────────────────────────────────────────────
 
@@ -854,12 +877,14 @@ export default function LogSessionScreen() {
         const hasExercises = validExercises.length > 0;
         if (hasExercises) {
           Alert.alert(
-            'Session Started!' + (prLine ? ' 🏆' : ''),
-            `Timer started for ${selectedClient?.name}. Would you like to do the exercises step by step?${prLine}`,
+            'Session Started!',
+            `Timer started for ${selectedClient?.name}. Would you like to do the exercises step by step?`,
             [
               {
                 text: 'Back to Dashboard',
-                onPress: () => router.back(),
+                onPress: () => {
+                  if (newPRBeats.length > 0) { setPrBeats(newPRBeats); } else { router.back(); }
+                },
               },
               {
                 text: 'Start Exercises',
@@ -884,9 +909,9 @@ export default function LogSessionScreen() {
           );
         } else {
           Alert.alert(
-            'Session Started!' + (prLine ? ' 🏆' : ''),
-            `Timer started for ${selectedClient?.name} (${duration} min). Check your Dashboard.${prLine}`,
-            [{ text: 'OK', onPress: () => router.back() }]
+            'Session Started!',
+            `Timer started for ${selectedClient?.name} (${duration} min). Check your Dashboard.`,
+            [{ text: 'OK', onPress: () => { if (newPRBeats.length > 0) { setPrBeats(newPRBeats); } else { router.back(); } } }]
           );
         }
       } else {
@@ -894,9 +919,9 @@ export default function LogSessionScreen() {
           ? '\n\nTimer will be available within 3 hours of the session time.'
           : existingActive ? '\n\nNote: Timer not started — a session is already active.' : '';
         Alert.alert(
-          'Session logged!' + (prLine ? ' 🏆' : ''),
-          `${selectedClient?.name}'s session recorded. Sessions remaining: ${pkg.sessions_remaining - 1}${futureNote}${prLine}`,
-          [{ text: 'OK', onPress: () => router.back() }]
+          'Session logged!',
+          `${selectedClient?.name}'s session recorded. Sessions remaining: ${pkg.sessions_remaining - 1}${futureNote}`,
+          [{ text: 'OK', onPress: () => { if (newPRBeats.length > 0) { setPrBeats(newPRBeats); } else { router.back(); } } }]
         );
       }
     } catch (err: unknown) {
@@ -1364,6 +1389,11 @@ export default function LogSessionScreen() {
         expectedClientId={selectedClientId}
         onConfirm={() => { setShowQRGate(false); qrConfirmFn?.(); }}
         onCancel={() => { setShowQRGate(false); setQrConfirmFn(null); }}
+      />
+      <PRSummaryModal
+        beats={prBeats}
+        clientName={selectedClient?.name ?? 'Client'}
+        onClose={() => { setPrBeats([]); router.back(); }}
       />
     </KeyboardAvoidingView>
     </View>

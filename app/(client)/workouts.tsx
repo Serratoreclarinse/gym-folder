@@ -236,6 +236,13 @@ export default function ClientWorkoutsScreen() {
   const remMins = Math.floor(remainingSecs / 60);
   const remSecs = String(remainingSecs % 60).padStart(2, '0');
 
+  // Dismiss banner 10s after timer hits 0 (same logic as dashboard)
+  useEffect(() => {
+    if (remainingSecs > 0 || !activeSession || activeSession.is_paused) return;
+    const t = setTimeout(() => setActiveSession(null), 10_000);
+    return () => clearTimeout(t);
+  }, [remainingSecs > 0, !!activeSession, activeSession?.is_paused]);
+
   // ── Session rating ───────────────────────────────────────────
   const [unratedSession, setUnratedSession] = useState<ClientSession | null>(null);
   const [showRatingModal, setShowRatingModal] = useState(false);

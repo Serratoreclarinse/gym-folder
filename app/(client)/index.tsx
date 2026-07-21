@@ -235,6 +235,11 @@ export default function ClientProgressScreen() {
   const [sessionRemainingSecs, setSessionRemainingSecs] = useState(0);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
+  // Tracks the start_time of a session we already locally dismissed at 0:00.
+  // Prevents re-fetch (useFocusEffect / realtime) from reinstating the banner
+  // while the coach hasn't tapped End Session yet.
+  const expiredSessionRef = useRef<string | null>(null);
+
   const fetchActiveSession = useCallback(async () => {
     if (!user?.id) return;
     const { data } = await supabase
@@ -243,6 +248,12 @@ export default function ClientProgressScreen() {
       .eq('client_id', user.id)
       .eq('is_active', true)
       .maybeSingle();
+
+    // If this is the same session we already dismissed at 0:00, don't reinstate it
+    if (data && data.start_time === expiredSessionRef.current) return;
+
+    // New session or real end — clear the expired marker
+    expiredSessionRef.current = null;
     setClientActiveSession(data ?? null);
   }, [user?.id]);
 
@@ -267,11 +278,12 @@ export default function ClientProgressScreen() {
     return () => clearInterval(interval);
   }, [clientActiveSession?.start_time, clientActiveSession?.current_duration, clientActiveSession?.is_paused]);
 
-  // When timer hits 0 (and not paused), auto-dismiss after 60s grace period
-  // Realtime will dismiss sooner if the coach taps End Session
+  // When timer hits 0 (and not paused), dismiss after 10s grace period.
+  // Mark the session as expired first so re-fetches don't reinstate the banner.
   useEffect(() => {
     if (sessionRemainingSecs > 0 || !clientActiveSession || clientActiveSession.is_paused) return;
-    const t = setTimeout(() => setClientActiveSession(null), 60_000);
+    expiredSessionRef.current = clientActiveSession.start_time;
+    const t = setTimeout(() => setClientActiveSession(null), 10_000);
     return () => clearTimeout(t);
   }, [sessionRemainingSecs > 0, !!clientActiveSession, clientActiveSession?.is_paused]);
 
