@@ -1,11 +1,13 @@
 ﻿import { router, useLocalSearchParams, useNavigation } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { formatBirthday } from '@/hooks/useBirthdays';
 import {
   Alert,
+  Image,
   Linking,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -14,6 +16,10 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/context/AuthContext';
 import { useClients } from '@/hooks/useClients';
@@ -22,7 +28,6 @@ import { useStrikes } from '@/hooks/useStrikes';
 import { useScheduledSessions } from '@/hooks/useScheduledSessions';
 import { scheduleSessionReminder, cancelSessionReminder } from '@/lib/notifications';
 import { ErrorBanner } from '@/components/ErrorBanner';
-import { ClientProgressTab } from '@/components/ClientProgressTab';
 import { ClientNotesTab } from '@/components/ClientNotesTab';
 import { ClientFilesTab } from '@/components/ClientFilesTab';
 import { ClientGoalsTab } from '@/components/ClientGoalsTab';
@@ -66,7 +71,7 @@ const METHOD_LABEL: Record<string, string> = {
   hsbc: 'HSBC Oman', bank_nizwa: 'Bank Nizwa', other: 'Other',
 };
 
-type Tab = 'overview' | 'sessions' | 'progress' | 'goals' | 'notes' | 'files' | 'photos' | 'measurements' | 'checkins';
+type Tab = 'overview' | 'sessions' | 'goals' | 'notes' | 'files' | 'photos' | 'measurements' | 'checkins';
 
 const MAX_STRIKES = 3;
 
@@ -148,30 +153,79 @@ function BirthdayEditForm({
   );
 }
 
+type RenewPaymentStatus = 'partial' | 'full';
+type RenewParams = {
+  type: PackageType; sessions: string; weeks: string;
+  paymentStatus: RenewPaymentStatus; amountPaid: string;
+  paymentMethod: string; balanceDueDate: string; receiptUri: string | null;
+};
+
+const PAY_METHODS = [
+  { value: 'cash',        label: 'Cash' },
+  { value: 'bank_muscat', label: 'Bank Muscat' },
+  { value: 'nbo',         label: 'NBO' },
+  { value: 'oab',         label: 'OAB' },
+  { value: 'bank_dhofar', label: 'Bank Dhofar' },
+  { value: 'ahli_bank',   label: 'Ahli Bank' },
+  { value: 'sohar',       label: 'Sohar Intl' },
+  { value: 'hsbc',        label: 'HSBC Oman' },
+  { value: 'bank_nizwa',  label: 'Bank Nizwa' },
+  { value: 'other',       label: 'Other' },
+];
+
 function RenewForm({
-  initialType,
-  initialWeeks,
-  onConfirm,
-  onCancel,
+  initialType, initialWeeks, onConfirm, onCancel,
 }: {
-  initialType: PackageType;
-  initialWeeks: string;
-  onConfirm: (type: PackageType, sessions: string, weeks: string) => void;
-  onCancel: () => void;
+  initialType: PackageType; initialWeeks: string;
+  onConfirm: (params: RenewParams) => void; onCancel: () => void;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [pkgType, setPkgType] = useState<PackageType>(initialType);
   const [sessions, setSessions] = useState('');
   const [weeks, setWeeks] = useState(initialWeeks);
-  const isValid = sessions.trim() !== '' && Number(sessions) > 0;
+  const [payStatus, setPayStatus] = useState<RenewPaymentStatus>('full');
+  const [amountPaid, setAmountPaid] = useState('');
+  const [payMethod, setPayMethod] = useState('cash');
+  const [balanceDue, setBalanceDue] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [datePickerDate, setDatePickerDate] = useState(new Date());
+  const [receiptUri, setReceiptUri] = useState<string | null>(null);
+
+  const isValid = sessions.trim() !== '' && Number(sessions) > 0 && receiptUri !== null;
+
+  const pickReceiptLocal = async (source: 'camera' | 'gallery') => {
+    let result: ImagePicker.ImagePickerResult;
+    if (source === 'camera') {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') { Alert.alert('Permission needed', 'Camera access is required.'); return; }
+      result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [3, 4], quality: 0.9 });
+    } else {
+      result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [3, 4], quality: 0.9 });
+    }
+    if (!result.canceled && result.assets[0]) {
+      const processed = await ImageManipulator.manipulateAsync(
+        result.assets[0].uri,
+        [{ resize: { width: 1200 } }],
+        { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
+      );
+      setReceiptUri(processed.uri);
+    }
+  };
+
+  const PAY_OPTS: { value: RenewPaymentStatus; label: string }[] = [
+    { value: 'partial', label: 'Partial' },
+    { value: 'full', label: 'Full' },
+  ];
+
   return (
     <View style={styles.renewCard}>
       <Text style={styles.renewTitle}>NEW PACKAGE</Text>
+
+      {/* Package type */}
       <View style={styles.renewSegmented}>
         {PACKAGE_OPTIONS.map((opt) => (
-          <Pressable
-            key={opt.value}
+          <Pressable key={opt.value}
             style={[styles.renewSegment, pkgType === opt.value && styles.renewSegmentActive]}
             onPress={() => setPkgType(opt.value)}
           >
@@ -181,28 +235,192 @@ function RenewForm({
           </Pressable>
         ))}
       </View>
+
       <Text style={styles.renewLabel}>Total Sessions</Text>
-      <TextInput
-        style={styles.renewInput}
-        value={sessions}
+      <TextInput style={styles.renewInput} value={sessions}
         onChangeText={(v) => setSessions(v.replace(/[^0-9]/g, ''))}
-        placeholder="e.g. 12"
-        placeholderTextColor={colors.textSecondary}
-        keyboardType="number-pad"
-        autoFocus
-        returnKeyType="next"
-      />
-      <Text style={styles.renewLabel}>Duration (weeks) <Text style={{ color: colors.textSecondary, fontWeight: '400' }}>— optional</Text></Text>
-      <TextInput
-        style={styles.renewInput}
-        value={weeks}
+        placeholder="e.g. 12" placeholderTextColor={colors.textSecondary}
+        keyboardType="number-pad" autoFocus returnKeyType="next" />
+
+      <Text style={styles.renewLabel}>
+        Duration (weeks){' '}
+        <Text style={{ color: colors.textSecondary, fontWeight: '400' }}>— optional</Text>
+      </Text>
+      <TextInput style={styles.renewInput} value={weeks}
         onChangeText={(v) => setWeeks(v.replace(/[^0-9]/g, ''))}
-        placeholder="e.g. 6"
-        placeholderTextColor={colors.textSecondary}
-        keyboardType="number-pad"
-        returnKeyType="done"
-        onSubmitEditing={() => isValid && onConfirm(pkgType, sessions, weeks)}
-      />
+        placeholder="e.g. 6" placeholderTextColor={colors.textSecondary}
+        keyboardType="number-pad" returnKeyType="next" />
+
+      {/* Payment status */}
+      <Text style={styles.renewLabel}>Payment</Text>
+      <View style={[styles.renewSegmented, { marginBottom: 10 }]}>
+        {PAY_OPTS.map((o) => (
+          <Pressable key={o.value}
+            style={[styles.renewSegment, payStatus === o.value && styles.renewSegmentActive,
+              payStatus === o.value && o.value === 'full' && { backgroundColor: '#22C55E' },
+              payStatus === o.value && o.value === 'partial' && { backgroundColor: colors.accent },
+            ]}
+            onPress={() => setPayStatus(o.value)}
+          >
+            <Text style={[styles.renewSegmentText, payStatus === o.value && styles.renewSegmentTextActive]}>
+              {o.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {payStatus !== 'unpaid' && (
+        <>
+          <Text style={styles.renewLabel}>Amount Paid (OMR)</Text>
+          <TextInput style={styles.renewInput} value={amountPaid}
+            onChangeText={(v) => setAmountPaid(v.replace(/[^0-9.]/g, ''))}
+            placeholder="e.g. 150" placeholderTextColor={colors.textSecondary}
+            keyboardType="decimal-pad" returnKeyType="next" />
+          <Text style={styles.renewLabel}>Payment Method</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+            <View style={{ flexDirection: 'row', gap: 8, paddingBottom: 4 }}>
+              {PAY_METHODS.map((m) => (
+                <Pressable
+                  key={m.value}
+                  onPress={() => setPayMethod(m.value)}
+                  style={[
+                    styles.renewSegment,
+                    { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
+                    payMethod === m.value && styles.renewSegmentActive,
+                  ]}
+                >
+                  <Text style={[styles.renewSegmentText, payMethod === m.value && styles.renewSegmentTextActive]}>
+                    {m.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </ScrollView>
+        </>
+      )}
+
+      {payStatus === 'partial' && (
+        <>
+          <Text style={styles.renewLabel}>Balance Due Date</Text>
+          {Platform.OS === 'web' ? (
+            <input
+              type="date"
+              value={balanceDue}
+              min={new Date(Date.now() + 86400000).toISOString().split('T')[0]}
+              onChange={e => setBalanceDue((e.target as any).value)}
+              style={{ backgroundColor: colors.bg, border: `1px solid ${colors.border}`, borderRadius: 10, padding: 11, color: colors.textPrimary, fontSize: 15, marginBottom: 12, width: '100%' } as any}
+            />
+          ) : (
+            <>
+              <Pressable
+                style={[styles.renewInput, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                onPress={() => {
+                  if (Platform.OS === 'android') {
+                    DateTimePickerAndroid.open({
+                      value: datePickerDate,
+                      mode: 'date',
+                      minimumDate: new Date(Date.now() + 86400000),
+                      onChange: (event, date) => {
+                        if (event.type === 'set' && date) {
+                          setDatePickerDate(date);
+                          setBalanceDue(date.toISOString().split('T')[0]);
+                        }
+                      },
+                    });
+                  } else {
+                    setShowDatePicker(v => !v);
+                  }
+                }}
+              >
+                <Text style={{ color: balanceDue ? colors.textPrimary : colors.textSecondary, fontSize: 15 }}>
+                  {balanceDue
+                    ? new Date(balanceDue + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : 'Select date'}
+                </Text>
+                <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} />
+              </Pressable>
+              <Modal
+                visible={showDatePicker && Platform.OS === 'ios'}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setShowDatePicker(false)}
+              >
+                <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: '#00000066' }}>
+                  <Pressable style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} onPress={() => setShowDatePicker(false)} />
+                  <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 36 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                      <Pressable onPress={() => setShowDatePicker(false)}>
+                        <Text style={{ color: colors.textSecondary, fontSize: 16 }}>Cancel</Text>
+                      </Pressable>
+                      <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '700' }}>Balance Due Date</Text>
+                      <Pressable onPress={() => setShowDatePicker(false)}>
+                        <Text style={{ color: colors.accent, fontSize: 16, fontWeight: '700' }}>Done</Text>
+                      </Pressable>
+                    </View>
+                    <DateTimePicker
+                      value={datePickerDate}
+                      mode="date"
+                      display="spinner"
+                      minimumDate={new Date(Date.now() + 86400000)}
+                      onChange={(_event, date) => {
+                        if (date) {
+                          setDatePickerDate(date);
+                          setBalanceDue(date.toISOString().split('T')[0]);
+                        }
+                      }}
+                      style={{ width: '100%' }}
+                    />
+                  </View>
+                </View>
+              </Modal>
+            </>
+          )}
+        </>
+      )}
+
+      {/* Receipt — always required */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+        <Text style={styles.renewLabel}>Payment Receipt</Text>
+        <View style={{ backgroundColor: colors.danger + '20', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+          <Text style={{ color: colors.danger, fontSize: 10, fontWeight: '800' }}>REQUIRED</Text>
+        </View>
+      </View>
+      {receiptUri ? (
+        <View style={styles.receiptPreviewRow}>
+          <Image source={{ uri: receiptUri }} style={styles.receiptThumb} />
+          <View style={{ flex: 1, gap: 8 }}>
+            <Pressable style={styles.receiptSaveBtn}
+              onPress={async () => {
+                const ok = await Sharing.isAvailableAsync();
+                if (ok) await Sharing.shareAsync(receiptUri, { mimeType: 'image/jpeg' });
+              }}>
+              <Ionicons name="download-outline" size={15} color={colors.accent} />
+              <Text style={styles.receiptPickText}>Save to Device</Text>
+            </Pressable>
+            <Pressable style={styles.removeReceiptBtn} onPress={() => setReceiptUri(null)}>
+              <Ionicons name="close-circle" size={15} color={colors.danger} />
+              <Text style={[styles.receiptPickText, { color: colors.danger }]}>Remove</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : (
+        <>
+          <View style={[styles.receiptPickRow, { marginBottom: 6 }]}>
+            <Pressable style={styles.receiptPickBtn} onPress={() => pickReceiptLocal('camera')}>
+              <Ionicons name="camera-outline" size={18} color={colors.accent} />
+              <Text style={styles.receiptPickText}>Camera</Text>
+            </Pressable>
+            <Pressable style={styles.receiptPickBtn} onPress={() => pickReceiptLocal('gallery')}>
+              <Ionicons name="images-outline" size={18} color={colors.accent} />
+              <Text style={styles.receiptPickText}>Gallery</Text>
+            </Pressable>
+          </View>
+          <Text style={{ color: colors.textSecondary, fontSize: 11, marginBottom: 14, textAlign: 'center' }}>
+            Upload proof of payment to continue
+          </Text>
+        </>
+      )}
+
       <View style={styles.renewBtns}>
         <Pressable style={styles.renewCancel} onPress={onCancel}>
           <Text style={styles.renewCancelText}>Cancel</Text>
@@ -210,7 +428,7 @@ function RenewForm({
         <Pressable
           style={[styles.renewConfirm, !isValid && { opacity: 0.4 }]}
           disabled={!isValid}
-          onPress={() => onConfirm(pkgType, sessions, weeks)}
+          onPress={() => onConfirm({ type: pkgType, sessions, weeks, paymentStatus: payStatus, amountPaid, paymentMethod: payMethod, balanceDueDate: balanceDue, receiptUri })}
         >
           <Text style={styles.renewConfirmText}>RENEW</Text>
         </Pressable>
@@ -233,20 +451,45 @@ function ScheduleForm({
   const [date, setDate] = useState(tomorrow.toISOString().slice(0, 10));
   const [time, setTime] = useState('09:00');
   const [notes, setNotes] = useState('');
+  const [showDatePickerSheet, setShowDatePickerSheet] = useState(false);
   return (
     <View style={styles.scheduleCard}>
       <Text style={styles.scheduleFormTitle}>SCHEDULE SESSION</Text>
-      <Text style={styles.scheduleFormLabel}>Date (YYYY-MM-DD)</Text>
-      <TextInput
-        style={styles.scheduleFormInput}
-        value={date}
-        onChangeText={setDate}
-        placeholder="2024-01-15"
-        placeholderTextColor={colors.textSecondary}
-        keyboardType="numbers-and-punctuation"
-        maxLength={10}
-        autoFocus
-      />
+      <Text style={styles.scheduleFormLabel}>DATE</Text>
+      {Platform.OS === 'ios' ? (
+        <DateTimePicker
+          value={new Date(date + 'T00:00:00')}
+          mode="date"
+          display="compact"
+          onChange={(_, selected) => {
+            if (selected) setDate(selected.toISOString().split('T')[0]);
+          }}
+          style={{ alignSelf: 'flex-start', marginLeft: -8, marginBottom: 12 }}
+        />
+      ) : (
+        <>
+          <Pressable
+            style={styles.datePressable}
+            onPress={() => setShowDatePickerSheet(true)}
+          >
+            <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+            <Text style={styles.datePressableText}>
+              {new Date(date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            </Text>
+          </Pressable>
+          {showDatePickerSheet && (
+            <DateTimePicker
+              value={new Date(date + 'T00:00:00')}
+              mode="date"
+              display="default"
+              onChange={(_, selected) => {
+                setShowDatePickerSheet(false);
+                if (selected) setDate(selected.toISOString().split('T')[0]);
+              }}
+            />
+          )}
+        </>
+      )}
       <Text style={styles.scheduleFormLabel}>Time (24h, e.g. 14:30)</Text>
       <TextInput
         style={styles.scheduleFormInput}
@@ -290,6 +533,7 @@ export default function ClientDetailScreen() {
   const [showBirthdayEdit, setShowBirthdayEdit] = useState(false);
   const [bdInput, setBdInput] = useState('');
   const [showRenewForm, setShowRenewForm] = useState(false);
+  const [submittingRenewal, setSubmittingRenewal] = useState(false);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferCoaches, setTransferCoaches] = useState<{ id: string; name: string }[]>([]);
@@ -297,11 +541,24 @@ export default function ClientDetailScreen() {
   const [transferNotes, setTransferNotes] = useState('');
   const [transferring, setTransferring] = useState(false);
 
-  type Payment = { id: string; amount: number; payment_method: string; notes: string | null; paid_at: string };
+  // Freeze request
+  const [showFreezeModal, setShowFreezeModal] = useState(false);
+  const [freezeStart, setFreezeStart] = useState('');
+  const [freezeEnd, setFreezeEnd] = useState('');
+  const [freezeReason, setFreezeReason] = useState('');
+  const [submittingFreeze, setSubmittingFreeze] = useState(false);
+  const [showFreezeStartPicker, setShowFreezeStartPicker] = useState(false);
+  const [showFreezeEndPicker, setShowFreezeEndPicker] = useState(false);
+
+  type Payment = { id: string; amount: number; payment_method: string; notes: string | null; paid_at: string; receipt_url: string | null };
   const [clientPayments, setClientPayments] = useState<Payment[]>([]);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showPayReqModal, setShowPayReqModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
+  const [viewingReceiptUrl, setViewingReceiptUrl] = useState<string | null>(null);
+  const [paymentReceiptFull, setPaymentReceiptFull] = useState<string | null>(null);
+  const mainScrollRef = useRef<ScrollView>(null);
+  const savedScrollY = useRef(0);
   const [payReqAmount, setPayReqAmount] = useState('');
   const [payReqNotes, setPayReqNotes] = useState('');
   const [sendingPayReq, setSendingPayReq] = useState(false);
@@ -310,13 +567,16 @@ export default function ClientDetailScreen() {
   const [payMethod, setPayMethod] = useState<PaymentMethod>('cash');
   const [payNotes, setPayNotes] = useState('');
   const [payTransactionRef, setPayTransactionRef] = useState('');
+  const [payReceiptUri, setPayReceiptUri] = useState<string | null>(null);
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [savingPayment, setSavingPayment] = useState(false);
 
   const { profile } = useAuth();
   const { clients, loading: clientsLoading, error: clientsError, refetch: refetchClients } = useClients();
   const { sessions, loading: sessionsLoading, error: sessionsError, refetch: refetchSessions } = useSessions(id);
   const { strikes, refetch: refetchStrikes, addStrike, removeStrike } = useStrikes(id);
-  const { sessions: scheduledSessions, scheduleSession, deleteSession: deleteScheduledSession } = useScheduledSessions(id);
+  const { sessions: scheduledSessions, scheduleSession, deleteSession: deleteScheduledSession, rescheduleSession } = useScheduledSessions(id);
+  const [reschedulingSession, setReschedulingSession] = useState<import('@/hooks/useScheduledSessions').ScheduledSession | null>(null);
 
   const client = clients.find((c) => c.id === id);
   const pkg = client?.activePackage;
@@ -335,7 +595,7 @@ export default function ClientDetailScreen() {
   const fetchPayments = async () => {
     const { data } = await supabase
       .from('payments')
-      .select('id, amount, payment_method, notes, paid_at')
+      .select('id, amount, payment_method, notes, paid_at, receipt_url')
       .eq('client_id', id)
       .order('paid_at', { ascending: false })
       .limit(10);
@@ -348,6 +608,7 @@ export default function ClientDetailScreen() {
       .select('id, name')
       .eq('role', 'coach')
       .neq('id', profile?.id ?? '')
+      .is('deactivated_at', null)
       .order('name');
     setTransferCoaches((data ?? []) as { id: string; name: string }[]);
     setSelectedTransferCoachId(null);
@@ -373,38 +634,107 @@ export default function ClientDetailScreen() {
       await sendPushNotification(adminRows[0].id, {
         title: '🔄 Transfer Request',
         body: `${profile?.name ?? 'A coach'} wants to transfer ${client?.name ?? 'a client'} to ${targetName}.`,
+        data: { type: 'transfer_request' },
       });
     }
     setShowTransferModal(false);
     Alert.alert('Transfer Requested', 'Your request has been sent to admin for approval.');
   };
 
-  const renewPackage = async (pkgType: PackageType, totalSessions: number, durationWeeks: string | null) => {
+  const renewPackage = async (params: RenewParams) => {
     if (!profile?.id) return;
-    setShowRenewForm(false);
+    const { type: pkgType, sessions: sessStr, weeks: weeksStr,
+            paymentStatus, amountPaid, paymentMethod, balanceDueDate, receiptUri } = params;
+    const totalSessions = Number(sessStr);
+    const durationWeeks = weeksStr && Number(weeksStr) > 0 ? Number(weeksStr) : null;
 
-    // Insert new package first — if it fails, old package stays active
-    const { error: insertErr } = await supabase.from('packages').insert({
-      coach_id: profile.id,
-      client_id: id,
-      package_type: pkgType,
-      total_sessions: totalSessions,
-      sessions_used: 0,
-      status: 'active',
-      start_date: new Date().toISOString().slice(0, 10),
-      ...(durationWeeks && Number(durationWeeks) > 0 ? { duration_weeks: Number(durationWeeks) } : {}),
+    setShowRenewForm(false);
+    setSubmittingRenewal(true);
+
+    // Upload receipt if provided
+    let renewReceiptUrl: string | null = null;
+    if (receiptUri) {
+      try {
+        const path = `${id}/renewal-${Date.now()}.jpg`;
+        const formData = new FormData();
+        formData.append('file', { uri: receiptUri, name: path, type: 'image/jpeg' } as any);
+        const { error: upErr } = await supabase.storage.from('receipts').upload(path, formData, { contentType: 'image/jpeg', upsert: true });
+        if (!upErr) {
+          const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(path);
+          renewReceiptUrl = urlData.publicUrl;
+        }
+      } catch {}
+    }
+
+    // Add sessions directly — no admin approval needed
+    const { error: rpcErr } = await supabase.rpc('add_renewal_sessions', {
+      p_client_id: id,
+      p_sessions: totalSessions,
+      p_duration_weeks: durationWeeks ?? null,
     });
 
-    if (insertErr) {
-      Alert.alert('Error', insertErr.message ?? 'Failed to create new package');
+    if (rpcErr) {
+      setSubmittingRenewal(false);
+      Alert.alert('Renewal Error', rpcErr.message);
       return;
     }
 
-    // New package confirmed — now expire the previous one
-    if (pkg) {
-      await supabase.from('packages').update({ status: 'expired' }).eq('id', pkg.id);
+    // Record for history (already accepted)
+    await supabase.from('renewal_requests').insert({
+      client_id: id,
+      coach_id: profile.id,
+      package_type: pkgType,
+      total_sessions: totalSessions,
+      status: 'accepted',
+      updated_at: new Date().toISOString(),
+      payment_status: paymentStatus,
+      ...(amountPaid && Number(amountPaid) > 0 ? { amount_paid: Number(amountPaid) } : {}),
+      ...(paymentStatus === 'partial' && balanceDueDate ? { balance_due_date: balanceDueDate } : {}),
+      ...(renewReceiptUrl ? { receipt_url: renewReceiptUrl } : {}),
+      ...(durationWeeks ? { duration_weeks: durationWeeks } : {}),
+    });
+
+    // Record payment in payments table so it shows in payment history
+    if (amountPaid && Number(amountPaid) > 0) {
+      const { error: payErr } = await supabase.from('payments').insert({
+        client_id: id,
+        coach_id: profile.id,
+        recorded_by: profile.id,
+        amount: Number(amountPaid),
+        payment_method: paymentMethod,
+        paid_at: new Date().toISOString(),
+        notes: paymentStatus === 'partial'
+          ? `Renewal – partial. Balance due: ${balanceDueDate || 'TBD'}`
+          : `Renewal – full payment`,
+        ...(renewReceiptUrl ? { receipt_url: renewReceiptUrl } : {}),
+      });
+      if (payErr) console.warn('Renewal payment INSERT failed:', payErr.message);
     }
+
+    // Mark client as retention
+    await supabase.from('profiles').update({ is_retention: true }).eq('id', id);
+
+    // Notify client
+    await sendPushNotification(id as string, {
+      title: '🎉 Package Renewed!',
+      body: `Your package has been renewed. +${totalSessions} sessions added to your account.`,
+      data: { type: 'package_renewed' },
+    });
+
+    // Notify admin (FYI)
+    const { data: adminRows } = await supabase.from('profiles').select('id').eq('role', 'admin').limit(1);
+    if (adminRows?.[0]?.id) {
+      await sendPushNotification(adminRows[0].id, {
+        title: 'ℹ️ Package Renewed',
+        body: `${profile.name ?? 'A coach'} renewed ${client?.name ?? 'a client'}'s package. +${totalSessions} sessions.`,
+        data: { type: 'renewal_info' },
+      });
+    }
+
+    setSubmittingRenewal(false);
+    Alert.alert('✅ Package Renewed!', `+${totalSessions} sessions added to ${client?.name ?? 'client'}'s account.`);
     refetchClients();
+    fetchPayments();
   };
 
   const handleScheduleSession = async (date: string, time: string, notes: string) => {
@@ -422,6 +752,13 @@ export default function ClientDetailScreen() {
     if (error) { Alert.alert('Error', error); return; }
     if (session && client?.name) {
       scheduleSessionReminder(client.name, dt, session.id);
+      const dateStr = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+      const timeStr = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      await sendPushNotification(id as string, {
+        title: '📅 Session Scheduled',
+        body: `Your coach has scheduled a session for you on ${dateStr} at ${timeStr}.`,
+        data: { type: 'session_scheduled' },
+      });
     }
   };
 
@@ -453,33 +790,44 @@ export default function ClientDetailScreen() {
     }
   };
 
-  const handleFreeSession = () => {
-    if (!pkg) return;
-    Alert.alert(
-      'Give Free Session',
-      `Add 1 complimentary session to ${client?.name ?? 'this client'}'s package?\n\nThis won't deduct from their purchased count — it's a bonus session from you.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Give Free Session',
-          onPress: async () => {
-            const { error } = await supabase
-              .from('packages')
-              .update({
-                total_sessions: pkg.total_sessions + 1,
-              })
-              .eq('id', pkg.id)
-              .eq('coach_id', profile?.id ?? '');
-            if (error) {
-              Alert.alert('Error', error.message);
-              return;
-            }
-            await refetchClients();
-          },
-        },
-      ],
-    );
+  const handleRequestFreeze = async () => {
+    if (!pkg || !profile?.id || !id) return;
+    if (!freezeStart || !freezeEnd) {
+      Alert.alert('Missing dates', 'Enter both a start and end date.');
+      return;
+    }
+    if (freezeStart >= freezeEnd) {
+      Alert.alert('Invalid range', 'End date must be after start date.');
+      return;
+    }
+    setSubmittingFreeze(true);
+    const { error } = await supabase.from('package_freezes').insert({
+      package_id: pkg.id,
+      client_id: id,
+      coach_id: profile.id,
+      freeze_start: freezeStart,
+      freeze_end: freezeEnd,
+      reason: freezeReason.trim() || null,
+      status: 'pending',
+    });
+    setSubmittingFreeze(false);
+    if (error) { Alert.alert('Error', error.message); return; }
+    // Notify admin — they need to approve the freeze
+    const { data: adminForFreeze } = await supabase.from('profiles').select('id').eq('role', 'admin').limit(1);
+    if (adminForFreeze?.[0]?.id) {
+      await sendPushNotification(adminForFreeze[0].id, {
+        title: '❄️ Freeze Request',
+        body: `${profile?.name ?? 'A coach'} requested a freeze for ${client?.name ?? 'a client'} (${freezeStart} → ${freezeEnd}).`,
+        data: { type: 'freeze_request' },
+      });
+    }
+    setShowFreezeModal(false);
+    setFreezeStart('');
+    setFreezeEnd('');
+    setFreezeReason('');
+    Alert.alert('Submitted', 'Freeze request sent to admin for approval.');
   };
+
 
   const handleRemoveStrike = (strikeId: string) => {
     Alert.alert('Remove Strike', 'Remove this strike from the client?', [
@@ -496,11 +844,30 @@ export default function ClientDetailScreen() {
       ? `OMR ${amt} is due for your training package. Please complete your payment.`
       : `You have a pending payment for your training package. Please contact your coach.`;
     const note = payReqNotes.trim() ? `\nNote: ${payReqNotes.trim()}` : '';
-    await sendPushNotification(id, { title: '💳 Payment Request', body: body + note });
+    await sendPushNotification(id, { title: '💳 Payment Request', body: body + note, data: { type: 'payment_request' } });
     setSendingPayReq(false);
     setPayReqSent(true);
     setPayReqAmount(''); setPayReqNotes('');
     setTimeout(() => { setShowPayReqModal(false); setPayReqSent(false); }, 1500);
+  };
+
+  const pickReceipt = async (source: 'camera' | 'gallery') => {
+    let result: ImagePicker.ImagePickerResult;
+    if (source === 'camera') {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') { Alert.alert('Permission needed', 'Camera access is required to take a photo.'); return; }
+      result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [3, 4], quality: 0.9 });
+    } else {
+      result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [3, 4], quality: 0.9 });
+    }
+    if (!result.canceled && result.assets[0]) {
+      const processed = await ImageManipulator.manipulateAsync(
+        result.assets[0].uri,
+        [{ resize: { width: 1200 } }],
+        { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
+      );
+      setPayReceiptUri(processed.uri);
+    }
   };
 
   const handleRecordPayment = async () => {
@@ -508,6 +875,29 @@ export default function ClientDetailScreen() {
     if (isNaN(amt) || amt <= 0) { Alert.alert('Invalid amount', 'Enter a valid amount greater than 0.'); return; }
     if (!profile?.id) return;
     setSavingPayment(true);
+
+    let receiptUrl: string | null = null;
+    if (payReceiptUri) {
+      setUploadingReceipt(true);
+      try {
+        const path = `${id}/${Date.now()}.jpg`;
+        const formData = new FormData();
+        formData.append('file', { uri: payReceiptUri, name: path, type: 'image/jpeg' } as any);
+        const { error: upErr } = await supabase.storage
+          .from('receipts')
+          .upload(path, formData, { contentType: 'image/jpeg' });
+        if (upErr) throw upErr;
+        const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(path);
+        receiptUrl = publicUrl;
+      } catch (e: any) {
+        setUploadingReceipt(false);
+        setSavingPayment(false);
+        Alert.alert('Upload Error', e.message ?? 'Failed to upload receipt. Try again.');
+        return;
+      }
+      setUploadingReceipt(false);
+    }
+
     const { error } = await supabase.from('payments').insert({
       client_id: id,
       coach_id: profile.id,
@@ -517,6 +907,7 @@ export default function ClientDetailScreen() {
       notes: payNotes.trim() || null,
       transaction_ref: payTransactionRef.trim() || null,
       recorded_by: profile.id,
+      ...(receiptUrl ? { receipt_url: receiptUrl } : {}),
     });
     setSavingPayment(false);
     if (error) { Alert.alert('Error', error.message); return; }
@@ -525,6 +916,7 @@ export default function ClientDetailScreen() {
     setPayNotes('');
     setPayTransactionRef('');
     setPayMethod('cash');
+    setPayReceiptUri(null);
     fetchPayments();
   };
 
@@ -551,7 +943,7 @@ export default function ClientDetailScreen() {
           <>
             <Pressable
               style={styles.contactBtn}
-              onPress={() => Linking.openURL(`whatsapp://send?phone=${encodeURIComponent(client.phone!)}`)}
+              onPress={() => Linking.openURL(`whatsapp://send?phone=${client.phone!.replace(/\D/g, '')}`)}
               hitSlop={6}
             >
               <Ionicons name="logo-whatsapp" size={22} color="#25D366" />
@@ -618,10 +1010,10 @@ export default function ClientDetailScreen() {
               </View>
             );
           })()}
-          {pkg.sessions_remaining === 0 && !showRenewForm && (
-            <Pressable style={styles.renewInlineBtn} onPress={() => setShowRenewForm(true)}>
+          {!showRenewForm && (
+            <Pressable style={styles.renewInlineBtn} onPress={() => setShowRenewForm(true)} disabled={submittingRenewal}>
               <Ionicons name="refresh-outline" size={15} color={colors.bg} />
-              <Text style={styles.renewInlineBtnText}>RENEW PACKAGE</Text>
+              <Text style={styles.renewInlineBtnText}>{submittingRenewal ? 'RENEWING...' : 'RENEW PACKAGE'}</Text>
             </Pressable>
           )}
         </View>
@@ -629,9 +1021,9 @@ export default function ClientDetailScreen() {
         <View style={styles.emptyCard}>
           <Text style={styles.emptyText}>No active package</Text>
           {!showRenewForm && (
-            <Pressable style={[styles.renewInlineBtn, { marginTop: 12 }]} onPress={() => setShowRenewForm(true)}>
+            <Pressable style={[styles.renewInlineBtn, { marginTop: 12 }]} onPress={() => setShowRenewForm(true)} disabled={submittingRenewal}>
               <Ionicons name="add-outline" size={15} color={colors.bg} />
-              <Text style={styles.renewInlineBtnText}>ADD PACKAGE</Text>
+              <Text style={styles.renewInlineBtnText}>{submittingRenewal ? 'RENEWING...' : 'ADD PACKAGE'}</Text>
             </Pressable>
           )}
         </View>
@@ -642,7 +1034,7 @@ export default function ClientDetailScreen() {
         <RenewForm
           initialType={pkg?.package_type ?? '1hr'}
           initialWeeks={pkg?.duration_weeks ? String(pkg.duration_weeks) : ''}
-          onConfirm={(type, sessStr, weeksStr) => renewPackage(type, Number(sessStr), weeksStr || null)}
+          onConfirm={(params) => renewPackage(params)}
           onCancel={() => setShowRenewForm(false)}
         />
       )}
@@ -658,30 +1050,18 @@ export default function ClientDetailScreen() {
         </Pressable>
       )}
 
-      {/* Give free session */}
-      {pkg && (
-        <Pressable style={styles.freeSessionBtn} onPress={handleFreeSession}>
-          <Ionicons name="gift-outline" size={16} color="#4CAF50" />
-          <Text style={styles.freeSessionBtnText}>Give Free Session</Text>
+      {/* Request Freeze */}
+      {pkg && pkg.duration_weeks && (
+        <Pressable style={styles.freezeBtn} onPress={() => setShowFreezeModal(true)}>
+          <Ionicons name="snow-outline" size={16} color="#64B5F6" />
+          <Text style={styles.freezeBtnText}>Request Freeze</Text>
         </Pressable>
       )}
 
       {/* Upcoming scheduled sessions */}
       <View style={[styles.sectionRow, { marginTop: 20, marginBottom: 10 }]}>
         <Text style={styles.sectionTitle}>UPCOMING SESSIONS</Text>
-        {!showScheduleForm && (
-          <Pressable style={styles.scheduleAddBtn} onPress={() => setShowScheduleForm(true)}>
-            <Ionicons name="add" size={14} color={colors.bg} />
-            <Text style={styles.scheduleAddBtnText}>SCHEDULE</Text>
-          </Pressable>
-        )}
       </View>
-      {showScheduleForm && (
-        <ScheduleForm
-          onConfirm={handleScheduleSession}
-          onCancel={() => setShowScheduleForm(false)}
-        />
-      )}
       {scheduledSessions.length === 0 && !showScheduleForm ? (
         <View style={[styles.emptyCard, { marginBottom: 20 }]}>
           <Text style={styles.emptyText}>No upcoming sessions scheduled</Text>
@@ -691,31 +1071,82 @@ export default function ClientDetailScreen() {
           const dt = new Date(s.scheduled_at);
           const dateStr = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
           const timeStr = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const isPending = s.status === 'reschedule_pending';
           return (
-            <Pressable
-              key={s.id}
-              style={styles.scheduledCard}
-              onLongPress={() =>
-                Alert.alert('Remove Session', 'Delete this scheduled session?', [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Delete', style: 'destructive', onPress: () => {
-                      cancelSessionReminder(s.id);
-                      deleteScheduledSession(s.id);
-                    },
-                  },
-                ])
-              }
-            >
-              <View style={styles.scheduledIconWrap}>
-                <Ionicons name="calendar-outline" size={18} color={colors.accent} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.scheduledDate}>{dateStr} · {timeStr}</Text>
-                {s.notes ? <Text style={styles.scheduledNotes}>{s.notes}</Text> : null}
-              </View>
-              <Text style={styles.scheduledHold}>Hold to delete</Text>
-            </Pressable>
+            <View key={s.id}>
+              <Pressable
+                style={styles.scheduledCard}
+                onLongPress={() =>
+                  Alert.alert(
+                    isPending ? 'Reschedule Pending' : `Session · ${dateStr} ${timeStr}`,
+                    isPending ? 'Client has not yet accepted the new time.' : 'What do you want to do?',
+                    [
+                      { text: 'Keep It', style: 'cancel' },
+                      {
+                        text: 'Reschedule',
+                        onPress: () => setReschedulingSession(s),
+                      },
+                      {
+                        text: 'Cancel Session', style: 'destructive',
+                        onPress: () =>
+                          Alert.alert('Cancel Session', `Remove ${client?.name ?? 'this client'}'s session on ${dateStr}?`, [
+                            { text: 'Keep It', style: 'cancel' },
+                            {
+                              text: 'Cancel Session', style: 'destructive',
+                              onPress: async () => {
+                                cancelSessionReminder(s.id);
+                                await deleteScheduledSession(s.id);
+                                await sendPushNotification(id as string, {
+                                  title: '❌ Session Cancelled',
+                                  body: `Your session on ${dateStr} at ${timeStr} has been cancelled by your coach.`,
+                                  data: { type: 'session_cancelled' },
+                                });
+                              },
+                            },
+                          ]),
+                      },
+                    ],
+                  )
+                }
+              >
+                <View style={styles.scheduledIconWrap}>
+                  <Ionicons name={isPending ? 'time-outline' : 'calendar-outline'} size={18} color={isPending ? colors.warning : colors.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.scheduledDate}>{dateStr} · {timeStr}</Text>
+                  {isPending && s.reschedule_proposed_at ? (
+                    <Text style={[styles.scheduledNotes, { color: colors.warning }]}>
+                      → Proposed: {new Date(s.reschedule_proposed_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · {new Date(s.reschedule_proposed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  ) : s.notes ? (
+                    <Text style={styles.scheduledNotes}>{s.notes}</Text>
+                  ) : null}
+                </View>
+                <Text style={styles.scheduledHold}>Hold to edit</Text>
+              </Pressable>
+              {reschedulingSession?.id === s.id && (
+                <ScheduleForm
+                  onConfirm={async (date, time, notes) => {
+                    const newDt = new Date(`${date.trim()}T${time.trim()}:00`);
+                    if (isNaN(newDt.getTime()) || newDt <= new Date()) {
+                      Alert.alert('Invalid date', 'Enter a valid future date and time.');
+                      return;
+                    }
+                    const { error: rsErr } = await rescheduleSession(s.id, newDt);
+                    if (rsErr) { Alert.alert('Error', rsErr); return; }
+                    const newDateStr = newDt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                    const newTimeStr = newDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    await sendPushNotification(id as string, {
+                      title: '📅 Session Rescheduled',
+                      body: `Your coach proposed a new time: ${newDateStr} at ${newTimeStr}. Open the app to accept or decline.`,
+                      data: { type: 'reschedule_proposed' },
+                    });
+                    setReschedulingSession(null);
+                  }}
+                  onCancel={() => setReschedulingSession(null)}
+                />
+              )}
+            </View>
           );
         })
       )}
@@ -844,10 +1275,10 @@ export default function ClientDetailScreen() {
         </View>
       ) : (
         <View style={styles.paymentsCard}>
-          {clientPayments.slice(0, 5).map((p, i) => (
+          {clientPayments.slice(0, 3).map((p, i) => (
             <Pressable
               key={p.id}
-              style={[styles.paymentRow, i < Math.min(clientPayments.length, 5) - 1 && styles.paymentRowBorder]}
+              style={[styles.paymentRow, i < Math.min(clientPayments.length, 3) - 1 && styles.paymentRowBorder]}
               onPress={() => setSelectedPayment(p)}
             >
               <View style={styles.paymentLeft}>
@@ -857,13 +1288,22 @@ export default function ClientDetailScreen() {
                 </Text>
                 {p.notes ? <Text style={styles.paymentNotes}>{p.notes}</Text> : null}
               </View>
-              <Text style={styles.paymentAmount}>
-                OMR {p.amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-              </Text>
+              <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                <Text style={styles.paymentAmount}>
+                  OMR {p.amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                </Text>
+                {p.receipt_url && <Ionicons name="image-outline" size={13} color={colors.accent} />}
+              </View>
             </Pressable>
           ))}
-          {clientPayments.length > 5 && (
-            <Text style={styles.paymentMore}>+{clientPayments.length - 5} more payments</Text>
+          {clientPayments.length > 3 && (
+            <Pressable
+              style={styles.viewAllBtn}
+              onPress={() => router.push({ pathname: '/(coach)/client-payments/[id]', params: { id: id as string, name: client?.name ?? '' } } as any)}
+            >
+              <Text style={styles.viewAllText}>View all {clientPayments.length} payments</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.accent} />
+            </Pressable>
           )}
         </View>
       )}
@@ -887,16 +1327,25 @@ export default function ClientDetailScreen() {
   // ── Sessions Tab ─────────────────────────────────────────────
   const SessionsContent = () => (
     <>
-      <Text style={[styles.sectionTitle, { marginBottom: 14 }]}>
-        SESSION HISTORY{sessions.length > 0 ? `  (${sessions.length})` : ''}
-      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <Text style={styles.sectionTitle}>SESSION HISTORY</Text>
+        {sessions.length > 5 && (
+          <Pressable
+            style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 3 }, pressed && { opacity: 0.7 }]}
+            onPress={() => router.push({ pathname: '/(coach)/client-sessions/[id]', params: { id } } as any)}
+          >
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.accent }}>View All ({sessions.length})</Text>
+            <Ionicons name="chevron-forward" size={13} color={colors.accent} />
+          </Pressable>
+        )}
+      </View>
 
       {sessions.length === 0 ? (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyText}>No sessions logged yet</Text>
         </View>
       ) : (
-        sessions.map((s) => {
+        sessions.slice(0, 5).map((s) => {
           const dateStr = new Date(s.session_date).toLocaleDateString('en-US', {
             weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
           });
@@ -1031,13 +1480,50 @@ export default function ClientDetailScreen() {
             multiline
             numberOfLines={2}
           />
+          {/* Receipt */}
+          <Text style={styles.transferNotesLabel}>Payment Receipt (optional)</Text>
+          {payReceiptUri ? (
+            <View style={styles.receiptPreviewRow}>
+              <Image source={{ uri: payReceiptUri }} style={styles.receiptThumb} />
+              <View style={{ flex: 1, gap: 8 }}>
+                <Pressable
+                  style={styles.receiptSaveBtn}
+                  onPress={async () => {
+                    const available = await Sharing.isAvailableAsync();
+                    if (available) await Sharing.shareAsync(payReceiptUri, { mimeType: 'image/jpeg' });
+                  }}
+                >
+                  <Ionicons name="download-outline" size={15} color={colors.accent} />
+                  <Text style={styles.receiptPickText}>Save to Device</Text>
+                </Pressable>
+                <Pressable style={styles.removeReceiptBtn} onPress={() => setPayReceiptUri(null)}>
+                  <Ionicons name="close-circle" size={15} color={colors.danger} />
+                  <Text style={[styles.receiptPickText, { color: colors.danger }]}>Remove</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.receiptPickRow}>
+              <Pressable style={styles.receiptPickBtn} onPress={() => pickReceipt('camera')}>
+                <Ionicons name="camera-outline" size={18} color={colors.accent} />
+                <Text style={styles.receiptPickText}>Camera</Text>
+              </Pressable>
+              <Pressable style={styles.receiptPickBtn} onPress={() => pickReceipt('gallery')}>
+                <Ionicons name="images-outline" size={18} color={colors.accent} />
+                <Text style={styles.receiptPickText}>Gallery</Text>
+              </Pressable>
+            </View>
+          )}
+
           <Pressable
             style={[styles.transferSubmitBtn, (!payAmount || savingPayment) && { opacity: 0.45 }]}
             onPress={handleRecordPayment}
             disabled={!payAmount || savingPayment}
           >
             <Ionicons name="cash-outline" size={16} color={colors.bg} />
-            <Text style={styles.transferSubmitText}>{savingPayment ? 'Saving…' : 'Record Payment'}</Text>
+            <Text style={styles.transferSubmitText}>
+              {uploadingReceipt ? 'Uploading receipt…' : savingPayment ? 'Saving…' : 'Record Payment'}
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -1058,7 +1544,7 @@ export default function ClientDetailScreen() {
 
           {payReqSent ? (
             <View style={styles.payReqSuccess}>
-              <Ionicons name="checkmark-circle" size={32} color="#4CAF50" />
+              <Ionicons name="checkmark-circle" size={32} color={colors.success} />
               <Text style={styles.payReqSuccessText}>Request Sent!</Text>
             </View>
           ) : (
@@ -1161,48 +1647,212 @@ export default function ClientDetailScreen() {
       </View>
     </Modal>
 
-    {/* Payment detail modal */}
-    <Modal visible={!!selectedPayment} transparent animationType="slide" onRequestClose={() => setSelectedPayment(null)}>
-      <Pressable style={styles.modalOverlay} onPress={() => setSelectedPayment(null)}>
-        <View style={styles.payDetailSheet}>
-          <View style={styles.modalHandle} />
-          <Text style={styles.payDetailTitle}>Payment Detail</Text>
-          {selectedPayment && (
+    {/* ── Freeze Request Modal ── */}
+    <Modal visible={showFreezeModal} transparent animationType="slide" onRequestClose={() => setShowFreezeModal(false)}>
+      <View style={styles.transferOverlay}>
+        <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowFreezeModal(false)} />
+        <View style={styles.transferSheet}>
+          <View style={styles.transferHandle} />
+          <View style={styles.transferHead}>
+            <Text style={styles.transferTitle}>REQUEST FREEZE</Text>
+            <Pressable onPress={() => setShowFreezeModal(false)}>
+              <Ionicons name="close" size={22} color={colors.textSecondary} />
+            </Pressable>
+          </View>
+          <Text style={styles.transferSub}>
+            Package end date will be extended by the number of frozen days.
+          </Text>
+
+          <Text style={styles.transferNotesLabel}>FREEZE START</Text>
+          {Platform.OS === 'ios' ? (
+            <DateTimePicker
+              value={freezeStart ? new Date(freezeStart + 'T00:00:00') : new Date()}
+              mode="date"
+              display="compact"
+              onChange={(_, selected) => {
+                if (selected) setFreezeStart(selected.toISOString().split('T')[0]);
+              }}
+              style={{ alignSelf: 'flex-start', marginLeft: -8, marginBottom: 12 }}
+            />
+          ) : (
             <>
-              <View style={styles.payDetailRow}>
-                <Text style={styles.payDetailLabel}>Amount</Text>
-                <Text style={styles.payDetailValue}>
-                  OMR {selectedPayment.amount.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+              <Pressable style={styles.datePressable} onPress={() => setShowFreezeStartPicker(true)}>
+                <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+                <Text style={styles.datePressableText}>
+                  {freezeStart
+                    ? new Date(freezeStart + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : 'Select start date'}
                 </Text>
-              </View>
-              <View style={styles.payDetailRow}>
-                <Text style={styles.payDetailLabel}>Method</Text>
-                <Text style={styles.payDetailValue}>{METHOD_LABEL[selectedPayment.payment_method] ?? selectedPayment.payment_method}</Text>
-              </View>
-              <View style={styles.payDetailRow}>
-                <Text style={styles.payDetailLabel}>Date</Text>
-                <Text style={styles.payDetailValue}>
-                  {new Date(selectedPayment.paid_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                </Text>
-              </View>
-              {selectedPayment.notes ? (
-                <View style={styles.payDetailRow}>
-                  <Text style={styles.payDetailLabel}>Notes</Text>
-                  <Text style={[styles.payDetailValue, { flex: 1, textAlign: 'right' }]}>{selectedPayment.notes}</Text>
-                </View>
-              ) : null}
+              </Pressable>
+              {showFreezeStartPicker && (
+                <DateTimePicker
+                  value={freezeStart ? new Date(freezeStart + 'T00:00:00') : new Date()}
+                  mode="date"
+                  display="default"
+                  onChange={(_, selected) => {
+                    setShowFreezeStartPicker(false);
+                    if (selected) setFreezeStart(selected.toISOString().split('T')[0]);
+                  }}
+                />
+              )}
             </>
           )}
-          <Pressable style={styles.payDetailClose} onPress={() => setSelectedPayment(null)}>
-            <Text style={styles.payDetailCloseText}>Close</Text>
+
+          <Text style={styles.transferNotesLabel}>FREEZE END</Text>
+          {Platform.OS === 'ios' ? (
+            <DateTimePicker
+              value={freezeEnd ? new Date(freezeEnd + 'T00:00:00') : new Date()}
+              mode="date"
+              display="compact"
+              onChange={(_, selected) => {
+                if (selected) setFreezeEnd(selected.toISOString().split('T')[0]);
+              }}
+              style={{ alignSelf: 'flex-start', marginLeft: -8, marginBottom: 12 }}
+            />
+          ) : (
+            <>
+              <Pressable style={styles.datePressable} onPress={() => setShowFreezeEndPicker(true)}>
+                <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+                <Text style={styles.datePressableText}>
+                  {freezeEnd
+                    ? new Date(freezeEnd + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : 'Select end date'}
+                </Text>
+              </Pressable>
+              {showFreezeEndPicker && (
+                <DateTimePicker
+                  value={freezeEnd ? new Date(freezeEnd + 'T00:00:00') : new Date()}
+                  mode="date"
+                  display="default"
+                  onChange={(_, selected) => {
+                    setShowFreezeEndPicker(false);
+                    if (selected) setFreezeEnd(selected.toISOString().split('T')[0]);
+                  }}
+                />
+              )}
+            </>
+          )}
+
+          <Text style={styles.transferNotesLabel}>REASON — optional</Text>
+          <TextInput
+            style={styles.transferNotesInput}
+            value={freezeReason}
+            onChangeText={setFreezeReason}
+            placeholder="e.g. vacation, medical leave…"
+            placeholderTextColor={colors.textSecondary}
+            multiline
+            numberOfLines={2}
+          />
+
+          <Pressable
+            style={[styles.transferSubmitBtn, { backgroundColor: '#64B5F6' }, submittingFreeze && { opacity: 0.45 }]}
+            onPress={handleRequestFreeze}
+            disabled={submittingFreeze}
+          >
+            <Ionicons name="snow-outline" size={16} color="#000" />
+            <Text style={[styles.transferSubmitText, { color: '#000' }]}>
+              {submittingFreeze ? 'Submitting…' : 'Submit Request'}
+            </Text>
           </Pressable>
         </View>
-      </Pressable>
+      </View>
+    </Modal>
+
+    {/* Payment detail modal */}
+    <Modal
+      visible={!!selectedPayment}
+      transparent
+      animationType="slide"
+      onRequestClose={() => {
+        if (paymentReceiptFull) { setPaymentReceiptFull(null); }
+        else { setSelectedPayment(null); }
+      }}
+    >
+      {/* Full-screen receipt inside the same modal — avoids iOS two-modal limitation */}
+      {paymentReceiptFull ? (
+        <View style={{ flex: 1, backgroundColor: '#000000F0', justifyContent: 'center', alignItems: 'center' }}>
+          <Pressable style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} onPress={() => setPaymentReceiptFull(null)} />
+          <Image
+            source={{ uri: paymentReceiptFull }}
+            style={{ width: '92%', height: '75%', borderRadius: 12, backgroundColor: '#333' }}
+            resizeMode="contain"
+          />
+          <Pressable
+            style={{ marginTop: 20, backgroundColor: '#ffffff20', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 20 }}
+            onPress={() => setPaymentReceiptFull(null)}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Close</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.modalOverlay}>
+          <Pressable style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} onPress={() => {
+            setSelectedPayment(null);
+            setTimeout(() => mainScrollRef.current?.scrollTo({ y: savedScrollY.current, animated: false }), 50);
+          }} />
+          <View style={styles.payDetailSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.payDetailTitle}>Payment Detail</Text>
+            {selectedPayment && (
+              <>
+                <View style={styles.payDetailRow}>
+                  <Text style={styles.payDetailLabel}>Amount</Text>
+                  <Text style={styles.payDetailValue}>
+                    OMR {selectedPayment.amount.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                  </Text>
+                </View>
+                <View style={styles.payDetailRow}>
+                  <Text style={styles.payDetailLabel}>Method</Text>
+                  <Text style={styles.payDetailValue}>{METHOD_LABEL[selectedPayment.payment_method] ?? selectedPayment.payment_method}</Text>
+                </View>
+                <View style={styles.payDetailRow}>
+                  <Text style={styles.payDetailLabel}>Date</Text>
+                  <Text style={styles.payDetailValue}>
+                    {new Date(selectedPayment.paid_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  </Text>
+                </View>
+                {selectedPayment.notes ? (
+                  <View style={styles.payDetailRow}>
+                    <Text style={styles.payDetailLabel}>Notes</Text>
+                    <Text style={[styles.payDetailValue, { flex: 1, textAlign: 'right' }]}>{selectedPayment.notes}</Text>
+                  </View>
+                ) : null}
+                {selectedPayment.receipt_url ? (
+                  <Pressable
+                    onPress={() => setPaymentReceiptFull(selectedPayment.receipt_url!)}
+                    style={{ marginTop: 8 }}
+                  >
+                    <Image
+                      source={{ uri: selectedPayment.receipt_url }}
+                      style={{ width: '100%', height: 180, borderRadius: 12, backgroundColor: colors.border }}
+                      resizeMode="contain"
+                    />
+                    <Text style={{ color: colors.textSecondary, fontSize: 11, textAlign: 'center', marginTop: 4 }}>
+                      Tap to view full receipt
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </>
+            )}
+            <Pressable style={styles.payDetailClose} onPress={() => {
+              setPaymentReceiptFull(null);
+              setSelectedPayment(null);
+              setTimeout(() => mainScrollRef.current?.scrollTo({ y: savedScrollY.current, animated: false }), 50);
+            }}>
+              <Text style={styles.payDetailCloseText}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
     </Modal>
 
     <ScrollView
+      ref={mainScrollRef}
       style={styles.scroll}
       contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      onScroll={e => { savedScrollY.current = e.nativeEvent.contentOffset.y; }}
+      scrollEventThrottle={100}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
     >
       {(clientsError || sessionsError) && (
@@ -1218,7 +1868,7 @@ export default function ClientDetailScreen() {
         style={styles.tabBar}
         contentContainerStyle={styles.tabBarContent}
       >
-        {(['overview', 'sessions', 'progress', 'goals', 'notes', 'files', 'photos', 'measurements', 'checkins'] as Tab[]).map((tab) => (
+        {(['overview', 'sessions', 'goals', 'notes', 'files', 'photos', 'measurements', 'checkins'] as Tab[]).map((tab) => (
           <Pressable
             key={tab}
             style={[styles.tabBtn, activeTab === tab && styles.tabBtnActive]}
@@ -1227,7 +1877,6 @@ export default function ClientDetailScreen() {
             <Text style={[styles.tabLabel, activeTab === tab && styles.tabLabelActive]}>
               {tab === 'overview' ? 'Overview'
                 : tab === 'sessions' ? `Sessions${sessions.length > 0 ? ` (${sessions.length})` : ''}`
-                : tab === 'progress' ? 'Progress'
                 : tab === 'goals' ? 'Goals'
                 : tab === 'notes' ? 'Notes'
                 : tab === 'files' ? 'Files'
@@ -1242,7 +1891,6 @@ export default function ClientDetailScreen() {
       {/* Tab content */}
       {activeTab === 'overview' && <OverviewContent />}
       {activeTab === 'sessions' && <SessionsContent />}
-      {activeTab === 'progress' && <ClientProgressTab clientId={id} />}
       {activeTab === 'goals' && <ClientGoalsTab clientId={id} />}
       {activeTab === 'notes' && <ClientNotesTab clientId={id} />}
       {activeTab === 'files' && <ClientFilesTab clientId={id} />}
@@ -1304,10 +1952,10 @@ function makeStyles(c: ColorScheme) {
     backgroundColor: c.accent + '18', borderRadius: 8,
     paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: c.accent + '40',
   },
-  statusWarning: { backgroundColor: '#FFA50018', borderColor: '#FFA50050' },
+  statusWarning: { backgroundColor: c.warning + '18', borderColor: c.warning + '50' },
   statusExpired: { backgroundColor: c.border + '80', borderColor: c.border },
   statusText: { fontSize: 12, fontWeight: '700', color: c.accent },
-  statusTextWarning: { color: '#FFA500' },
+  statusTextWarning: { color: c.warning },
   statusTextExpired: { color: c.textSecondary },
   progressTrack: { height: 6, backgroundColor: c.border, borderRadius: 3, overflow: 'hidden', marginBottom: 8 },
   progressFill: { height: '100%', backgroundColor: c.accent, borderRadius: 3 },
@@ -1315,13 +1963,13 @@ function makeStyles(c: ColorScheme) {
   durationRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
   durationInfo: { ...Typography.caption, color: c.textSecondary, flex: 1 },
   trackBadge: {
-    backgroundColor: '#4CAF5018', borderRadius: 7,
+    backgroundColor: c.success + '18', borderRadius: 7,
     paddingHorizontal: 8, paddingVertical: 3,
-    borderWidth: 1, borderColor: '#4CAF5040',
+    borderWidth: 1, borderColor: c.success + '40',
   },
-  trackBadgeBehind: { backgroundColor: '#FFA50018', borderColor: '#FFA50040' },
-  trackText: { fontSize: 11, fontWeight: '700', color: '#4CAF50' },
-  trackTextBehind: { color: '#FFA500' },
+  trackBadgeBehind: { backgroundColor: c.warning + '18', borderColor: c.warning + '40' },
+  trackText: { fontSize: 11, fontWeight: '700', color: c.success },
+  trackTextBehind: { color: c.warning },
 
   // Log button
   logBtn: {
@@ -1330,20 +1978,28 @@ function makeStyles(c: ColorScheme) {
   },
   logBtnText: { color: c.bg, fontSize: 13, fontWeight: '800', letterSpacing: 1.1 },
 
-  freeSessionBtn: {
+  _freeSessionBtn_unused: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
     borderRadius: 13, paddingVertical: 12, marginTop: -18, marginBottom: 28,
-    borderWidth: 1, borderColor: '#4CAF5050',
-    backgroundColor: '#4CAF5010',
+    borderWidth: 1, borderColor: c.success + '50',
+    backgroundColor: c.success + '10',
   },
-  freeSessionBtnText: { color: '#4CAF50', fontSize: 13, fontWeight: '700' },
+  _freeSessionBtnText_unused: { color: c.success, fontSize: 13, fontWeight: '700' },
+
+  freezeBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    borderRadius: 13, paddingVertical: 12, marginTop: -18, marginBottom: 28,
+    borderWidth: 1, borderColor: '#64B5F650',
+    backgroundColor: '#64B5F610',
+  },
+  freezeBtnText: { color: '#64B5F6', fontSize: 13, fontWeight: '700' },
 
   // Section
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sectionTitle: { ...Typography.label, color: c.textSecondary },
   addStrikeBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#FF4D4D', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
+    backgroundColor: c.danger, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
   },
   addStrikeBtnText: { color: c.bg, fontSize: 11, fontWeight: '800' },
 
@@ -1357,14 +2013,14 @@ function makeStyles(c: ColorScheme) {
     width: 18, height: 18, borderRadius: 9,
     borderWidth: 2, borderColor: c.border, backgroundColor: 'transparent',
   },
-  strikeDotFilled: { backgroundColor: '#FF4D4D', borderColor: '#FF4D4D' },
+  strikeDotFilled: { backgroundColor: c.danger, borderColor: c.danger },
   strikeCount: { ...Typography.caption, color: c.textSecondary, marginLeft: 4 },
-  strikeCountMax: { color: '#FF4D4D', fontWeight: '700' },
+  strikeCountMax: { color: c.danger, fontWeight: '700' },
   noStrikesText: { ...Typography.body, color: c.textSecondary, fontStyle: 'italic' },
   strikeRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 10 },
   strikeIcon: {
     width: 32, height: 32, borderRadius: 16,
-    backgroundColor: '#FF4D4D20', borderWidth: 1, borderColor: '#FF4D4D40',
+    backgroundColor: c.danger + '20', borderWidth: 1, borderColor: c.danger + '40',
     justifyContent: 'center', alignItems: 'center',
   },
   strikeIconText: { fontSize: 14 },
@@ -1414,7 +2070,7 @@ function makeStyles(c: ColorScheme) {
   // Strike inline input
   strikeInputCard: {
     backgroundColor: c.surface, borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: '#FF4D4D50', marginBottom: 12,
+    borderWidth: 1, borderColor: c.danger + '50', marginBottom: 12,
   },
   strikeInputLabel: { ...Typography.label, color: c.textSecondary, marginBottom: 8 },
   strikeInputField: {
@@ -1429,9 +2085,9 @@ function makeStyles(c: ColorScheme) {
   strikeInputCancelText: { color: c.textSecondary, fontWeight: '600', fontSize: 13 },
   strikeInputConfirm: {
     flex: 1, paddingVertical: 10, borderRadius: 10,
-    backgroundColor: '#FF4D4D', alignItems: 'center',
+    backgroundColor: c.danger, alignItems: 'center',
   },
-  strikeInputConfirmText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  strikeInputConfirmText: { color: c.bg, fontWeight: '700', fontSize: 13 },
 
   // Shared
   emptyCard: {
@@ -1494,6 +2150,13 @@ function makeStyles(c: ColorScheme) {
     backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
     borderRadius: 10, padding: 11, color: c.textPrimary, fontSize: 15, marginBottom: 12,
   },
+  datePressable: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 8, paddingHorizontal: 12, marginBottom: 12,
+    borderRadius: 8, borderWidth: 1, borderColor: c.accent + '50',
+    backgroundColor: c.accent + '10', alignSelf: 'flex-start',
+  },
+  datePressableText: { fontSize: 14, fontWeight: '600', color: c.accent },
   scheduleBtns: { flexDirection: 'row', gap: 8 },
   scheduleCancel: {
     flex: 1, paddingVertical: 11, borderRadius: 10,
@@ -1560,7 +2223,7 @@ function makeStyles(c: ColorScheme) {
   transferBtnText: { color: c.danger, fontSize: 14, fontWeight: '600', flex: 1 },
 
   // Transfer modal
-  transferOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
+  transferOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: c.overlay },
   transferSheet: {
     backgroundColor: c.surface,
     borderTopLeftRadius: 22, borderTopRightRadius: 22,
@@ -1601,6 +2264,20 @@ function makeStyles(c: ColorScheme) {
   },
   transferSubmitText: { color: c.bg, fontWeight: '800', fontSize: 14 },
 
+  // Receipt picker
+  receiptPickRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  receiptPickBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    paddingVertical: 11, borderRadius: 12,
+    borderWidth: 1.5, borderColor: c.accent + '50',
+    backgroundColor: c.accent + '10',
+  },
+  receiptPickText: { fontSize: 13, fontWeight: '700', color: c.accent },
+  receiptPreviewRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, marginBottom: 14 },
+  receiptThumb: { width: 60, height: 76, borderRadius: 10, backgroundColor: c.border },
+  receiptSaveBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  removeReceiptBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+
   // Payments
   paymentsCard: {
     backgroundColor: c.surface, borderRadius: 14,
@@ -1612,12 +2289,17 @@ function makeStyles(c: ColorScheme) {
   paymentMethodText: { fontSize: 13, fontWeight: '700', color: c.textPrimary, marginBottom: 2 },
   paymentDate: { fontSize: 12, color: c.textSecondary },
   paymentNotes: { fontSize: 12, color: c.textSecondary, fontStyle: 'italic', marginTop: 2 },
-  paymentAmount: { fontSize: 15, fontWeight: '800', color: '#4CAF50' },
+  paymentAmount: { fontSize: 15, fontWeight: '800', color: c.success },
   paymentMore: { ...Typography.caption, color: c.textSecondary, textAlign: 'center', paddingVertical: 10 },
+  viewAllBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    paddingVertical: 12, borderTopWidth: 1, borderTopColor: c.border,
+  },
+  viewAllText: { ...Typography.caption, color: c.accent, fontWeight: '700' },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalOverlay: { flex: 1, backgroundColor: c.overlay, justifyContent: 'flex-end' },
   payDetailSheet: {
-    backgroundColor: c.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    backgroundColor: c.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24,
     padding: 24, paddingBottom: 36,
   },
   payDetailTitle: { fontSize: 17, fontWeight: '700', color: c.textPrimary, marginBottom: 20, textAlign: 'center' },
@@ -1641,11 +2323,11 @@ function makeStyles(c: ColorScheme) {
   methodChipTextActive: { color: c.accent, fontWeight: '700' },
   reqPayBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: '#1a6b2a', borderRadius: 8,
+    backgroundColor: c.success, borderRadius: 8,
     paddingHorizontal: 10, paddingVertical: 6,
   },
-  reqPayBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  reqPayBtnText: { fontSize: 12, fontWeight: '700', color: c.bg },
   payReqSuccess: { alignItems: 'center', paddingVertical: 24, gap: 10 },
-  payReqSuccessText: { fontSize: 16, fontWeight: '700', color: '#4CAF50' },
+  payReqSuccessText: { fontSize: 16, fontWeight: '700', color: c.success },
 });
 }

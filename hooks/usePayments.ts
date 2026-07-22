@@ -29,7 +29,7 @@ export function usePayments() {
     if (!profile?.id) { setLoading(false); return; }
     setLoading(true);
 
-    const { data } = await supabase
+    const { data, error: fetchError } = await supabase
       .from('payments')
       .select(`
         id, client_id, package_type, amount, payment_method,
@@ -38,6 +38,7 @@ export function usePayments() {
       `)
       .eq('coach_id', profile.id)
       .order('payment_date', { ascending: false });
+    if (fetchError) console.error('[usePayments]', fetchError.message);
 
     setPayments(
       (data ?? []).map((row) => ({

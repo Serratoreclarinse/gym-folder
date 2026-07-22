@@ -707,7 +707,7 @@ function makeStyles(c: ColorScheme) {
     shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
   },
 
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
+  overlay: { flex: 1, backgroundColor: c.overlay, justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: c.surface,
     borderTopLeftRadius: 24, borderTopRightRadius: 24,

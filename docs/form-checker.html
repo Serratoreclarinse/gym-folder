@@ -31,6 +31,29 @@ html, body { width:100vw; height:100vh; overflow:hidden; background:#000; }
   font-size:10px; background:rgba(0,0,0,0.35);
   padding:3px 7px; border-radius:6px;
 }
+#feedback {
+  position:absolute; top:130px; right:10px;
+  display:flex; flex-direction:column; gap:5px;
+  pointer-events:none; max-width:160px; z-index:10;
+}
+.fc-item {
+  display:flex; align-items:center; gap:6px;
+  background:rgba(0,0,0,0.72); border-radius:8px;
+  padding:5px 9px; border-left:3px solid;
+}
+.fc-item.good { border-color:#4CAF50; }
+.fc-item.warn { border-color:#FF9800; }
+.fc-item.bad  { border-color:#F44336; }
+.fc-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.good .fc-dot { background:#4CAF50; }
+.warn .fc-dot { background:#FF9800; }
+.bad  .fc-dot { background:#F44336; }
+.fc-text {
+  color:#fff; font-family:-apple-system,sans-serif;
+  font-size:11px; font-weight:600; line-height:1.2;
+}
+.fc-item.fc-info { border-color:#64B5F6; }
+.fc-info .fc-dot { background:#64B5F6; }
 </style>
 </head>
 <body>
@@ -38,30 +61,26 @@ html, body { width:100vw; height:100vh; overflow:hidden; background:#000; }
 <canvas id="canvas"></canvas>
 <div id="status">Downloading AI model...<br><span style="font-size:11px;opacity:0.65">~15 MB · first load only</span></div>
 <div id="fps"></div>
+<div id="feedback"></div>
 
 <script>
-var video     = document.getElementById('video');
-var canvas    = document.getElementById('canvas');
-var ctx       = canvas.getContext('2d');
-var statusEl  = document.getElementById('status');
-var fpsEl     = document.getElementById('fps');
+var video      = document.getElementById('video');
+var canvas     = document.getElementById('canvas');
+var ctx        = canvas.getContext('2d');
+var statusEl   = document.getElementById('status');
+var fpsEl      = document.getElementById('fps');
+var feedbackEl = document.getElementById('feedback');
 
-var poseLandmarker = null;
-var lastVideoTime  = -1;
-var frozen         = false;
-var facing         = 'environment';
-var fpsCount       = 0;
-var lastFpsTs      = performance.now();
-var focusJoints    = [];
+var poseLandmarker  = null;
+var lastVideoTime   = -1;
+var frozen          = false;
+var facing          = 'environment';
+var fpsCount        = 0;
+var lastFpsTs       = performance.now();
+var focusJoints     = [];
+var currentExercise = 'squat';
+var currentAngle    = 'side';
 
-var COLORS = {
-  torso: 'rgba(100,181,246,0.9)',
-  larm:  'rgba(129,199,132,0.9)',
-  rarm:  'rgba(255,213,79,0.9)',
-  lleg:  'rgba(255,138,101,0.9)',
-  rleg:  'rgba(240,98,146,0.9)',
-  joint: 'rgba(255,255,255,0.95)',
-};
 
 var SEGS = [
   {a:11,b:12,c:'torso'},{a:11,b:23,c:'torso'},{a:12,b:24,c:'torso'},{a:23,b:24,c:'torso'},
@@ -72,6 +91,424 @@ var SEGS = [
 ];
 var KEY_IDX = [11,12,13,14,15,16,23,24,25,26,27,28,29,30,31,32];
 
+// ── Angle helpers ──────────────────────────────────────────────
+function getAngle(a, b, c) {
+  // Angle at vertex b (a-b-c) in degrees
+  if (!a || !b || !c) return null;
+  if ((a.visibility||1) < 0.4 || (b.visibility||1) < 0.4 || (c.visibility||1) < 0.4) return null;
+  var v1x = a.x-b.x, v1y = a.y-b.y;
+  var v2x = c.x-b.x, v2y = c.y-b.y;
+  var dot = v1x*v2x + v1y*v2y;
+  var mag = Math.sqrt((v1x*v1x+v1y*v1y)*(v2x*v2x+v2y*v2y));
+  if (mag < 1e-6) return null;
+  return Math.acos(Math.max(-1, Math.min(1, dot/mag))) * 180 / Math.PI;
+}
+
+function bodyAngle(top, bottom) {
+  // Degrees from vertical (0=upright, 90=horizontal)
+  if (!top || !bottom) return null;
+  if ((top.visibility||1) < 0.4 || (bottom.visibility||1) < 0.4) return null;
+  var dx = bottom.x - top.x;
+  var dy = bottom.y - top.y;
+  if (Math.abs(dy) < 1e-6) return 90;
+  return Math.atan2(Math.abs(dx), Math.abs(dy)) * 180 / Math.PI;
+}
+
+function pickBest(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  return (a.visibility||1) >= (b.visibility||1) ? a : b;
+}
+
+function avgAngle(a1, b1, c1, a2, b2, c2) {
+  var x = getAngle(a1, b1, c1);
+  var y = getAngle(a2, b2, c2);
+  if (x !== null && y !== null) return (x+y)/2;
+  return x !== null ? x : y;
+}
+
+// ── Form analysis ──────────────────────────────────────────────
+function analyzePose(lm, exercise) {
+  if (!lm || lm.length < 29) return [];
+
+  var checks = [];
+  function good(msg) { checks.push({status:'good', msg:msg}); }
+  function warn(msg) { checks.push({status:'warn', msg:msg}); }
+  function bad(msg)  { checks.push({status:'bad',  msg:msg}); }
+
+  var ls=lm[11], rs=lm[12];
+  var le=lm[13], re=lm[14];
+  var lw=lm[15], rw=lm[16];
+  var lh=lm[23], rh=lm[24];
+  var lk=lm[25], rk=lm[26];
+  var la=lm[27], ra=lm[28];
+
+  var shoulder = pickBest(ls, rs);
+  var hip      = pickBest(lh, rh);
+  var knee     = pickBest(lk, rk);
+  var ankle    = pickBest(la, ra);
+  var elbow    = pickBest(le, re);
+  var wrist    = pickBest(lw, rw);
+
+  // Reusable: hip deviation from shoulder-ankle line (+ = hip sags, - = hip rises)
+  function bodyLineDev() {
+    if (!shoulder || !hip || !ankle) return null;
+    if ((shoulder.visibility||1) < 0.4 || (ankle.visibility||1) < 0.4) return null;
+    var dx = ankle.x - shoulder.x, dy = ankle.y - shoulder.y;
+    var len = dx*dx + dy*dy;
+    if (len < 0.01) return null;
+    var t = ((hip.x - shoulder.x)*dx + (hip.y - shoulder.y)*dy) / len;
+    return hip.y - (shoulder.y + t*dy);
+  }
+
+  // ── SIDE LUNGE (front view) ─────────────────────────────────────
+  if (exercise === 'sidelunge') {
+    // Knee tracking over ankle (from front, x-axis)
+    var slL = lk && la ? Math.abs(lk.x - la.x) : null;
+    var slR = rk && ra ? Math.abs(rk.x - ra.x) : null;
+    if ((slL !== null && slL > 0.08) || (slR !== null && slR > 0.08))
+      bad('Knee caving in — push knee out');
+    else if (slL !== null || slR !== null)
+      good('Knee tracking over ankle');
+    // Bent leg depth: aim for ~90° knee angle
+    var slKnee = avgAngle(lh,lk,la, rh,rk,ra) || getAngle(hip, knee, ankle);
+    if (slKnee !== null && slKnee < 155) {
+      if (slKnee <= 95)       good('Good lunge depth');
+      else if (slKnee <= 130) warn('Lunge deeper — aim for 90°');
+    }
+    // Torso upright
+    var slT = bodyAngle(shoulder, hip);
+    if (slT !== null) {
+      if (slT < 25) good('Torso upright');
+      else          warn('Keep chest up — stay upright');
+    }
+  }
+
+  // ── SQUAT family ───────────────────────────────────────────────
+  // Research: parallel squat = ~90° knee, deep squat = 110-130°, torso lean < 35° ideal
+  else if (['squat','lunge','bulgariansplit','stepup'].indexOf(exercise) !== -1) {
+    var kneeA = avgAngle(lh,lk,la, rh,rk,ra) || getAngle(hip, knee, ankle);
+    if (kneeA !== null) {
+      if (kneeA > 158) {
+        // Standing / resting — no rep yet
+      } else if (kneeA <= 90) {
+        good('Full depth — at or below parallel');
+      } else if (kneeA <= 115) {
+        good('Good depth');
+      } else if (kneeA <= 145) {
+        warn('Squat deeper — aim for parallel');
+      }
+      // Torso lean check (only once movement starts)
+      if (kneeA < 155) {
+        var torso = bodyAngle(shoulder, hip);
+        if (torso !== null) {
+          if (torso < 30)      good('Torso upright');
+          else if (torso < 50) warn('Slight forward lean — chest up');
+          else                 bad('Too much lean — chest up');
+        }
+      }
+    }
+  }
+
+  // ── HIP HINGE family ───────────────────────────────────────────
+  // Research: hinge = max hip flexion, minimal knee bend (5-20° for RDL)
+  // Conventional deadlift: torso ~30-55° from vertical at start
+  // RDL / Good morning: pure hinge, soft knee only, back neutral
+  else if (['deadlift','rdl','hiphinge','goodmorning'].indexOf(exercise) !== -1) {
+    var hipFlex  = getAngle(shoulder, hip, knee);
+    var isLight  = exercise === 'rdl' || exercise === 'goodmorning';
+    if (hipFlex !== null && hipFlex < 155) {
+      var backLean = bodyAngle(shoulder, hip);
+      if (backLean !== null) {
+        if (isLight) {
+          // RDL / Good morning: hip hinge movement, back stays long
+          if (backLean >= 20 && backLean <= 65) good('Good hip hinge — back long');
+          else if (backLean < 20)               warn('Hinge further at hips');
+          else                                  bad('Back rounding — keep neutral spine');
+        } else {
+          // Deadlift: back angle varies with load position
+          if (backLean >= 20 && backLean <= 60) good('Back position OK');
+          else if (backLean < 20)               warn('Hinge at hips — chest down slightly');
+          else                                  bad('Back rounding — brace and lift chest');
+        }
+      }
+      // Knee check: RDL/Goodmorning need near-straight legs (soft knee only)
+      if (isLight) {
+        var hnKnee = avgAngle(lh,lk,la, rh,rk,ra) || getAngle(hip, knee, ankle);
+        if (hnKnee !== null) {
+          if (hnKnee > 155)       good('Soft knee maintained');
+          else if (hnKnee > 135)  warn('Knees too bent — straighten more');
+          else                    bad('Too much knee bend — this is a hinge, not a squat');
+        }
+      }
+    } else if (hipFlex !== null) {
+      warn('Hinge at hips to begin the movement');
+    }
+  }
+
+  // ── PUSH family ────────────────────────────────────────────────
+  // Research: bench press optimal elbow angle ~90° at bottom
+  // Push-up: body straight line, elbows 45-70° from torso
+  // Dips: elbows 90°+ at bottom; lean forward = chest, upright = triceps
+  else if (['pushup','benchpress','dips','chestfly'].indexOf(exercise) !== -1) {
+    var elbA = avgAngle(ls,le,lw, rs,re,rw) || getAngle(shoulder, elbow, wrist);
+    if (exercise === 'chestfly') {
+      // Fly: check consistent slight elbow bend (protect joints)
+      if (elbA !== null) {
+        if (elbA > 160)       bad('Lock elbows slightly — protect shoulder joints');
+        else if (elbA > 130)  good('Good elbow bend — arms wide');
+        else if (elbA > 80)   good('Mid-range / returning');
+        else                  good('Good contraction — squeeze chest');
+      }
+    } else {
+      // Press / push movements: depth check
+      if (elbA !== null) {
+        if (elbA > 155) {
+          // Top of rep — extended position, no feedback needed
+        } else if (elbA <= 85) {
+          good('Full depth — good range');
+        } else if (elbA <= 110) {
+          good('Good depth — near 90°');
+        } else {
+          warn('Lower further — aim for 90° elbow');
+        }
+      }
+      // Push-up: body straight (side view)
+      if (exercise === 'pushup') {
+        var pDev = bodyLineDev();
+        if (pDev !== null) {
+          if (Math.abs(pDev) < 0.05) good('Body in straight line');
+          else if (pDev > 0.05)      bad('Hips sagging — raise them');
+          else                       bad('Hips too high — lower them');
+        }
+      }
+      // Dips: torso lean tells muscle emphasis
+      if (exercise === 'dips') {
+        var dipLean = bodyAngle(shoulder, hip);
+        if (dipLean !== null) {
+          if (dipLean > 20) good('Forward lean — chest focus');
+          else              good('Upright — tricep focus');
+        }
+      }
+    }
+  }
+
+  // ── SIDE PLANK (front view) ─────────────────────────────────────
+  // Research: hips should not drop; straight line from head to feet
+  else if (exercise === 'sideplank') {
+    if (shoulder && hip && (shoulder.visibility||1) > 0.4 && (hip.visibility||1) > 0.4) {
+      var spDev = hip.y - shoulder.y;
+      if (Math.abs(spDev) < 0.06)  good('Hips level — good alignment');
+      else if (spDev > 0.06)       bad('Hips dropping — raise them');
+      else                         warn('Lower hips slightly');
+    }
+  }
+
+  // ── PLANK / DEAD BUG (side view) ───────────────────────────────
+  // Research: neutral spine; hips inline with shoulders and feet
+  // Dead bug: back flat on floor, extend opposite arm & leg
+  else if (['plank','deadbug'].indexOf(exercise) !== -1) {
+    var lnDev = bodyLineDev();
+    if (lnDev !== null) {
+      if (exercise === 'deadbug') {
+        if (Math.abs(lnDev) < 0.05) good('Back flat — core braced');
+        else if (lnDev > 0.05)      bad('Press lower back to floor');
+        else                        warn('Relax hips slightly');
+      } else {
+        if (Math.abs(lnDev) < 0.05) good('Body aligned — hips level');
+        else if (lnDev > 0.05)      bad('Hips sagging — raise them');
+        else                        bad('Hips too high — lower them');
+      }
+    }
+  }
+
+  // ── PULL family ────────────────────────────────────────────────
+  // Research: pull-up/lat pulldown: lead with elbows downward, full contraction
+  // Bent row: torso ~45° forward, pull to lower rib cage
+  // Seated row: torso upright (~5-10° max lean), drive elbows behind body
+  // Lat pulldown: slight backward lean only (≤15°), elbows drive down
+  else if (['pullup','latpulldown','row','seatedrow','facepull'].indexOf(exercise) !== -1) {
+    var pullA = avgAngle(ls,le,lw, rs,re,rw) || getAngle(shoulder, elbow, wrist);
+    if (pullA !== null) {
+      if (pullA < 75)        good('Full contraction — squeeze back');
+      else if (pullA < 120)  good('Good pulling range');
+      else if (pullA < 155)  warn('Pull further — drive elbows down/back');
+    }
+    if (exercise === 'row') {
+      var rowLean = bodyAngle(shoulder, hip);
+      if (rowLean !== null) {
+        if (rowLean >= 35 && rowLean <= 65) good('Torso angle correct ~45°');
+        else if (rowLean < 35)              warn('Hinge forward more — ~45°');
+        else                                bad('Too upright — hinge at hips first');
+      }
+    }
+    if (exercise === 'seatedrow') {
+      var srLean = bodyAngle(shoulder, hip);
+      if (srLean !== null) {
+        if (srLean < 15)      good('Torso upright — good position');
+        else if (srLean < 25) warn('Reduce lean — stay upright');
+        else                  bad('Too much swing — control the movement');
+      }
+    }
+    if (exercise === 'latpulldown') {
+      var ldLean = bodyAngle(shoulder, hip);
+      if (ldLean !== null) {
+        if (ldLean < 20)      good('Good torso position');
+        else if (ldLean < 35) warn('Lean back only slightly');
+        else                  bad('Too much lean — sit upright');
+      }
+    }
+  }
+
+  // ── OH PRESS / RAISES ──────────────────────────────────────────
+  // Research: OH press — torso upright, no lumbar arch; wrists directly overhead
+  // Lateral raise: raise to shoulder height, slight elbow bend
+  // Front raise: raise to shoulder height, elbow slightly bent
+  else if (['ohpress','frontraise','lateralraise'].indexOf(exercise) !== -1) {
+    if (exercise === 'ohpress') {
+      // Wrist above shoulder = overhead position
+      if (wrist && shoulder && (wrist.visibility||1) > 0.4 && (shoulder.visibility||1) > 0.4) {
+        if (wrist.y < shoulder.y - 0.08) good('Arms overhead — lockout');
+        else if (wrist.y < shoulder.y)   good('Pressing overhead');
+        else                              warn('Press to full overhead');
+      }
+      // Starting elbow position (~90°)
+      var elbP = avgAngle(ls,le,lw, rs,re,rw);
+      if (elbP !== null && elbP > 155) warn('Bend elbows — start at 90°');
+      // Torso: must stay upright — no lumbar arch
+      var ohTorso = bodyAngle(shoulder, hip);
+      if (ohTorso !== null) {
+        if (ohTorso <= 15)    good('Torso upright — no arch');
+        else if (ohTorso <= 25) warn('Brace core — slight arch detected');
+        else                  bad('Avoid arching back — engage core');
+      }
+    } else if (exercise === 'lateralraise') {
+      // Raise to shoulder height; elbow leads, slight bend
+      if (elbow && shoulder && (elbow.visibility||1) > 0.4 && (shoulder.visibility||1) > 0.4) {
+        if (elbow.y < shoulder.y - 0.10)       warn('Too high — lower to shoulder level');
+        else if (elbow.y <= shoulder.y + 0.04)  good('Shoulder height — good range');
+        else                                    warn('Raise arms to shoulder height');
+      }
+    } else { // frontraise
+      if (wrist && shoulder && (wrist.visibility||1) > 0.4 && (shoulder.visibility||1) > 0.4) {
+        if (wrist.y < shoulder.y - 0.12)       warn('Too high — lower to shoulder level');
+        else if (wrist.y <= shoulder.y + 0.05)  good('Shoulder height — good range');
+        else                                    warn('Raise to shoulder height');
+      }
+    }
+  }
+
+  // ── ARM CURLS ──────────────────────────────────────────────────
+  // Research: upper arms pinned to sides, curl to peak contraction (~45° elbow)
+  // Full extension at bottom (but don't hyperextend), no elbow swinging
+  else if (['bicepcurl','hammercurl'].indexOf(exercise) !== -1) {
+    var curlA = avgAngle(ls,le,lw, rs,re,rw) || getAngle(shoulder, elbow, wrist);
+    if (curlA !== null) {
+      if (curlA < 50)        good('Peak contraction — squeeze');
+      else if (curlA < 90)   good('Good curl range');
+      else if (curlA > 158)  good('Full extension — full ROM');
+      else if (curlA > 120)  warn('Curl up further');
+      else                   warn('Full ROM — extend more at bottom');
+    }
+  }
+
+  // ── TRICEP EXT ─────────────────────────────────────────────────
+  // Research: full extension at top (~180°), deep stretch at bottom (~45° or less)
+  else if (exercise === 'tricepext') {
+    var triA = avgAngle(ls,le,lw, rs,re,rw) || getAngle(shoulder, elbow, wrist);
+    if (triA !== null) {
+      if (triA > 158)       good('Full extension — triceps contracted');
+      else if (triA > 130)  warn('Extend fully — lock out');
+      else if (triA < 60)   good('Good stretch at bottom');
+      else                  warn('Control through full range');
+    }
+  }
+
+  // ── HIP THRUST / GLUTE BRIDGE ──────────────────────────────────
+  // Research: knee at 90° at top, full hip extension (hips level with knees+shoulders)
+  // Feet ~6-8 inches from glutes; too close/far shifts load away from glutes
+  else if (['hipthrust','glutebridge'].indexOf(exercise) !== -1) {
+    var hipExt = getAngle(shoulder, hip, knee);
+    if (hipExt !== null) {
+      if (hipExt > 168)      good('Full hip extension — squeeze glutes');
+      else if (hipExt > 150) warn('Drive hips higher — full extension');
+      else                   warn('More hip extension — push through heels');
+    }
+    var htKnee = avgAngle(lh,lk,la, rh,rk,ra) || getAngle(hip, knee, ankle);
+    if (htKnee !== null) {
+      if (htKnee >= 80 && htKnee <= 105) good('Knee at 90° — foot position good');
+      else if (htKnee < 70)              bad('Feet too close — shift them forward');
+      else if (htKnee > 120)             warn('Feet too far — shift them closer');
+    }
+  }
+
+  // ── CALF RAISE ─────────────────────────────────────────────────
+  // Research: full plantarflexion — heels lift above ankle level
+  else if (exercise === 'calfraise') {
+    var lheel = lm[29] || null, rheel = lm[30] || null;
+    var heelY = null;
+    if (lheel && (lheel.visibility||1) > 0.3 && rheel && (rheel.visibility||1) > 0.3) {
+      heelY = (lheel.y + rheel.y) / 2;
+    } else if (lheel && (lheel.visibility||1) > 0.3) { heelY = lheel.y; }
+    else if (rheel && (rheel.visibility||1) > 0.3)   { heelY = rheel.y; }
+    if (heelY !== null && ankle) {
+      var liftH = ankle.y - heelY;
+      if (liftH > 0.05)      good('Full range — heels high');
+      else if (liftH > 0.01) warn('Rise higher — full plantarflexion');
+      else                   warn('Rise onto toes — full range');
+    } else {
+      warn('Side view: rise fully onto toes');
+    }
+  }
+
+  return checks;
+}
+
+// ── Feedback panel ─────────────────────────────────────────────
+var lastPostMs = 0;
+
+function renderFeedback(checks) {
+  var html = '';
+
+  // Camera position chip — always visible when an exercise is selected
+  if (currentAngle) {
+    var aText = currentAngle === 'front' ? 'Face client from front' :
+                currentAngle === 'back'  ? 'Stand behind client' :
+                                           'Stand to the side';
+    html += '<div class="fc-item fc-info">' +
+      '<div class="fc-dot"></div>' +
+      '<span class="fc-text">📷 ' + aText + '</span>' +
+      '</div>';
+  }
+
+  if (checks && checks.length > 0) {
+    html += checks.map(function(c) {
+      return '<div class="fc-item ' + c.status + '">' +
+        '<div class="fc-dot"></div>' +
+        '<span class="fc-text">' + c.msg + '</span>' +
+        '</div>';
+    }).join('');
+  }
+
+  feedbackEl.innerHTML = html;
+
+  // Send AI results to React Native (~5 fps throttle)
+  var now = Date.now();
+  if (now - lastPostMs > 200) {
+    lastPostMs = now;
+    try {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'checks',
+          exercise: currentExercise,
+          data: checks || [],
+        }));
+      }
+    } catch(e) {}
+  }
+}
+
+// ── Camera ─────────────────────────────────────────────────────
 async function startCamera(facingMode) {
   try {
     if (video.srcObject) video.srcObject.getTracks().forEach(function(t){ t.stop(); });
@@ -99,9 +536,7 @@ async function init() {
     var PoseLandmarker  = window.PoseLandmarker  || (window.vision && window.vision.PoseLandmarker);
     if (!FilesetResolver || !PoseLandmarker) throw new Error('Globals not set after load');
 
-    var fs = await FilesetResolver.forVisionTasks(
-      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
-    );
+    var fs = await FilesetResolver.forVisionTasks('./wasm');
     poseLandmarker = await PoseLandmarker.createFromOptions(fs, {
       baseOptions: {
         modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
@@ -127,7 +562,11 @@ function detectFrame() {
       lastVideoTime = video.currentTime;
       var res = poseLandmarker.detectForVideo(video, performance.now());
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (res.landmarks && res.landmarks.length > 0) drawPose(res.landmarks[0]);
+      if (res.landmarks && res.landmarks.length > 0) {
+        drawPose(res.landmarks[0]);
+      } else {
+        renderFeedback([]);
+      }
       fpsCount++;
       var now = performance.now();
       if (now - lastFpsTs >= 1000) {
@@ -147,9 +586,11 @@ function drawPose(lm) {
     if (!pa || !pb) continue;
     if ((pa.visibility||1) < 0.35 || (pb.visibility||1) < 0.35) continue;
     var isFocus = focusJoints.indexOf(s.a) !== -1 && focusJoints.indexOf(s.b) !== -1;
-    ctx.beginPath();
-    ctx.strokeStyle = isFocus ? 'rgba(255,230,0,0.95)' : COLORS[s.c];
+    ctx.shadowBlur  = 10;
+    ctx.shadowColor = isFocus ? 'rgba(255,220,0,0.7)' : 'rgba(60,180,255,0.7)';
+    ctx.strokeStyle = isFocus ? 'rgba(255,230,0,0.95)' : 'rgba(100,210,255,0.95)';
     ctx.lineWidth   = isFocus ? 4 : 2.5;
+    ctx.beginPath();
     ctx.moveTo(pa.x * canvas.width, pa.y * canvas.height);
     ctx.lineTo(pb.x * canvas.width, pb.y * canvas.height);
     ctx.stroke();
@@ -161,13 +602,18 @@ function drawPose(lm) {
     var x = p.x * canvas.width;
     var y = p.y * canvas.height;
     var isFocusJoint = focusJoints.indexOf(idx) !== -1;
+    ctx.shadowBlur  = isFocusJoint ? 14 : 8;
+    ctx.shadowColor = isFocusJoint ? 'rgba(255,220,0,0.85)' : 'rgba(60,180,255,0.75)';
+    ctx.fillStyle   = isFocusJoint ? 'rgba(255,230,0,0.95)' : 'rgba(100,210,255,0.95)';
     ctx.beginPath();
     ctx.arc(x, y, isFocusJoint ? 7 : 5, 0, Math.PI * 2);
-    ctx.fillStyle = isFocusJoint ? 'rgba(255,230,0,0.95)' : COLORS.joint;
     ctx.fill();
   }
+  ctx.shadowBlur = 0;
+  renderFeedback(analyzePose(lm, currentExercise));
 }
 
+// ── Window commands (called via injectJavaScript from React Native) ──
 window.flipCamera = async function() {
   facing = facing === 'environment' ? 'user' : 'environment';
   await startCamera(facing);
@@ -180,39 +626,21 @@ window.toggleFreeze = function() {
   if (!frozen && poseLandmarker) { lastVideoTime = -1; requestAnimationFrame(detectFrame); }
 };
 
-window.setFocusJoints = function(joints) {
-  focusJoints = joints;
+window.setExercise = function(key, joints, angle) {
+  currentExercise = key || 'free';
+  focusJoints = joints || [];
+  currentAngle = angle || '';
 };
 
-// ── Load MediaPipe from CDN (works because this page is served via HTTPS) ──
-(async function() {
-  var URLS = [
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js',
-    'https://unpkg.com/@mediapipe/tasks-vision@0.10.14/vision_bundle.js',
-  ];
-
-  function loadTag(url) {
-    return new Promise(function(resolve, reject) {
-      var s = document.createElement('script');
-      s.src = url;
-      s.crossOrigin = 'anonymous';
-      s.onload  = function() { resolve(); };
-      s.onerror = function() { reject(new Error('tag failed')); };
-      document.head.appendChild(s);
-    });
-  }
-
-  for (var i = 0; i < URLS.length; i++) {
-    try {
-      statusEl.innerHTML = 'Downloading AI model...<br><span style="font-size:11px;opacity:0.65">~15 MB · first load only</span>';
-      await loadTag(URLS[i]);
-      init();
-      return;
-    } catch(e) {}
-  }
-
-  statusEl.innerHTML = '⚠️ Could not load AI library<br><span style="font-size:11px;opacity:0.7">Check internet connection</span>';
-})();
+window.setFocusJoints = function(joints) {
+  focusJoints = joints || [];
+};
+</script>
+<script type="module">
+import { FilesetResolver, PoseLandmarker } from './vision_bundle.mjs';
+window.FilesetResolver = FilesetResolver;
+window.PoseLandmarker  = PoseLandmarker;
+init();
 </script>
 </body>
 </html>

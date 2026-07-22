@@ -20,6 +20,7 @@ type HistorySession = {
   session_type: 'gym' | 'home';
   status: string;
   notes: string | null;
+  rating: number | null;
   exercises: Array<{
     exercise_name: string;
     sets: number | null;
@@ -66,7 +67,8 @@ export default function SessionHistoryScreen() {
       .select(`
         id, client_id, session_date, scheduled_time,
         duration_minutes, session_type, status, notes, exercises,
-        client:profiles!workout_sessions_client_id_fkey(name)
+        client:profiles!workout_sessions_client_id_fkey(name),
+        session_ratings(rating)
       `)
       .eq('coach_id', profile.id)
       .order('session_date', { ascending: false })
@@ -83,6 +85,7 @@ export default function SessionHistoryScreen() {
         session_type: row.session_type ?? 'gym',
         status: row.status ?? 'confirmed',
         notes: row.notes ?? null,
+        rating: Array.isArray(row.session_ratings) && row.session_ratings.length > 0 ? row.session_ratings[0].rating : null,
         exercises: Array.isArray(row.exercises) ? row.exercises : (typeof row.exercises === 'string' ? (() => { try { return JSON.parse(row.exercises); } catch { return []; } })() : []),
       })),
     );
@@ -215,6 +218,15 @@ export default function SessionHistoryScreen() {
                         <Text style={s.sessionNotes}>"{session.notes}"</Text>
                       ) : null}
 
+                      {session.rating != null && (
+                        <View style={s.ratingRow}>
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <Ionicons key={i} name={i < session.rating! ? 'star' : 'star-outline'} size={14} color={i < session.rating! ? '#FFD700' : colors.border} />
+                          ))}
+                          <Text style={s.ratingText}>Client rated {session.rating}/5</Text>
+                        </View>
+                      )}
+
                       <Pressable style={s.restoreBtn} onPress={() => handleRestore(session)}>
                         <Ionicons name="refresh-outline" size={15} color={colors.bg} />
                         <Text style={s.restoreBtnText}>RESTORE AS NEW SESSION</Text>
@@ -291,11 +303,16 @@ function makeStyles(c: ColorScheme) {
       fontStyle: 'italic', marginTop: 4,
     },
 
+    ratingRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8,
+    },
+    ratingText: { ...Typography.caption, color: c.textSecondary, marginLeft: 4 },
+
     restoreBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
       backgroundColor: c.accent, borderRadius: 10,
       paddingVertical: 11, marginTop: 12,
     },
-    restoreBtnText: { color: '#fff', fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
+    restoreBtnText: { color: c.bg, fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
   });
 }

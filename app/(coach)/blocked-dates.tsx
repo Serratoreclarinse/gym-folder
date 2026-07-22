@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -10,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useAvailability } from '@/hooks/useAvailability';
 import { useSessions } from '@/hooks/useSessions';
@@ -33,29 +35,60 @@ function BlockForm({
   colors: ColorScheme;
   styles: ReturnType<typeof makeStyles>;
 }) {
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
+  const startVal = startDate ? new Date(startDate + 'T00:00:00') : new Date();
+  const endVal = endDate ? new Date(endDate + 'T00:00:00') : new Date();
+  const fmtD = (iso: string) => iso
+    ? new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+
   return (
     <View style={styles.fsWrap}>
       <Text style={styles.fsLbl}>START DATE</Text>
-      <TextInput
-        style={styles.fsInput}
-        value={startDate}
-        onChangeText={onChangeStart}
-        placeholder="YYYY-MM-DD"
-        placeholderTextColor={colors.textSecondary}
-        keyboardType="numbers-and-punctuation"
-        maxLength={10}
-        autoFocus
-      />
+      {Platform.OS === 'ios' ? (
+        <DateTimePicker
+          value={startVal}
+          mode="date"
+          display="compact"
+          onChange={(_, s) => { if (s) onChangeStart(s.toISOString().split('T')[0]); }}
+          style={{ alignSelf: 'flex-start', marginLeft: -8, marginBottom: 12 }}
+        />
+      ) : (
+        <>
+          <Pressable style={styles.datePressable} onPress={() => setShowStartPicker(true)}>
+            <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+            <Text style={styles.datePressableText}>{fmtD(startDate) || 'Select start date'}</Text>
+          </Pressable>
+          {showStartPicker && (
+            <DateTimePicker value={startVal} mode="date" display="default"
+              onChange={(_, s) => { setShowStartPicker(false); if (s) onChangeStart(s.toISOString().split('T')[0]); }}
+            />
+          )}
+        </>
+      )}
       <Text style={styles.fsLbl}>END DATE</Text>
-      <TextInput
-        style={styles.fsInput}
-        value={endDate}
-        onChangeText={onChangeEnd}
-        placeholder="YYYY-MM-DD"
-        placeholderTextColor={colors.textSecondary}
-        keyboardType="numbers-and-punctuation"
-        maxLength={10}
-      />
+      {Platform.OS === 'ios' ? (
+        <DateTimePicker
+          value={endVal}
+          mode="date"
+          display="compact"
+          onChange={(_, s) => { if (s) onChangeEnd(s.toISOString().split('T')[0]); }}
+          style={{ alignSelf: 'flex-start', marginLeft: -8, marginBottom: 12 }}
+        />
+      ) : (
+        <>
+          <Pressable style={styles.datePressable} onPress={() => setShowEndPicker(true)}>
+            <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+            <Text style={styles.datePressableText}>{fmtD(endDate) || 'Select end date'}</Text>
+          </Pressable>
+          {showEndPicker && (
+            <DateTimePicker value={endVal} mode="date" display="default"
+              onChange={(_, s) => { setShowEndPicker(false); if (s) onChangeEnd(s.toISOString().split('T')[0]); }}
+            />
+          )}
+        </>
+      )}
       <Text style={styles.fsLbl}>REASON (optional)</Text>
       <TextInput
         style={[styles.fsInput, { height: 72, textAlignVertical: 'top', paddingTop: 10 }]}
@@ -94,19 +127,36 @@ function TimeBlockForm({
   colors: ColorScheme;
   styles: ReturnType<typeof makeStyles>;
 }) {
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const dateVal = date ? new Date(date + 'T00:00:00') : new Date();
+  const fmtD = (iso: string) => iso
+    ? new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+
   return (
     <View style={styles.fsWrap}>
       <Text style={styles.fsLbl}>DATE</Text>
-      <TextInput
-        style={styles.fsInput}
-        value={date}
-        onChangeText={onChangeDate}
-        placeholder="YYYY-MM-DD"
-        placeholderTextColor={colors.textSecondary}
-        keyboardType="numbers-and-punctuation"
-        maxLength={10}
-        autoFocus
-      />
+      {Platform.OS === 'ios' ? (
+        <DateTimePicker
+          value={dateVal}
+          mode="date"
+          display="compact"
+          onChange={(_, s) => { if (s) onChangeDate(s.toISOString().split('T')[0]); }}
+          style={{ alignSelf: 'flex-start', marginLeft: -8, marginBottom: 12 }}
+        />
+      ) : (
+        <>
+          <Pressable style={styles.datePressable} onPress={() => setShowDatePicker(true)}>
+            <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+            <Text style={styles.datePressableText}>{fmtD(date) || 'Select date'}</Text>
+          </Pressable>
+          {showDatePicker && (
+            <DateTimePicker value={dateVal} mode="date" display="default"
+              onChange={(_, s) => { setShowDatePicker(false); if (s) onChangeDate(s.toISOString().split('T')[0]); }}
+            />
+          )}
+        </>
+      )}
       <Text style={styles.fsLbl}>START TIME</Text>
       <TextInput
         style={styles.fsInput}
@@ -463,6 +513,13 @@ function makeStyles(c: ColorScheme) {
     fsWrap:      { padding: 20, paddingBottom: 40 },
     fsLbl:       { ...Typography.label, color: c.textSecondary, marginBottom: 6, marginTop: 14 },
     fsInput:     { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: c.textPrimary, fontSize: 15 },
+    datePressable: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      paddingVertical: 8, paddingHorizontal: 12, marginBottom: 4,
+      borderRadius: 8, borderWidth: 1, borderColor: c.accent + '50',
+      backgroundColor: c.accent + '10', alignSelf: 'flex-start',
+    },
+    datePressableText: { fontSize: 14, fontWeight: '600', color: c.accent },
     fsBtns:      { flexDirection: 'row', gap: 10, marginTop: 24 },
     fsCancelBtn: { flex: 1, borderRadius: 12, borderWidth: 1, borderColor: c.border, paddingVertical: 13, alignItems: 'center' },
     fsCancelTxt: { color: c.textSecondary, fontWeight: '700', fontSize: 14 },

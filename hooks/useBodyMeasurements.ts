@@ -45,7 +45,7 @@ export function useMyMeasurements(clientId: string | undefined) {
       .from('body_measurements')
       .upsert({ ...entry, client_id: clientId }, { onConflict: 'client_id,logged_at' });
     if (error) return error.message;
-    await load();
+    load();
     return null;
   };
 
@@ -59,7 +59,7 @@ export function useMyMeasurements(clientId: string | undefined) {
   return { measurements, loading, refetch: load, upsert, remove };
 }
 
-// Coach: read a specific client's measurements
+// Coach: read and log measurements for a specific client
 export function useClientMeasurements(clientId: string | undefined) {
   const [measurements, setMeasurements] = useState<BodyMeasurement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,5 +79,15 @@ export function useClientMeasurements(clientId: string | undefined) {
 
   useEffect(() => { load(); }, [load]);
 
-  return { measurements, loading, refetch: load };
+  const upsert = async (entry: Omit<NewMeasurement, 'client_id'>): Promise<string | null> => {
+    if (!clientId) return 'No client selected';
+    const { error } = await supabase
+      .from('body_measurements')
+      .upsert({ ...entry, client_id: clientId }, { onConflict: 'client_id,logged_at' });
+    if (error) return error.message;
+    load();
+    return null;
+  };
+
+  return { measurements, loading, refetch: load, upsert };
 }

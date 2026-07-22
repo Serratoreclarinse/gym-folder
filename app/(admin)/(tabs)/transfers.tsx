@@ -43,9 +43,9 @@ export default function AdminTransfersScreen() {
   const s = useMemo(() => makeStyles(colors), [colors]);
 
   const STATUS_COLOR: Record<string, string> = {
-    pending_admin:  '#FF9800',
+    pending_admin:  colors.warning,
     pending_coach:  colors.accent,
-    accepted:       '#4CAF50',
+    accepted:       colors.success,
     rejected_admin: colors.danger,
     rejected_coach: colors.danger,
     cancelled:      colors.textSecondary,
@@ -181,8 +181,8 @@ export default function AdminTransfersScreen() {
                       {t.package_type} · {t.sessions_remaining} sessions left
                     </Text>
                   </View>
-                  <View style={[s.statusPill, { backgroundColor: '#FF980020', borderColor: '#FF980060' }]}>
-                    <Text style={[s.statusPillText, { color: '#FF9800' }]}>PENDING</Text>
+                  <View style={[s.statusPill, { backgroundColor: colors.warning + '20', borderColor: colors.warning + '60' }]}>
+                    <Text style={[s.statusPillText, { color: colors.warning }]}>PENDING</Text>
                   </View>
                 </View>
 
@@ -292,10 +292,10 @@ function makeStyles(c: ColorScheme) {
     sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
     sectionTitle: { ...Typography.label, color: c.textSecondary },
     badge: {
-      backgroundColor: '#FF980020', borderRadius: 10, borderWidth: 1, borderColor: '#FF980060',
+      backgroundColor: c.warning + '20', borderRadius: 10, borderWidth: 1, borderColor: c.warning + '60',
       paddingHorizontal: 8, paddingVertical: 2,
     },
-    badgeText: { fontSize: 12, fontWeight: '800', color: '#FF9800' },
+    badgeText: { fontSize: 12, fontWeight: '800', color: c.warning },
 
     card: {
       backgroundColor: c.surface, borderRadius: 14,

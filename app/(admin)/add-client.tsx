@@ -3,6 +3,7 @@ import {
   KeyboardAvoidingView, Modal, Platform, Pressable,
   ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
+import { PhoneInput } from '@/components/PhoneInput';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
@@ -45,9 +46,11 @@ export default function AdminAddClientScreen() {
   const [pkgType, setPkgType] = useState<PackageType>('1hr');
   const [totalSessions, setTotalSessions] = useState('');
   const [durationWeeks, setDurationWeeks] = useState('');
+  const [referredBy, setReferredBy] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [successData, setSuccessData] = useState<{ clientName: string; email: string; password?: string } | null>(null);
+  const [reactivateTarget, setReactivateTarget] = useState<{ id: string; name: string } | null>(null);
+  const [successData, setSuccessData] = useState<{ clientName: string; email: string; password?: string; reactivated?: boolean } | null>(null);
 
   const loadCoaches = useCallback(async () => {
     setLoadingCoaches(true);
@@ -55,6 +58,7 @@ export default function AdminAddClientScreen() {
       .from('profiles')
       .select('id, name, email')
       .eq('role', 'coach')
+      .is('deactivated_at', null)
       .order('name');
     setCoaches(data ?? []);
     setLoadingCoaches(false);
@@ -72,6 +76,9 @@ export default function AdminAddClientScreen() {
     totalSessions.trim() &&
     Number(totalSessions) > 0;
 
+  const isValidReactivate =
+    !!reactivateTarget && !!selectedCoachId && !!totalSessions && Number(totalSessions) > 0;
+
   const handleSubmit = async () => {
     setEmailTouched(true);
     setErrorMsg('');
@@ -81,6 +88,20 @@ export default function AdminAddClientScreen() {
       return;
     }
     setLoading(true);
+    const { data: existing } = await supabase
+      .from('profiles')
+      .select('id, name, deactivated_at')
+      .eq('email', email.trim().toLowerCase())
+      .maybeSingle();
+    if (existing) {
+      setLoading(false);
+      if (existing.deactivated_at) {
+        setReactivateTarget({ id: existing.id, name: existing.name });
+      } else {
+        setErrorMsg('An account with this email already exists.');
+      }
+      return;
+    }
     try {
       const { data, error } = await supabase.functions.invoke('create-client', {
         body: {
@@ -97,19 +118,67 @@ export default function AdminAddClientScreen() {
         setErrorMsg(data?.error ?? error?.message ?? 'Something went wrong');
         return;
       }
+      // Save referral info if provided
+      if (referredBy.trim()) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('email', email.trim().toLowerCase())
+          .single();
+        if (prof?.id) {
+          await supabase.from('profiles').update({ referred_by: referredBy.trim() }).eq('id', prof.id);
+        }
+      }
       setSuccessData({
         clientName: name.trim(),
         email: email.trim().toLowerCase(),
         password: data.temp_password ?? undefined,
       });
       setName(''); setEmail(''); setPhone('');
-      setTotalSessions(''); setDurationWeeks('');
+      setTotalSessions(''); setDurationWeeks(''); setReferredBy('');
       setSelectedCoachId(''); setEmailTouched(false);
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to create client');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleReactivate = async () => {
+    if (!reactivateTarget || !selectedCoachId || !totalSessions || Number(totalSessions) <= 0) return;
+    setLoading(true);
+    setErrorMsg('');
+    const { error: restoreErr } = await supabase.rpc('admin_restore_account', { p_user_id: reactivateTarget.id });
+    if (restoreErr) {
+      setLoading(false);
+      setErrorMsg('Failed to reactivate: ' + restoreErr.message);
+      return;
+    }
+    const { error: pkgErr } = await supabase.from('packages').insert({
+      coach_id: selectedCoachId,
+      client_id: reactivateTarget.id,
+      package_type: pkgType,
+      total_sessions: Number(totalSessions),
+      sessions_used: 0,
+      status: 'active',
+      start_date: new Date().toISOString().slice(0, 10),
+      ...(durationWeeks && Number(durationWeeks) > 0 ? { duration_weeks: Number(durationWeeks) } : {}),
+    });
+    if (pkgErr) {
+      setLoading(false);
+      setErrorMsg('Account restored but failed to create package: ' + pkgErr.message);
+      return;
+    }
+    if (referredBy.trim()) {
+      await supabase.from('profiles').update({ referred_by: referredBy.trim() }).eq('id', reactivateTarget.id);
+    }
+    const restored = reactivateTarget;
+    setReactivateTarget(null);
+    setName(''); setEmail(''); setPhone('');
+    setTotalSessions(''); setDurationWeeks(''); setReferredBy('');
+    setSelectedCoachId(''); setEmailTouched(false);
+    setLoading(false);
+    setSuccessData({ clientName: restored.name, email: email.trim().toLowerCase(), reactivated: true });
   };
 
   return (
@@ -123,6 +192,21 @@ export default function AdminAddClientScreen() {
 
         {!!errorMsg && <Text style={s.errorBanner}>{errorMsg}</Text>}
 
+        {reactivateTarget && (
+          <View style={s.reactivateBanner}>
+            <Ionicons name="refresh-circle-outline" size={22} color={colors.warning} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.reactivateTitle}>Existing account found</Text>
+              <Text style={s.reactivateSub}>
+                <Text style={{ fontWeight: '700' }}>{reactivateTarget.name}</Text> has a deactivated account with this email. Select a coach and package below, then tap Reactivate.
+              </Text>
+            </View>
+            <Pressable onPress={() => { setReactivateTarget(null); setErrorMsg(''); }}>
+              <Ionicons name="close-circle-outline" size={20} color={colors.warning} />
+            </Pressable>
+          </View>
+        )}
+
         {/* Coach selection */}
         <Text style={s.sectionTitle}>ASSIGN TO COACH <Text style={{ color: colors.accent }}>*</Text></Text>
         {loadingCoaches ? (
@@ -131,7 +215,7 @@ export default function AdminAddClientScreen() {
           </View>
         ) : coaches.length === 0 ? (
           <View style={s.noCoaches}>
-            <Ionicons name="warning-outline" size={20} color="#FFA500" />
+            <Ionicons name="warning-outline" size={20} color={colors.warning} />
             <Text style={s.noCoachesText}>No coaches found. Add a coach first.</Text>
           </View>
         ) : (
@@ -193,7 +277,15 @@ export default function AdminAddClientScreen() {
           colors={colors}
           s={s}
         />
-        <Field label="Phone" value={phone} onChange={setPhone} placeholder="+968 1234 5678" keyboard="phone-pad" colors={colors} s={s} />
+        <View style={s.emailNote}>
+          <Ionicons name="information-circle-outline" size={14} color={colors.textSecondary} />
+          <Text style={s.emailNoteText}>Make sure this email is correct and accessible to the client — it's needed for password reset.</Text>
+        </View>
+        <View style={s.field}>
+          <Text style={s.fieldLabel}>Phone</Text>
+          <PhoneInput value={phone} onChange={setPhone} colors={colors} />
+        </View>
+        <Field label="Referred By (optional)" value={referredBy} onChange={setReferredBy} placeholder="Name of person who referred this client" colors={colors} s={s} />
 
         {/* Package */}
         <Text style={[s.sectionTitle, { marginTop: 24 }]}>PACKAGE</Text>
@@ -234,11 +326,13 @@ export default function AdminAddClientScreen() {
         />
 
         <Pressable
-          style={[s.submitBtn, (!isValid || loading) && s.submitDisabled]}
-          onPress={handleSubmit}
-          disabled={!isValid || loading}
+          style={[s.submitBtn, reactivateTarget ? s.reactivateBtn : null, (!(reactivateTarget ? isValidReactivate : isValid) || loading) && s.submitDisabled]}
+          onPress={reactivateTarget ? handleReactivate : handleSubmit}
+          disabled={!(reactivateTarget ? isValidReactivate : isValid) || loading}
         >
-          <Text style={s.submitText}>{loading ? 'CREATING…' : 'ADD CLIENT'}</Text>
+          <Text style={s.submitText}>
+            {loading ? (reactivateTarget ? 'REACTIVATING…' : 'CREATING…') : (reactivateTarget ? 'REACTIVATE ACCOUNT' : 'ADD CLIENT')}
+          </Text>
         </Pressable>
         </View>
       </ScrollView>
@@ -246,16 +340,21 @@ export default function AdminAddClientScreen() {
       <Modal visible={!!successData} transparent animationType="fade">
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
-            <Text style={s.modalIcon}>✅</Text>
-            <Text style={s.modalTitle}>Client Added!</Text>
+            <Text style={s.modalIcon}>{successData?.reactivated ? '🔄' : '✅'}</Text>
+            <Text style={s.modalTitle}>{successData?.reactivated ? 'Account Reactivated!' : 'Client Added!'}</Text>
             <Text style={s.modalSub}>
-              <Text style={s.modalBold}>{successData?.clientName}</Text> has been created and assigned.
+              <Text style={s.modalBold}>{successData?.clientName}</Text>{' '}
+              {successData?.reactivated ? 'is back in the system. All previous history has been preserved.' : 'has been created and assigned.'}
             </Text>
 
             <View style={s.credBox}>
               <Text style={s.credLabel}>EMAIL</Text>
               <Text style={s.credValue}>{successData?.email}</Text>
-              {successData?.password ? (
+              {successData?.reactivated ? (
+                <Text style={s.credHint}>
+                  Their account and all previous session history are intact. They can log in with their existing password, or use Forgot Password if needed.
+                </Text>
+              ) : successData?.password ? (
                 <>
                   <Text style={[s.credLabel, { marginTop: 12 }]}>TEMP PASSWORD</Text>
                   <Text style={[s.credValue, { color: colors.accent, fontSize: 18, letterSpacing: 2 }]}>
@@ -323,10 +422,10 @@ function makeStyles(c: ColorScheme) {
     loadingText: { ...Typography.body, color: c.textSecondary },
     noCoaches: {
       flexDirection: 'row', alignItems: 'center', gap: 8,
-      backgroundColor: '#FFA50010', borderRadius: 12, padding: 14,
-      borderWidth: 1, borderColor: '#FFA50040', marginBottom: 8,
+      backgroundColor: c.warning + '10', borderRadius: 12, padding: 14,
+      borderWidth: 1, borderColor: c.warning + '40', marginBottom: 8,
     },
-    noCoachesText: { ...Typography.body, color: '#FFA500', flex: 1 },
+    noCoachesText: { ...Typography.body, color: c.warning, flex: 1 },
 
     coachSearchWrap: {
       flexDirection: 'row', alignItems: 'center',
@@ -379,11 +478,21 @@ function makeStyles(c: ColorScheme) {
     },
     submitDisabled: { opacity: 0.4 },
     submitText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
+    emailNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: -8, marginBottom: 12 },
+    emailNoteText: { ...Typography.caption, color: c.textSecondary, flex: 1, lineHeight: 17 },
     errorBanner: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, color: c.accent, marginBottom: 16, fontSize: 14 },
+    reactivateBanner: {
+      flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+      backgroundColor: c.warning + '15', borderRadius: 12, padding: 14,
+      borderWidth: 1, borderColor: c.warning + '40', marginBottom: 16,
+    },
+    reactivateTitle: { fontSize: 13, fontWeight: '700', color: c.warning, marginBottom: 2 },
+    reactivateSub: { fontSize: 13, color: c.warning, lineHeight: 18 },
+    reactivateBtn: { backgroundColor: c.warning },
 
     // Success modal
     modalOverlay: {
-      flex: 1, backgroundColor: 'rgba(0,0,0,0.75)',
+      flex: 1, backgroundColor: c.overlay,
       justifyContent: 'center', alignItems: 'center', padding: 24,
     },
     modalCard: {

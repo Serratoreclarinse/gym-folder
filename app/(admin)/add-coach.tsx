@@ -3,6 +3,7 @@ import {
   Alert, KeyboardAvoidingView, Modal, Platform, Pressable,
   ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
+import { PhoneInput } from '@/components/PhoneInput';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -39,6 +40,16 @@ export default function AddCoachScreen() {
       return;
     }
     setLoading(true);
+    const { data: existing } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', email.trim().toLowerCase())
+      .maybeSingle();
+    if (existing) {
+      setLoading(false);
+      setErrorMsg('An account with this email already exists.');
+      return;
+    }
     try {
       const { data, error } = await supabase.functions.invoke('create-coach', {
         body: {
@@ -91,7 +102,10 @@ export default function AddCoachScreen() {
             colors={colors}
             s={s}
           />
-          <Field label="Phone" value={phone} onChange={setPhone} placeholder="+968 1234 5678" keyboard="phone-pad" colors={colors} s={s} />
+          <View style={s.field}>
+            <Text style={s.fieldLabel}>Phone</Text>
+            <PhoneInput value={phone} onChange={setPhone} colors={colors} />
+          </View>
 
           <View style={s.note}>
             <Text style={s.noteText}>
@@ -113,7 +127,7 @@ export default function AddCoachScreen() {
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
             <View style={s.modalIcon}>
-              <Ionicons name="checkmark-circle" size={36} color="#4CAF50" />
+              <Ionicons name="checkmark-circle" size={36} color={colors.success} />
             </View>
             <Text style={s.modalTitle}>Coach Added!</Text>
             <Text style={s.modalSub}>{successData?.coachName} is now in the system.</Text>
@@ -191,9 +205,9 @@ function makeStyles(c: ColorScheme) {
     submitDisabled: { opacity: 0.4 },
     submitText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
     errorBanner: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, color: c.accent, marginBottom: 16, fontSize: 14 },
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+    modalOverlay: { flex: 1, backgroundColor: c.overlay, justifyContent: 'center', alignItems: 'center', padding: 24 },
     modalCard: { backgroundColor: c.surface, borderRadius: 20, padding: 28, width: '100%', maxWidth: 400, borderWidth: 1, borderColor: c.border, alignItems: 'center' },
-    modalIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#4CAF5018', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+    modalIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: c.success + '18', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
     modalTitle: { fontSize: 20, fontWeight: '800', color: c.textPrimary, marginBottom: 6, textAlign: 'center' },
     modalSub: { ...Typography.body, color: c.textSecondary, marginBottom: 20, textAlign: 'center' },
     modalBold: { fontWeight: '800', color: c.accent, fontSize: 16 },
@@ -201,7 +215,7 @@ function makeStyles(c: ColorScheme) {
     credLabel: { ...Typography.label, color: c.textSecondary, marginTop: 8 },
     credValue: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
     credHint: { ...Typography.caption, color: c.textSecondary, textAlign: 'center', marginBottom: 20, lineHeight: 18 },
-    modalBtn: { backgroundColor: '#4CAF50', borderRadius: 14, paddingVertical: 14, alignItems: 'center', width: '100%' },
-    modalBtnText: { color: '#fff', fontSize: 14, fontWeight: '800', letterSpacing: 1 },
+    modalBtn: { backgroundColor: c.success, borderRadius: 14, paddingVertical: 14, alignItems: 'center', width: '100%' },
+    modalBtnText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1 },
   });
 }

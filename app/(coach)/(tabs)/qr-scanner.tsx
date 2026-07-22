@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -25,20 +25,24 @@ import { useTheme } from '@/context/ThemeContext';
 const SCAN_SIZE = 260;
 const CORNER_SIZE = 30;
 const CORNER_WIDTH = 3;
+const DEFAULT_DURATION = 60;
 
-type ScannedClient = {
+type ClientInfo = {
   id: string;
   name: string;
   packageId: string;
-  sessionsRemaining: number;
 };
 
 type ModalState =
-  | { type: 'confirm'; client: ScannedClient; wasLast: boolean; scanTime: Date }
+  | { type: 'session-started'; clientName: string; duration: number }
+  | { type: 'walkin'; client: ClientInfo; sessionsRemaining: number }
+  | { type: 'already-active' }
+  | { type: 'already-had-session'; clientName: string }
   | { type: 'error'; message: string }
   | { type: 'not-assigned' }
-  | { type: 'no-sessions'; client: ScannedClient }
+  | { type: 'no-sessions'; client: { id: string; name: string } }
   | { type: 'web-link'; url: string; isInBody: boolean }
+  | { type: 'too-early'; clientName: string; scheduledTime: string; minutesUntil: number }
   | null;
 
 function isValidUUID(str: string): boolean {
@@ -58,24 +62,13 @@ function initials(name: string): string {
   return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
 }
 
-function formatDateTime(date: Date): string {
-  return date.toLocaleDateString('en-US', {
-    weekday: 'short', month: 'short', day: 'numeric',
-  }) + '  ·  ' + date.toLocaleTimeString('en-US', {
-    hour: 'numeric', minute: '2-digit', hour12: true,
-  });
-}
-
 // ── Corner bracket overlay ────────────────────────────────────
 function ScanOverlay({ processing, styles, accentColor }: { processing: boolean; styles: ReturnType<typeof makeStyles>; accentColor: string }) {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {/* Top */}
       <View style={styles.overlayTop} />
-      {/* Middle row */}
       <View style={styles.overlayMiddle}>
         <View style={styles.overlaySide} />
-        {/* Transparent scan window */}
         <View style={styles.scanWindow}>
           <View style={[styles.corner, styles.cornerTL]} />
           <View style={[styles.corner, styles.cornerTR]} />
@@ -89,7 +82,6 @@ function ScanOverlay({ processing, styles, accentColor }: { processing: boolean;
         </View>
         <View style={styles.overlaySide} />
       </View>
-      {/* Bottom */}
       <View style={styles.overlayBottom} />
     </View>
   );
@@ -106,21 +98,129 @@ export default function QRScannerScreen() {
   const [modalState, setModalState] = useState<ModalState>(null);
   const [selectedClientId, setSelectedClientId] = useState('');
   const [savingLink, setSavingLink] = useState(false);
+  const [startingWalkin, setStartingWalkin] = useState(false);
+  // Sync ref prevents duplicate scans before state re-render
+  const handlingRef = useRef(false);
 
   // Reset scanner every time this tab comes into focus
   useFocusEffect(useCallback(() => {
+    handlingRef.current = false;
     setScanned(false);
     setProcessing(false);
     setModalState(null);
   }, []));
 
   const closeModal = () => {
+    handlingRef.current = false;
     setModalState(null);
     setScanned(false);
     setProcessing(false);
     setSelectedClientId('');
   };
 
+  const goToDashboard = () => {
+    closeModal();
+    router.push('/(coach)');
+  };
+
+  // ── Create workout_sessions + active_sessions rows ────────────
+  const startActiveSession = async (
+    clientId: string,
+    packageId: string,
+    duration: number,
+    notes: string | null,
+  ): Promise<{ error: string | null }> => {
+    const today = new Date().toISOString().split('T')[0];
+
+    // Check for a pre-planned session from schedule-session
+    const { data: planned } = await supabase
+      .from('workout_sessions')
+      .select('id')
+      .eq('coach_id', profile!.id)
+      .eq('client_id', clientId)
+      .eq('session_date', today)
+      .eq('status', 'planned')
+      .maybeSingle();
+
+    let sessionId: string;
+
+    if (planned) {
+      // Activate the pre-planned session
+      await supabase.from('workout_sessions').update({
+        package_id: packageId,
+        duration_minutes: duration,
+        status: 'confirmed',
+        ...(notes ? { notes } : {}),
+      }).eq('id', planned.id);
+      sessionId = planned.id;
+    } else {
+      // No pre-plan — create a new empty session
+      const { data: sessionData, error: sessionErr } = await supabase
+        .from('workout_sessions')
+        .insert({
+          coach_id: profile!.id,
+          client_id: clientId,
+          package_id: packageId,
+          session_date: today,
+          duration_minutes: duration,
+          exercises: [],
+          notes,
+        })
+        .select('id')
+        .single();
+
+      if (sessionErr || !sessionData) {
+        return { error: sessionErr?.message ?? 'Failed to create session.' };
+      }
+      sessionId = sessionData.id;
+    }
+
+    const { error: activeErr } = await supabase.from('active_sessions').insert({
+      coach_id: profile!.id,
+      client_id: clientId,
+      session_id: sessionId,
+      start_time: new Date().toISOString(),
+      original_duration: duration,
+      current_duration: duration,
+      is_active: true,
+      is_paused: false,
+    });
+
+    if (activeErr) {
+      // Roll back only if we created a new (empty) session
+      if (!planned) {
+        await supabase.from('workout_sessions').delete().eq('id', sessionId);
+      }
+      return { error: activeErr.message };
+    }
+
+    return { error: null };
+  };
+
+  // ── Walk-in confirmation ──────────────────────────────────────
+  const handleConfirmWalkin = async () => {
+    if (modalState?.type !== 'walkin') return;
+    const { client } = modalState;
+
+    setStartingWalkin(true);
+    const { error } = await startActiveSession(client.id, client.packageId, DEFAULT_DURATION, null);
+    setStartingWalkin(false);
+
+    if (error) {
+      Alert.alert('Error', error);
+      return;
+    }
+
+    await sendPushNotification(client.id, {
+      title: '🏃 Session Started!',
+      body: "Your walk-in session has begun. Let's go!",
+    });
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setModalState({ type: 'session-started', clientName: client.name, duration: DEFAULT_DURATION });
+  };
+
+  // ── Save InBody link ──────────────────────────────────────────
   const handleSaveLink = async (url: string) => {
     if (!selectedClientId || !profile?.id) return;
     setSavingLink(true);
@@ -135,8 +235,10 @@ export default function QRScannerScreen() {
     closeModal();
   };
 
+  // ── Main scan handler ─────────────────────────────────────────
   const handleScan = async ({ data }: { type: string; data: string }) => {
-    if (scanned || processing || !profile?.id) return;
+    if (handlingRef.current || !profile?.id) return;
+    handlingRef.current = true;
     setScanned(true);
     setProcessing(true);
 
@@ -176,8 +278,8 @@ export default function QRScannerScreen() {
       return;
     }
 
-    // Fetch active package for this client under this coach (RLS ensures scope)
-    const { data: pkg, error } = await supabase
+    // Fetch active package for this client under this coach
+    const { data: pkg, error: pkgErr } = await supabase
       .from('packages')
       .select(`
         id,
@@ -191,9 +293,9 @@ export default function QRScannerScreen() {
       .limit(1)
       .maybeSingle();
 
-    if (error) {
+    if (pkgErr) {
       setProcessing(false);
-      setModalState({ type: 'error', message: error.message });
+      setModalState({ type: 'error', message: pkgErr.message });
       return;
     }
 
@@ -207,77 +309,114 @@ export default function QRScannerScreen() {
     const client = pkg.client as unknown as { id: string; name: string };
     const remaining = pkg.sessions_remaining as number;
 
-    // 0 sessions — do not deduct
     if (remaining <= 0) {
       setProcessing(false);
-      setModalState({
-        type: 'no-sessions',
-        client: { id: client.id, name: client.name, packageId: pkg.id, sessionsRemaining: 0 },
-      });
+      setModalState({ type: 'no-sessions', client: { id: client.id, name: client.name } });
       return;
     }
 
-    // Log session — trigger auto-increments sessions_used
-    const today = new Date().toISOString().split('T')[0];
-    const { error: insertError } = await supabase.from('workout_sessions').insert({
-      package_id: pkg.id,
-      client_id: clientId,
-      coach_id: profile.id,
-      session_date: today,
-      duration_minutes: 60,
-      exercises: [],
-      notes: 'QR check-in',
-    });
+    // Prevent starting a second session while one is already live
+    const { data: existingActive } = await supabase
+      .from('active_sessions')
+      .select('id')
+      .eq('coach_id', profile.id)
+      .eq('is_active', true)
+      .maybeSingle();
 
-    if (insertError) {
+    if (existingActive) {
       setProcessing(false);
-      setModalState({ type: 'error', message: insertError.message });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setModalState({ type: 'already-active' });
       return;
     }
 
-    // Mark any pending/confirmed scheduled session for this client today as completed
-    await supabase
+    // Prevent logging a second session for the same client on the same day
+    const now = new Date();
+    const todayISO = now.toISOString().split('T')[0];
+    const { data: sessionToday } = await supabase
+      .from('workout_sessions')
+      .select('id')
+      .eq('client_id', clientId)
+      .eq('session_date', todayISO)
+      .neq('status', 'absent')
+      .limit(1)
+      .maybeSingle();
+
+    if (sessionToday) {
+      setProcessing(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setModalState({ type: 'already-had-session', clientName: (pkg.client as any)?.name ?? 'Client' });
+      return;
+    }
+
+    // Look for today's scheduled session for this client
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString();
+
+    const { data: scheduled } = await supabase
       .from('scheduled_sessions')
-      .update({ status: 'completed' })
+      .select('id, scheduled_at, duration_minutes, notes')
       .eq('client_id', clientId)
       .eq('coach_id', profile.id)
-      .gte('scheduled_at', `${today}T00:00:00`)
-      .lte('scheduled_at', `${today}T23:59:59`)
-      .in('status', ['pending', 'client_confirmed']);
+      .gte('scheduled_at', todayStart)
+      .lte('scheduled_at', todayEnd)
+      .in('status', ['pending', 'client_confirmed'])
+      .order('scheduled_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
 
-    // Push notification to client
-    const sessionsLeft = remaining - 1;
-    await sendPushNotification(clientId, {
-      title: '✅ Session Logged!',
-      body: sessionsLeft > 0
-        ? `Great workout! ${sessionsLeft} session${sessionsLeft !== 1 ? 's' : ''} remaining.`
-        : 'Great workout! Your package is now complete.',
-    });
-    if (sessionsLeft > 0 && sessionsLeft <= 2) {
-      await sendPushNotification(clientId, {
-        title: '⚠️ Low on Sessions',
-        body: `Only ${sessionsLeft} session${sessionsLeft !== 1 ? 's' : ''} left. Consider renewing soon.`,
+    if (!scheduled) {
+      // No scheduled session today — ask coach to confirm walk-in
+      setProcessing(false);
+      setModalState({
+        type: 'walkin',
+        client: { id: client.id, name: client.name, packageId: pkg.id },
+        sessionsRemaining: remaining,
       });
+      return;
     }
 
-    setProcessing(false);
+    // Block scan if more than 30 minutes before scheduled time
+    const scheduledAt = new Date(scheduled.scheduled_at);
+    const minutesUntil = (scheduledAt.getTime() - now.getTime()) / 60000;
+    if (minutesUntil > 30) {
+      setProcessing(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      const scheduledTime = scheduledAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      setModalState({ type: 'too-early', clientName: client.name, scheduledTime, minutesUntil: Math.round(minutesUntil) });
+      return;
+    }
 
+    // Scheduled session found — start the active timer automatically
+    const duration = scheduled.duration_minutes ?? DEFAULT_DURATION;
+    const notes = (scheduled.notes as string | null) ?? null;
+
+    const { error: startErr } = await startActiveSession(client.id, pkg.id, duration, notes);
+
+    if (startErr) {
+      setProcessing(false);
+      setModalState({ type: 'error', message: startErr });
+      return;
+    }
+
+    // Mark scheduled session as confirmed (client arrived)
+    await supabase
+      .from('scheduled_sessions')
+      .update({ status: 'client_confirmed', client_confirmed_at: now.toISOString() })
+      .eq('id', scheduled.id);
+
+    await sendPushNotification(client.id, {
+      title: '🏃 Session Started!',
+      body: `Your session with Coach ${profile.name ?? 'your coach'} has begun. Let's go!`,
+    });
+
+    setProcessing(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    setModalState({
-      type: 'confirm',
-      client: {
-        id: client.id,
-        name: client.name,
-        packageId: pkg.id,
-        sessionsRemaining: remaining - 1,
-      },
-      wasLast: remaining === 1,
-      scanTime: new Date(),
-    });
+    setModalState({ type: 'session-started', clientName: client.name, duration });
   };
 
-  // ── Permission not yet determined ───────────────────────────
+  // ── Permission not yet determined ─────────────────────────────
   if (!permission) {
     return (
       <View style={styles.centerScreen}>
@@ -286,7 +425,7 @@ export default function QRScannerScreen() {
     );
   }
 
-  // ── Permission denied ────────────────────────────────────────
+  // ── Permission denied ─────────────────────────────────────────
   if (!permission.granted) {
     return (
       <View style={styles.centerScreen}>
@@ -308,7 +447,7 @@ export default function QRScannerScreen() {
     );
   }
 
-  // ── Camera view ──────────────────────────────────────────────
+  // ── Camera view ───────────────────────────────────────────────
   return (
     <View style={styles.cameraContainer}>
       <CameraView
@@ -326,78 +465,142 @@ export default function QRScannerScreen() {
         <Text style={styles.labelSub}>Point camera at the client's QR code</Text>
       </View>
 
-      {/* ── MODAL: Confirm (success) ──────────────────────────── */}
-      <Modal visible={modalState?.type === 'confirm'} transparent animationType="fade">
-        {modalState?.type === 'confirm' && (() => {
-          const { client, wasLast, scanTime } = modalState;
-          return (
-            <View style={styles.modalBg}>
-              <View style={styles.modalCard}>
-                {/* Header */}
-                <View style={[styles.modalHeader, wasLast && styles.modalHeaderWarning]}>
-                  <Ionicons
-                    name={wasLast ? 'warning-outline' : 'checkmark-circle-outline'}
-                    size={28}
-                    color={wasLast ? '#FFA500' : colors.accent}
-                  />
-                  <Text style={[styles.modalHeaderText, wasLast && { color: '#FFA500' }]}>
-                    {wasLast ? 'Last Session Used!' : 'Check-In Successful'}
-                  </Text>
+      {/* ── MODAL: Session started (scheduled) ───────────────── */}
+      <Modal visible={modalState?.type === 'session-started'} transparent animationType="fade">
+        {modalState?.type === 'session-started' && (
+          <View style={styles.modalBg}>
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Ionicons name="play-circle-outline" size={28} color={colors.accent} />
+                <Text style={styles.modalHeaderText}>SESSION STARTED</Text>
+              </View>
+
+              <View style={styles.clientRow}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{initials(modalState.clientName)}</Text>
                 </View>
-
-                {/* Client avatar + name */}
-                <View style={styles.clientRow}>
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{initials(client.name)}</Text>
-                  </View>
-                  <View>
-                    <Text style={styles.clientName}>{client.name}</Text>
-                    <Text style={styles.scanTimeText}>{formatDateTime(scanTime)}</Text>
-                  </View>
-                </View>
-
-                {/* Sessions remaining */}
-                <View style={[styles.sessionsBadge, wasLast && styles.sessionsBadgeWarning]}>
-                  <Text style={[styles.sessionsCount, wasLast && { color: '#FFA500' }]}>
-                    {client.sessionsRemaining}
+                <View>
+                  <Text style={styles.clientName}>{modalState.clientName}</Text>
+                  <Text style={styles.scanTimeText}>
+                    Timer running · {modalState.duration} min
                   </Text>
-                  <Text style={[styles.sessionsLabel, wasLast && { color: '#FFA500' }]}>
-                    {client.sessionsRemaining === 1 ? 'SESSION' : 'SESSIONS'} REMAINING
-                  </Text>
-                </View>
-
-                {wasLast && (
-                  <Text style={styles.renewalNote}>
-                    This client needs to renew their package.
-                  </Text>
-                )}
-
-                {/* Actions */}
-                <View style={styles.modalBtns}>
-                  {wasLast && (
-                    <Pressable
-                      style={styles.secondaryModalBtn}
-                      onPress={() => {
-                        closeModal();
-                        router.push(`/(coach)/client/${client.id}`);
-                      }}
-                    >
-                      <Text style={styles.secondaryModalBtnText}>View Client</Text>
-                    </Pressable>
-                  )}
-                  <Pressable style={styles.primaryModalBtn} onPress={closeModal}>
-                    <Text style={styles.primaryModalBtnText}>
-                      {wasLast ? 'GOT IT' : 'SCAN NEXT'}
-                    </Text>
-                  </Pressable>
                 </View>
               </View>
+
+              <Text style={styles.infoNote}>
+                The session timer is now running. Head to the dashboard to manage the workout.
+              </Text>
+
+              <View style={styles.modalBtns}>
+                <Pressable style={styles.secondaryModalBtn} onPress={closeModal}>
+                  <Text style={styles.secondaryModalBtnText}>Stay Here</Text>
+                </Pressable>
+                <Pressable style={styles.primaryModalBtn} onPress={goToDashboard}>
+                  <Text style={styles.primaryModalBtnText}>OPEN SESSION</Text>
+                </Pressable>
+              </View>
             </View>
-          );
-        })()}
+          </View>
+        )}
       </Modal>
 
-      {/* ── MODAL: No sessions ───────────────────────────────── */}
+      {/* ── MODAL: Walk-in (no scheduled session today) ───────── */}
+      <Modal visible={modalState?.type === 'walkin'} transparent animationType="fade">
+        {modalState?.type === 'walkin' && (
+          <View style={styles.modalBg}>
+            <View style={styles.modalCard}>
+              <View style={[styles.modalHeader, styles.modalHeaderWarning]}>
+                <Ionicons name="walk-outline" size={28} color={colors.warning} />
+                <Text style={[styles.modalHeaderText, { color: colors.warning }]}>
+                  Walk-In Detected
+                </Text>
+              </View>
+
+              <View style={styles.clientRow}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{initials(modalState.client.name)}</Text>
+                </View>
+                <View>
+                  <Text style={styles.clientName}>{modalState.client.name}</Text>
+                  <Text style={styles.scanTimeText}>
+                    {modalState.sessionsRemaining} session{modalState.sessionsRemaining !== 1 ? 's' : ''} remaining
+                  </Text>
+                </View>
+              </View>
+
+              <Text style={styles.infoNote}>
+                No session is scheduled for today. Start a {DEFAULT_DURATION}-minute walk-in session?
+              </Text>
+
+              <View style={styles.modalBtns}>
+                <Pressable style={styles.secondaryModalBtn} onPress={closeModal}>
+                  <Text style={styles.secondaryModalBtnText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.primaryModalBtn, startingWalkin && { opacity: 0.5 }]}
+                  disabled={startingWalkin}
+                  onPress={handleConfirmWalkin}
+                >
+                  <Text style={styles.primaryModalBtnText}>
+                    {startingWalkin ? 'STARTING…' : 'START SESSION'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
+      </Modal>
+
+      {/* ── MODAL: Already active session ─────────────────────── */}
+      <Modal visible={modalState?.type === 'already-active'} transparent animationType="fade">
+        <View style={styles.modalBg}>
+          <View style={styles.modalCard}>
+            <View style={[styles.modalHeader, styles.modalHeaderWarning]}>
+              <Ionicons name="timer-outline" size={28} color={colors.warning} />
+              <Text style={[styles.modalHeaderText, { color: colors.warning }]}>
+                Session Already Running
+              </Text>
+            </View>
+            <Text style={styles.infoNote}>
+              You already have an active session in progress. End or cancel it first before starting a new one.
+            </Text>
+            <View style={styles.modalBtns}>
+              <Pressable style={styles.secondaryModalBtn} onPress={closeModal}>
+                <Text style={styles.secondaryModalBtnText}>Stay Here</Text>
+              </Pressable>
+              <Pressable style={styles.primaryModalBtn} onPress={goToDashboard}>
+                <Text style={styles.primaryModalBtnText}>VIEW SESSION</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── MODAL: Client already had session today ───────────── */}
+      <Modal visible={modalState?.type === 'already-had-session'} transparent animationType="fade">
+        {modalState?.type === 'already-had-session' && (
+          <View style={styles.modalBg}>
+            <View style={styles.modalCard}>
+              <View style={[styles.modalHeader, styles.modalHeaderWarning]}>
+                <Ionicons name="ban-outline" size={28} color={colors.warning} />
+                <Text style={[styles.modalHeaderText, { color: colors.warning }]}>
+                  Session Already Done
+                </Text>
+              </View>
+              <Text style={styles.infoNote}>
+                {modalState.clientName} already has a session logged for today. Only 1 session per client per day is allowed.
+              </Text>
+              <View style={styles.modalBtns}>
+                <Pressable style={styles.primaryModalBtn} onPress={closeModal}>
+                  <Text style={styles.primaryModalBtnText}>OK</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
+      </Modal>
+
+      {/* ── MODAL: No sessions remaining ──────────────────────── */}
       <Modal visible={modalState?.type === 'no-sessions'} transparent animationType="fade">
         {modalState?.type === 'no-sessions' && (
           <View style={styles.modalBg}>
@@ -421,7 +624,7 @@ export default function QRScannerScreen() {
                 </View>
               </View>
 
-              <Text style={styles.errorNote}>
+              <Text style={styles.infoNote}>
                 This client's package is exhausted. No session was deducted.{'\n'}Please ask them to renew.
               </Text>
 
@@ -429,8 +632,9 @@ export default function QRScannerScreen() {
                 <Pressable
                   style={styles.secondaryModalBtn}
                   onPress={() => {
+                    const id = modalState.client.id;
                     closeModal();
-                    router.push(`/(coach)/client/${modalState.client.id}`);
+                    router.push(`/(coach)/client/${id}`);
                   }}
                 >
                   <Text style={styles.secondaryModalBtnText}>View Client</Text>
@@ -444,7 +648,36 @@ export default function QRScannerScreen() {
         )}
       </Modal>
 
-      {/* ── MODAL: Not assigned ──────────────────────────────── */}
+      {/* ── MODAL: Too early to scan ─────────────────────────────── */}
+      <Modal visible={modalState?.type === 'too-early'} transparent animationType="fade">
+        {modalState?.type === 'too-early' && (
+          <View style={styles.modalBg}>
+            <View style={styles.modalCard}>
+              <View style={[styles.modalHeader, styles.modalHeaderWarning]}>
+                <Ionicons name="time-outline" size={28} color={colors.warning} />
+                <Text style={[styles.modalHeaderText, { color: colors.warning }]}>
+                  Too Early
+                </Text>
+              </View>
+              <Text style={styles.infoNote}>
+                {modalState.clientName}'s session is scheduled at {modalState.scheduledTime}.{'\n\n'}
+                QR scan is only allowed 30 minutes before the session starts.{'\n\n'}
+                Please try again in {modalState.minutesUntil - 30} min.
+              </Text>
+              <View style={styles.modalBtns}>
+                <Pressable
+                  style={[styles.primaryModalBtn, { backgroundColor: colors.warning }]}
+                  onPress={closeModal}
+                >
+                  <Text style={styles.primaryModalBtnText}>OK</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
+      </Modal>
+
+      {/* ── MODAL: Not assigned ────────────────────────────────── */}
       <Modal visible={modalState?.type === 'not-assigned'} transparent animationType="fade">
         <View style={styles.modalBg}>
           <View style={styles.modalCard}>
@@ -454,7 +687,7 @@ export default function QRScannerScreen() {
                 Not Your Client
               </Text>
             </View>
-            <Text style={styles.errorNote}>
+            <Text style={styles.infoNote}>
               This client is not assigned to you.{'\n\n'}
               They may be registered under a different coach.
             </Text>
@@ -470,7 +703,7 @@ export default function QRScannerScreen() {
         </View>
       </Modal>
 
-      {/* ── MODAL: Error ──────────────────────────────────────── */}
+      {/* ── MODAL: Error ───────────────────────────────────────── */}
       <Modal visible={modalState?.type === 'error'} transparent animationType="fade">
         {modalState?.type === 'error' && (
           <View style={styles.modalBg}>
@@ -482,7 +715,7 @@ export default function QRScannerScreen() {
                 </Text>
               </View>
 
-              <Text style={styles.errorNote}>{modalState.message}</Text>
+              <Text style={styles.infoNote}>{modalState.message}</Text>
 
               <View style={styles.modalBtns}>
                 <Pressable style={[styles.primaryModalBtn, { backgroundColor: colors.danger }]} onPress={closeModal}>
@@ -494,15 +727,14 @@ export default function QRScannerScreen() {
         )}
       </Modal>
 
-      {/* ── MODAL: Web / InBody link ──────────────────────────── */}
+      {/* ── MODAL: Web / InBody link ───────────────────────────── */}
       <Modal visible={modalState?.type === 'web-link'} transparent animationType="fade">
         {modalState?.type === 'web-link' && (() => {
           const { url, isInBody } = modalState;
-          const accentColor = '#4CAF50';
+          const accentColor = colors.success;
           return (
             <View style={styles.modalBg}>
               <View style={styles.modalCard}>
-                {/* Header */}
                 <View style={[styles.modalHeader, { backgroundColor: accentColor + '12' }]}>
                   <Ionicons name="link-outline" size={28} color={accentColor} />
                   <Text style={[styles.modalHeaderText, { color: accentColor }]}>
@@ -510,12 +742,10 @@ export default function QRScannerScreen() {
                   </Text>
                 </View>
 
-                {/* URL preview */}
                 <View style={styles.urlRow}>
                   <Text style={styles.urlText} numberOfLines={2}>{url}</Text>
                 </View>
 
-                {/* Client picker */}
                 <View style={styles.pickerSection}>
                   <Text style={styles.pickerLabel}>SAVE TO CLIENT</Text>
                   <ScrollView style={styles.pickerList} showsVerticalScrollIndicator={false}>
@@ -539,7 +769,6 @@ export default function QRScannerScreen() {
                   </ScrollView>
                 </View>
 
-                {/* Action buttons */}
                 <View style={styles.modalBtns}>
                   <Pressable style={styles.secondaryModalBtn} onPress={() => { Linking.openURL(url); closeModal(); }}>
                     <Text style={styles.secondaryModalBtnText}>Open Only</Text>
@@ -667,7 +896,7 @@ function makeStyles(c: ColorScheme) {
       borderBottomWidth: 1,
       borderBottomColor: c.border,
     },
-    modalHeaderWarning: { backgroundColor: '#FFA50012' },
+    modalHeaderWarning: { backgroundColor: c.warning + '12' },
     modalHeaderDanger: { backgroundColor: c.danger + '12' },
     modalHeaderText: { ...Typography.subtitle, color: c.accent },
 
@@ -698,41 +927,7 @@ function makeStyles(c: ColorScheme) {
     clientName: { ...Typography.subtitle, color: c.textPrimary, marginBottom: 2 },
     scanTimeText: { ...Typography.caption, color: c.textSecondary },
 
-    // Sessions badge
-    sessionsBadge: {
-      margin: 18,
-      alignItems: 'center',
-      backgroundColor: c.accent + '10',
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: c.accent + '30',
-      paddingVertical: 16,
-    },
-    sessionsBadgeWarning: {
-      backgroundColor: '#FFA50010',
-      borderColor: '#FFA50030',
-    },
-    sessionsCount: {
-      fontSize: 52,
-      fontWeight: '800',
-      color: c.accent,
-      lineHeight: 58,
-    },
-    sessionsLabel: {
-      ...Typography.label,
-      color: c.accent,
-      letterSpacing: 1.5,
-    },
-
-    renewalNote: {
-      ...Typography.caption,
-      color: '#FFA500',
-      textAlign: 'center',
-      paddingHorizontal: 18,
-      marginBottom: 4,
-      fontStyle: 'italic',
-    },
-    errorNote: {
+    infoNote: {
       ...Typography.body,
       color: c.textSecondary,
       textAlign: 'center',
@@ -821,5 +1016,6 @@ function makeStyles(c: ColorScheme) {
     },
     cpAvatarText: { fontSize: 13, fontWeight: '700', color: c.textSecondary },
     cpName: { flex: 1, ...Typography.body, color: c.textPrimary },
+    cpSelected: { color: c.success },
   });
 }

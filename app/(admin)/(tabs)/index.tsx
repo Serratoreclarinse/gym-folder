@@ -72,17 +72,17 @@ export default function AdminDashboardScreen() {
   const [ratings, setRatings] = useState<RatingItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     const ms = monthStart();
 
     const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
 
     const [coachRes, clientRes, pkgRes, sessRes, revMonthRes, revAllRes,
            lowPkgRes, coachAlertRes, neverPaidRes, allPaymentsRes,
-           ratingsRes, pendingTransferRes] = await Promise.all([
-      supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'coach'),
-      supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'client'),
+           ratingsRes, pendingTransferRes, pendingFreezeRes, pendingEqRes] = await Promise.all([
+      supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'coach').is('deactivated_at', null),
+      supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'client').is('deactivated_at', null),
       supabase.from('packages').select('id', { count: 'exact', head: true }).eq('status', 'active'),
       supabase.from('workout_sessions').select('id', { count: 'exact', head: true }).gte('session_date', ms),
       supabase.from('payments').select('amount').gte('paid_at', ms),
@@ -96,6 +96,7 @@ export default function AdminDashboardScreen() {
       supabase.from('profiles')
         .select('id, name, visa_expiry')
         .eq('role', 'coach')
+        .is('deactivated_at', null)
         .not('visa_expiry', 'is', null),
       // Active clients with NO payment ever
       supabase.from('packages')
@@ -119,6 +120,16 @@ export default function AdminDashboardScreen() {
         .from('client_transfers')
         .select('id, client_id, from_coach_id, profiles!client_transfers_client_id_fkey(name)')
         .eq('status', 'pending_admin'),
+      // Pending freeze requests
+      supabase
+        .from('package_freezes')
+        .select('id, client_id, freeze_start, freeze_end, profiles!package_freezes_client_id_fkey(name)')
+        .eq('status', 'pending'),
+      // Pending equipment requests
+      supabase
+        .from('equipment_requests')
+        .select('id, item_name, quantity, coach:profiles!equipment_requests_coach_id_fkey(name)')
+        .eq('status', 'pending'),
     ]);
 
     const revenueThisMonth = (revMonthRes.data ?? []).reduce((s, r: any) => s + Number(r.amount), 0);
@@ -236,6 +247,32 @@ export default function AdminDashboardScreen() {
       });
     }
 
+    // Pending freeze alerts
+    for (const fz of (pendingFreezeRes.data ?? []) as any[]) {
+      const clientName = fz.profiles?.name ?? 'Unknown Client';
+      newAlerts.push({
+        id: `freeze-${fz.id}`,
+        level: 'notice',
+        icon: 'snow-outline',
+        title: `Freeze Request — ${clientName}`,
+        subtitle: `${fz.freeze_start} → ${fz.freeze_end} · pending approval`,
+        route: `/(admin)/client/${fz.client_id}`,
+      });
+    }
+
+    // Equipment request alerts
+    for (const eq of (pendingEqRes.data ?? []) as any[]) {
+      const coachName = eq.coach?.name ?? 'Unknown Coach';
+      newAlerts.push({
+        id: `eq-${eq.id}`,
+        level: 'notice',
+        icon: 'construct-outline',
+        title: `Equipment Request — ${coachName}`,
+        subtitle: `${eq.item_name}${eq.quantity > 1 ? ` ×${eq.quantity}` : ''} · pending approval`,
+        route: '/(admin)/equipment-requests',
+      });
+    }
+
     // Sort: critical first
     newAlerts.sort((a, b) => {
       const order = { critical: 0, warning: 1, notice: 2 };
@@ -264,6 +301,22 @@ export default function AdminDashboardScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  // Real-time: silently re-fetch whenever any watched table changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-dashboard')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' },          () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'packages' },          () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'workout_sessions' },  () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' },          () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_transfers' },  () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'session_ratings' },   () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'package_freezes' },   () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'equipment_requests' }, () => load(true))
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [load]);
+
   if (loading && !stats) {
     return (
       <View style={s.center}>
@@ -274,10 +327,9 @@ export default function AdminDashboardScreen() {
 
   const monthName = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const statCards = [
-    { icon: 'people-outline',  label: 'Coaches',                    value: stats?.coachCount ?? 0,        color: colors.accent, route: '/(admin)/(tabs)/coaches' },
-    { icon: 'person-outline',  label: 'Clients',                    value: stats?.clientCount ?? 0,       color: '#4CAF50',     route: '/(admin)/(tabs)/clients' },
-    { icon: 'cube-outline',    label: 'Active Packages',            value: stats?.activePackages ?? 0,    color: '#FF9800',     route: null },
-    { icon: 'barbell-outline', label: `Sessions · ${monthName}`,   value: stats?.sessionsThisMonth ?? 0, color: '#9C27B0',     route: null },
+    { icon: 'people-outline', label: 'Coaches',         value: stats?.coachCount ?? 0,     color: colors.accent, route: '/(admin)/(tabs)/coaches' },
+    { icon: 'person-outline', label: 'Clients',         value: stats?.clientCount ?? 0,    color: colors.success,  route: '/(admin)/(tabs)/clients' },
+    { icon: 'cube-outline',   label: 'Active Packages', value: stats?.activePackages ?? 0, color: colors.warning,  route: '/(admin)/(tabs)/clients' },
   ] as const;
 
   return (
@@ -340,7 +392,7 @@ export default function AdminDashboardScreen() {
           <>
             <Text style={s.sectionTitle}>ALERTS</Text>
             <View style={s.noAlerts}>
-              <Ionicons name="checkmark-circle-outline" size={20} color="#4CAF50" />
+              <Ionicons name="checkmark-circle-outline" size={20} color={colors.success} />
               <Text style={s.noAlertsText}>All clear — no warnings</Text>
             </View>
           </>
@@ -395,7 +447,7 @@ export default function AdminDashboardScreen() {
               const stars = Math.round(r.rating);
               const isHigh = stars >= 4;
               const isLow  = stars <= 2;
-              const color  = isHigh ? '#4CAF50' : isLow ? '#FF6D00' : '#FF9800';
+              const color  = isHigh ? colors.success : isLow ? colors.danger : colors.warning;
               const icon   = isHigh ? 'star' : isLow ? 'star-half-outline' : 'star-outline';
               const dateStr = new Date(r.sessionDate + 'T00:00:00').toLocaleDateString('en-US', {
                 month: 'short', day: 'numeric',
@@ -485,11 +537,11 @@ function makeStyles(c: ColorScheme) {
   alertSub: { ...Typography.caption, color: c.textSecondary },
   noAlerts: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#4CAF5010', borderRadius: 12,
-    borderWidth: 1, borderColor: '#4CAF5030',
+    backgroundColor: c.success + '10', borderRadius: 12,
+    borderWidth: 1, borderColor: c.success + '30',
     padding: 14, marginBottom: 4,
   },
-  noAlertsText: { ...Typography.body, color: '#4CAF50' },
+  noAlertsText: { ...Typography.body, color: c.success },
 
   // Stats
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
@@ -504,10 +556,10 @@ function makeStyles(c: ColorScheme) {
   starRow: { flexDirection: 'row', gap: 2, alignItems: 'center' },
 
   // Revenue
-  revenueCard: { flexDirection: 'row', backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: '#4CAF5030', overflow: 'hidden' },
+  revenueCard: { flexDirection: 'row', backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: c.success + '30', overflow: 'hidden' },
   revenueItem: { flex: 1, alignItems: 'center', paddingVertical: 20 },
   revenueDivider: { width: 1, backgroundColor: c.border },
   revenueLabel: { ...Typography.caption, color: c.textSecondary, marginBottom: 6 },
-  revenueValue: { fontSize: 22, fontWeight: '900', color: '#4CAF50' },
+  revenueValue: { fontSize: 22, fontWeight: '900', color: c.success },
   });
 }

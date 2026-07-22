@@ -21,7 +21,8 @@ import {
   type GymMachine,
 } from '@/constants/machineLibrary';
 import { useCustomExercises } from '@/hooks/useCustomExercises';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 type ViewMode = 'muscle' | 'machine';
 
@@ -36,6 +37,8 @@ function AddCustomForm({
   onAdd: (name: string, muscle: string) => Promise<void>;
   onCancel: () => void;
 }) {
+  const { colors } = useTheme();
+  const af = useMemo(() => makeAfStyles(colors), [colors]);
   const [name, setName] = useState(initialName);
   const [muscle, setMuscle] = useState<MuscleGroup>('Chest');
   const [saving, setSaving] = useState(false);
@@ -53,11 +56,11 @@ function AddCustomForm({
 
       <Text style={af.label}>NAME</Text>
       <TextInput
-        style={af.input}
+        style={[af.input, { color: colors.textPrimary }]}
         value={name}
         onChangeText={setName}
         placeholder="e.g. Cable Pull Through"
-        placeholderTextColor={Colors.textSecondary + '80'}
+        placeholderTextColor={colors.textSecondary + '80'}
         autoFocus
         returnKeyType="done"
       />
@@ -108,6 +111,9 @@ function MachineAccordion({
   onSelect: (name: string) => void;
   query: string;
 }) {
+  const { colors } = useTheme();
+  const ma = useMemo(() => makeMaStyles(colors), [colors]);
+
   const exercises = query
     ? machine.exercises.filter(
         (e) =>
@@ -122,14 +128,14 @@ function MachineAccordion({
     <View style={ma.card}>
       <Pressable style={ma.header} onPress={onToggle}>
         <View style={ma.iconBox}>
-          <Ionicons name={machine.icon as any} size={16} color={Colors.accent} />
+          <Ionicons name={machine.icon as any} size={16} color={colors.accent} />
         </View>
         <Text style={ma.name}>{machine.name}</Text>
         <Text style={ma.count}>{exercises.length}</Text>
         <Ionicons
           name={isOpen ? 'chevron-up' : 'chevron-down'}
           size={14}
-          color={Colors.textSecondary}
+          color={colors.textSecondary}
         />
       </Pressable>
 
@@ -140,8 +146,8 @@ function MachineAccordion({
               key={ex.name}
               style={({ pressed }) => [
                 ma.exRow,
-                idx > 0 && { borderTopWidth: 1, borderTopColor: Colors.border },
-                pressed && { backgroundColor: Colors.accent + '10' },
+                idx > 0 && { borderTopWidth: 1, borderTopColor: colors.border },
+                pressed && { backgroundColor: colors.accent + '10' },
               ]}
               onPress={() => onSelect(ex.name)}
             >
@@ -150,7 +156,7 @@ function MachineAccordion({
                 <Text style={ma.exName}>{ex.name}</Text>
                 <Text style={ma.exMuscle}>{ex.primary.join(', ')}</Text>
               </View>
-              <Ionicons name="add-circle-outline" size={20} color={Colors.accent} />
+              <Ionicons name="add-circle-outline" size={20} color={colors.accent} />
             </Pressable>
           ))}
         </View>
@@ -170,6 +176,9 @@ export function ExercisePickerModal({
   onClose: () => void;
   onSelect: (name: string) => void;
 }) {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+
   const { exercises: customExercises, addExercise } = useCustomExercises();
   const [mode, setMode] = useState<ViewMode>('muscle');
   const [search, setSearch] = useState('');
@@ -261,7 +270,7 @@ export function ExercisePickerModal({
         {/* Header */}
         <View style={s.header}>
           <Pressable onPress={onClose} hitSlop={12} style={s.closeBtn}>
-            <Ionicons name="close" size={22} color={Colors.textSecondary} />
+            <Ionicons name="close" size={22} color={colors.textSecondary} />
           </Pressable>
           <Text style={s.headerTitle}>EXERCISE LIBRARY</Text>
           <Pressable
@@ -269,7 +278,7 @@ export function ExercisePickerModal({
             onPress={() => setShowAddForm(true)}
             hitSlop={12}
           >
-            <Ionicons name="add" size={20} color={Colors.accent} />
+            <Ionicons name="add" size={20} color={colors.accent} />
             <Text style={s.addBtnText}>CUSTOM</Text>
           </Pressable>
         </View>
@@ -284,20 +293,20 @@ export function ExercisePickerModal({
           <>
             {/* Search */}
             <View style={s.searchRow}>
-              <Ionicons name="search-outline" size={18} color={Colors.textSecondary} style={s.searchIcon} />
+              <Ionicons name="search-outline" size={18} color={colors.textSecondary} style={s.searchIcon} />
               <TextInput
                 ref={searchRef}
-                style={s.searchInput}
+                style={[s.searchInput, { color: colors.textPrimary }]}
                 value={search}
                 onChangeText={setSearch}
                 placeholder="Search exercises…"
-                placeholderTextColor={Colors.textSecondary + '80'}
+                placeholderTextColor={colors.textSecondary + '80'}
                 returnKeyType="search"
                 clearButtonMode="while-editing"
               />
               {search.length > 0 && (
                 <Pressable onPress={() => setSearch('')} hitSlop={8}>
-                  <Ionicons name="close-circle" size={18} color={Colors.textSecondary} />
+                  <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
                 </Pressable>
               )}
             </View>
@@ -311,7 +320,7 @@ export function ExercisePickerModal({
                 <Ionicons
                   name="body-outline"
                   size={13}
-                  color={mode === 'muscle' ? Colors.bg : Colors.textSecondary}
+                  color={mode === 'muscle' ? colors.bg : colors.textSecondary}
                 />
                 <Text style={[s.modeLabel, mode === 'muscle' && s.modeLabelActive]}>By Muscle</Text>
               </Pressable>
@@ -322,7 +331,7 @@ export function ExercisePickerModal({
                 <Ionicons
                   name="fitness-outline"
                   size={13}
-                  color={mode === 'machine' ? Colors.bg : Colors.textSecondary}
+                  color={mode === 'machine' ? colors.bg : colors.textSecondary}
                 />
                 <Text style={[s.modeLabel, mode === 'machine' && s.modeLabelActive]}>By Machine</Text>
               </Pressable>
@@ -356,10 +365,10 @@ export function ExercisePickerModal({
                   contentContainerStyle={s.listContent}
                   ListEmptyComponent={
                     <View style={s.emptyContainer}>
-                      <Ionicons name="barbell-outline" size={40} color={Colors.border} />
+                      <Ionicons name="barbell-outline" size={40} color={colors.border} />
                       <Text style={s.emptyText}>No exercises found</Text>
                       <Pressable style={s.emptyAddBtn} onPress={() => setShowAddForm(true)}>
-                        <Ionicons name="add-circle-outline" size={16} color={Colors.accent} />
+                        <Ionicons name="add-circle-outline" size={16} color={colors.accent} />
                         <Text style={s.emptyAddBtnText}>
                           Add "{search || 'custom exercise'}"
                         </Text>
@@ -385,7 +394,7 @@ export function ExercisePickerModal({
                           <Text style={s.itemSecondary}>+{item.secondary.join(' · ')}</Text>
                         )}
                       </View>
-                      <Ionicons name="add-circle-outline" size={22} color={Colors.accent} />
+                      <Ionicons name="add-circle-outline" size={22} color={colors.accent} />
                     </Pressable>
                   )}
                 />
@@ -402,7 +411,7 @@ export function ExercisePickerModal({
               >
                 {machinesByCategory.length === 0 ? (
                   <View style={s.emptyContainer}>
-                    <Ionicons name="search-outline" size={40} color={Colors.border} />
+                    <Ionicons name="search-outline" size={40} color={colors.border} />
                     <Text style={s.emptyText}>No results found</Text>
                   </View>
                 ) : (
@@ -441,154 +450,160 @@ export function ExercisePickerModal({
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// ── Style factories ────────────────────────────────────────────────────────────
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.bg },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  closeBtn: { padding: 4, minWidth: 36 },
-  headerTitle: { ...Typography.label, color: Colors.textPrimary, fontSize: 14 },
-  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  addBtnText: { color: Colors.accent, fontWeight: '800', fontSize: 12, letterSpacing: 0.5 },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: c.bg },
+    header: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    closeBtn: { padding: 4, minWidth: 36 },
+    headerTitle: { ...Typography.label, color: c.textPrimary, fontSize: 14 },
+    addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    addBtnText: { color: c.accent, fontWeight: '800', fontSize: 12, letterSpacing: 0.5 },
 
-  searchRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    margin: 14, paddingHorizontal: 12,
-    backgroundColor: Colors.surface, borderRadius: 12,
-    borderWidth: 1, borderColor: Colors.border,
-  },
-  searchIcon: { marginRight: 2 },
-  searchInput: {
-    flex: 1, paddingVertical: 11,
-    color: Colors.textPrimary, fontSize: 15,
-  },
+    searchRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      margin: 14, paddingHorizontal: 12,
+      backgroundColor: c.surface, borderRadius: 12,
+      borderWidth: 1, borderColor: c.border,
+    },
+    searchIcon: { marginRight: 2 },
+    searchInput: {
+      flex: 1, paddingVertical: 11,
+      fontSize: 15,
+    },
 
-  modeRow: {
-    flexDirection: 'row', gap: 8,
-    marginHorizontal: 14, marginBottom: 12,
-  },
-  modeBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-    paddingVertical: 9, borderRadius: 10,
-    backgroundColor: Colors.surface, borderWidth: 1.5, borderColor: Colors.border,
-  },
-  modeBtnActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  modeLabel: { color: Colors.textSecondary, fontWeight: '700', fontSize: 12 },
-  modeLabelActive: { color: Colors.bg },
+    modeRow: {
+      flexDirection: 'row', gap: 8,
+      marginHorizontal: 14, marginBottom: 12,
+    },
+    modeBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+      paddingVertical: 9, borderRadius: 10,
+      backgroundColor: c.surface, borderWidth: 1.5, borderColor: c.border,
+    },
+    modeBtnActive: { backgroundColor: c.accent, borderColor: c.accent },
+    modeLabel: { color: c.textSecondary, fontWeight: '700', fontSize: 12 },
+    modeLabelActive: { color: '#fff' },
 
-  tabScroll: { flexGrow: 0 },
-  tabContent: { paddingHorizontal: 14, gap: 8, paddingBottom: 10 },
-  tab: {
-    paddingHorizontal: 14, paddingVertical: 7,
-    borderRadius: 20, borderWidth: 1.5, borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-  },
-  tabActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  tabText: { color: Colors.textSecondary, fontWeight: '700', fontSize: 12 },
-  tabTextActive: { color: Colors.bg },
+    tabScroll: { flexGrow: 0 },
+    tabContent: { paddingHorizontal: 14, gap: 8, paddingBottom: 10 },
+    tab: {
+      paddingHorizontal: 14, paddingVertical: 7,
+      borderRadius: 20, borderWidth: 1.5, borderColor: c.border,
+      backgroundColor: c.surface,
+    },
+    tabActive: { backgroundColor: c.accent, borderColor: c.accent },
+    tabText: { color: c.textSecondary, fontWeight: '700', fontSize: 12 },
+    tabTextActive: { color: '#fff' },
 
-  listContent: { paddingHorizontal: 14, paddingBottom: 40 },
-  item: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  itemLeft: { flex: 1, marginRight: 12 },
-  itemName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
-  itemMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
-  itemPrimary: { ...Typography.caption, color: Colors.accent, fontWeight: '700' },
-  itemSecondary: { ...Typography.caption, color: Colors.textSecondary, marginTop: 1, fontSize: 11 },
-  customBadge: {
-    backgroundColor: Colors.accent + '20', borderRadius: 6,
-    paddingHorizontal: 6, paddingVertical: 2,
-    borderWidth: 1, borderColor: Colors.accent + '40',
-  },
-  customBadgeText: { color: Colors.accent, fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
+    listContent: { paddingHorizontal: 14, paddingBottom: 40 },
+    item: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    itemLeft: { flex: 1, marginRight: 12 },
+    itemName: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    itemMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+    itemPrimary: { ...Typography.caption, color: c.accent, fontWeight: '700' },
+    itemSecondary: { ...Typography.caption, color: c.textSecondary, marginTop: 1, fontSize: 11 },
+    customBadge: {
+      backgroundColor: c.accent + '20', borderRadius: 6,
+      paddingHorizontal: 6, paddingVertical: 2,
+      borderWidth: 1, borderColor: c.accent + '40',
+    },
+    customBadgeText: { color: c.accent, fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
 
-  emptyContainer: { alignItems: 'center', paddingTop: 48, gap: 10 },
-  emptyText: { ...Typography.body, color: Colors.textSecondary },
-  emptyAddBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 20, paddingVertical: 12,
-    borderRadius: 12, borderWidth: 1.5, borderColor: Colors.accent + '50',
-    backgroundColor: Colors.accent + '10', marginTop: 8,
-  },
-  emptyAddBtnText: { color: Colors.accent, fontWeight: '700', fontSize: 13 },
+    emptyContainer: { alignItems: 'center', paddingTop: 48, gap: 10 },
+    emptyText: { ...Typography.body, color: c.textSecondary },
+    emptyAddBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      paddingHorizontal: 20, paddingVertical: 12,
+      borderRadius: 12, borderWidth: 1.5, borderColor: c.accent + '50',
+      backgroundColor: c.accent + '10', marginTop: 8,
+    },
+    emptyAddBtnText: { color: c.accent, fontWeight: '700', fontSize: 13 },
 
-  machineContent: { paddingHorizontal: 14, paddingBottom: 40 },
-  machineSection: { marginBottom: 18 },
-  machineCatLabel: {
-    ...Typography.caption, color: Colors.textSecondary,
-    fontWeight: '700', letterSpacing: 1.2,
-    marginBottom: 8,
-  },
+    machineContent: { paddingHorizontal: 14, paddingBottom: 40 },
+    machineSection: { marginBottom: 18 },
+    machineCatLabel: {
+      ...Typography.caption, color: c.textSecondary,
+      fontWeight: '700', letterSpacing: 1.2,
+      marginBottom: 8,
+    },
 
-  legend: {
-    flexDirection: 'row', justifyContent: 'center', gap: 20,
-    paddingVertical: 16,
-  },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  legendDot: { width: 8, height: 8, borderRadius: 4 },
-  legendLabel: { ...Typography.caption, color: Colors.textSecondary },
-});
+    legend: {
+      flexDirection: 'row', justifyContent: 'center', gap: 20,
+      paddingVertical: 16,
+    },
+    legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    legendDot: { width: 8, height: 8, borderRadius: 4 },
+    legendLabel: { ...Typography.caption, color: c.textSecondary },
+  });
+}
 
-const ma = StyleSheet.create({
-  card: {
-    backgroundColor: Colors.surface, borderRadius: 12,
-    borderWidth: 1, borderColor: Colors.border,
-    overflow: 'hidden', marginBottom: 8,
-  },
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 12, paddingVertical: 11,
-  },
-  iconBox: {
-    width: 30, height: 30, borderRadius: 7,
-    backgroundColor: Colors.accent + '18',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  name: { flex: 1, ...Typography.body, color: Colors.textPrimary, fontWeight: '600', fontSize: 13 },
-  count: { ...Typography.caption, color: Colors.accent, fontWeight: '700', marginRight: 4 },
-  list: { paddingHorizontal: 12, paddingBottom: 6 },
-  exRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingVertical: 10, paddingRight: 4,
-  },
-  dot: { width: 8, height: 8, borderRadius: 4, marginTop: 2, flexShrink: 0 },
-  exName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', fontSize: 13 },
-  exMuscle: { ...Typography.caption, color: Colors.accent, marginTop: 1 },
-});
+function makeMaStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    card: {
+      backgroundColor: c.surface, borderRadius: 12,
+      borderWidth: 1, borderColor: c.border,
+      overflow: 'hidden', marginBottom: 8,
+    },
+    header: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      paddingHorizontal: 12, paddingVertical: 11,
+    },
+    iconBox: {
+      width: 30, height: 30, borderRadius: 7,
+      backgroundColor: c.accent + '18',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    name: { flex: 1, ...Typography.body, color: c.textPrimary, fontWeight: '600', fontSize: 13 },
+    count: { ...Typography.caption, color: c.accent, fontWeight: '700', marginRight: 4 },
+    list: { paddingHorizontal: 12, paddingBottom: 6 },
+    exRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      paddingVertical: 10, paddingRight: 4,
+    },
+    dot: { width: 8, height: 8, borderRadius: 4, marginTop: 2, flexShrink: 0 },
+    exName: { ...Typography.body, color: c.textPrimary, fontWeight: '600', fontSize: 13 },
+    exMuscle: { ...Typography.caption, color: c.accent, marginTop: 1 },
+  });
+}
 
-const af = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
-  title: { ...Typography.label, color: Colors.textPrimary, fontSize: 14, marginBottom: 20 },
-  label: { ...Typography.label, color: Colors.textSecondary, marginBottom: 8 },
-  input: {
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13,
-    color: Colors.textPrimary, fontSize: 15,
-  },
-  chipRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
-  chip: {
-    paddingHorizontal: 14, paddingVertical: 8,
-    borderRadius: 20, borderWidth: 1.5, borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-  },
-  chipActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  chipText: { color: Colors.textSecondary, fontWeight: '700', fontSize: 12 },
-  chipTextActive: { color: Colors.bg },
-  btnRow: { flexDirection: 'row', gap: 12, marginTop: 4 },
-  cancelBtn: {
-    flex: 1, paddingVertical: 14, borderRadius: 12,
-    borderWidth: 1.5, borderColor: Colors.border, alignItems: 'center',
-  },
-  cancelBtnText: { color: Colors.textSecondary, fontWeight: '700', fontSize: 14 },
-  saveBtn: {
-    flex: 1, paddingVertical: 14, borderRadius: 12,
-    backgroundColor: Colors.accent, alignItems: 'center',
-  },
-  saveBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
-});
+function makeAfStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    container: { flex: 1, padding: 20 },
+    title: { ...Typography.label, color: c.textPrimary, fontSize: 14, marginBottom: 20 },
+    label: { ...Typography.label, color: c.textSecondary, marginBottom: 8 },
+    input: {
+      backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
+      borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13,
+      fontSize: 15,
+    },
+    chipRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
+    chip: {
+      paddingHorizontal: 14, paddingVertical: 8,
+      borderRadius: 20, borderWidth: 1.5, borderColor: c.border,
+      backgroundColor: c.surface,
+    },
+    chipActive: { backgroundColor: c.accent, borderColor: c.accent },
+    chipText: { color: c.textSecondary, fontWeight: '700', fontSize: 12 },
+    chipTextActive: { color: '#fff' },
+    btnRow: { flexDirection: 'row', gap: 12, marginTop: 4 },
+    cancelBtn: {
+      flex: 1, paddingVertical: 14, borderRadius: 12,
+      borderWidth: 1.5, borderColor: c.border, alignItems: 'center',
+    },
+    cancelBtnText: { color: c.textSecondary, fontWeight: '700', fontSize: 14 },
+    saveBtn: {
+      flex: 1, paddingVertical: 14, borderRadius: 12,
+      backgroundColor: c.accent, alignItems: 'center',
+    },
+    saveBtnText: { color: '#fff', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
+  });
+}

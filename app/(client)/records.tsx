@@ -216,58 +216,8 @@ export default function RecordsScreen() {
       .then(({ data }) => setCoachId(data?.coach_id ?? null));
   }, [user?.id]);
 
-  // Body measurements
-  const { measurements, upsert: upsertMeasurement } = useMyMeasurements(user?.id ?? undefined);
-  const [measModal, setMeasModal] = useState(false);
-  const [mWeight, setMWeight] = useState('');
-  const [mFat, setMFat] = useState('');
-  const [mMuscle, setMMuscle] = useState('');
-  const [mChest, setMChest] = useState('');
-  const [mWaist, setMWaist] = useState('');
-  const [mHips, setMHips] = useState('');
-  const [mArms, setMArms] = useState('');
-  const [mThighs, setMThighs] = useState('');
-  const [mNotes, setMNotes] = useState('');
-  const [savingMeas, setSavingMeas] = useState(false);
-
-  function openMeasModal() {
-    const today = measurements.find((m) => m.logged_at === new Date().toISOString().slice(0, 10));
-    setMWeight(today?.weight_kg?.toString() ?? '');
-    setMFat(today?.body_fat_pct?.toString() ?? '');
-    setMMuscle(today?.muscle_mass_kg?.toString() ?? '');
-    setMChest(today?.chest_cm?.toString() ?? '');
-    setMWaist(today?.waist_cm?.toString() ?? '');
-    setMHips(today?.hips_cm?.toString() ?? '');
-    setMArms(today?.arms_cm?.toString() ?? '');
-    setMThighs(today?.thighs_cm?.toString() ?? '');
-    setMNotes(today?.notes ?? '');
-    setMeasModal(true);
-  }
-
-  async function handleSaveMeasurement() {
-    const parse = (v: string) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
-    if (!mWeight && !mFat && !mMuscle && !mChest && !mWaist && !mHips && !mArms && !mThighs) {
-      Alert.alert('Nothing to save', 'Enter at least one measurement.');
-      return;
-    }
-    setSavingMeas(true);
-    const err = await upsertMeasurement({
-      client_id: user!.id,
-      logged_at: new Date().toISOString().slice(0, 10),
-      weight_kg: parse(mWeight),
-      body_fat_pct: parse(mFat),
-      muscle_mass_kg: parse(mMuscle),
-      chest_cm: parse(mChest),
-      waist_cm: parse(mWaist),
-      hips_cm: parse(mHips),
-      arms_cm: parse(mArms),
-      thighs_cm: parse(mThighs),
-      notes: mNotes.trim() || null,
-    });
-    setSavingMeas(false);
-    if (err) { Alert.alert('Error', err); return; }
-    setMeasModal(false);
-  }
+  // Body measurements (read-only — coach logs from client profile)
+  const { measurements } = useMyMeasurements(user?.id ?? undefined);
 
   // Progress photos
   const { photos, sendPhoto, deletePhoto } = useMyProgressPhotos(user?.id ?? null);
@@ -275,7 +225,9 @@ export default function RecordsScreen() {
   const [pickedUri, setPickedUri] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
   const [sending, setSending] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [viewing, setViewing] = useState<ProgressPhoto | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
   // Photo compare mode
   const [compareMode, setCompareMode] = useState(false);
   const [compareSelected, setCompareSelected] = useState<string[]>([]);
@@ -290,8 +242,10 @@ export default function RecordsScreen() {
   const [ciWeight, setCiWeight] = useState('');
   const [ciNotes, setCiNotes] = useState('');
   const [ciSaving, setCiSaving] = useState(false);
+  const [ciError, setCiError] = useState<string | null>(null);
 
   function openCheckinModal() {
+    setCiError(null);
     if (thisWeek) {
       setCiMood(thisWeek.mood ?? 3);
       setCiSleep(thisWeek.sleep_quality ?? 3);
@@ -305,11 +259,15 @@ export default function RecordsScreen() {
   }
 
   async function handleSaveCheckin() {
+    setCiError(null);
     setCiSaving(true);
-    const { error } = await upsertCheckin({ mood: ciMood, sleep_quality: ciSleep, energy_level: ciEnergy, weight_kg: ciWeight, notes: ciNotes } as CheckinInput);
-    setCiSaving(false);
-    if (error) { Alert.alert('Error', error); return; }
-    setCheckinModal(false);
+    try {
+      const { error } = await upsertCheckin({ mood: ciMood, sleep_quality: ciSleep, energy_level: ciEnergy, weight_kg: ciWeight, notes: ciNotes } as CheckinInput);
+      if (error) { setCiError(error); return; }
+      setCheckinModal(false);
+    } finally {
+      setCiSaving(false);
+    }
   }
 
   function toggleCompareSelect(photo: ProgressPhoto) {
@@ -343,32 +301,37 @@ export default function RecordsScreen() {
     setPhotoModal(true);
   }
 
+  function closePhotoModal() {
+    setPhotoModal(false);
+    setPickedUri(null);
+    setNoteText('');
+    setPhotoError(null);
+  }
+
   async function handleSendPhoto() {
-    if (!pickedUri || !coachId) return;
+    if (!pickedUri) return;
+    if (!coachId) { setPhotoError('No active package found. Ask your coach to assign one.'); return; }
+    setPhotoError(null);
     setSending(true);
-    const { error } = await sendPhoto(coachId, pickedUri, noteText);
-    setSending(false);
-    if (error) {
-      Alert.alert('Upload failed', error);
-    } else {
-      setPhotoModal(false);
-      setPickedUri(null);
-      setNoteText('');
+    try {
+      const { error } = await sendPhoto(coachId, pickedUri, noteText);
+      if (error) {
+        setPhotoError(error);
+      } else {
+        closePhotoModal();
+      }
+    } catch (e: any) {
+      setPhotoError(e?.message ?? 'Something went wrong');
+    } finally {
+      setSending(false);
     }
   }
 
-  function handleDeletePhoto(photo: ProgressPhoto) {
-    Alert.alert('Delete photo?', 'This will permanently remove it.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete', style: 'destructive',
-        onPress: async () => {
-          const { error } = await deletePhoto(photo);
-          if (error) Alert.alert('Error', error);
-          if (viewing?.id === photo.id) setViewing(null);
-        },
-      },
-    ]);
+  async function doDeletePhoto(photo: ProgressPhoto) {
+    const { error } = await deletePhoto(photo);
+    if (error) console.warn('[deletePhoto]', error);
+    setDeleteConfirm(false);
+    if (viewing?.id === photo.id) setViewing(null);
   }
 
   async function handleGenerateReport() {
@@ -570,18 +533,15 @@ export default function RecordsScreen() {
         <View style={s.measHeader}>
           <View style={{ flex: 1 }}>
             <Text style={s.sectionHeading}>BODY MEASUREMENTS</Text>
-            <Text style={s.sub}>Track your weight and body measurements over time.</Text>
+            <Text style={s.sub}>Your coach logs measurements during sessions or InBody scans.</Text>
           </View>
-          <Pressable style={s.sendBtn} onPress={openMeasModal}>
-            <Ionicons name="add-outline" size={15} color={colors.accent} />
-            <Text style={s.sendBtnText}>Log Today</Text>
-          </Pressable>
         </View>
 
         {measurements.length === 0 ? (
           <View style={s.photoEmpty}>
             <Ionicons name="body-outline" size={36} color={colors.border} />
-            <Text style={s.photoEmptyText}>No measurements logged yet</Text>
+            <Text style={s.photoEmptyText}>No measurements yet</Text>
+            <Text style={[s.photoEmptyText, { fontSize: 12, marginTop: 4 }]}>Your coach will log these during your sessions</Text>
           </View>
         ) : (
           <>
@@ -616,81 +576,8 @@ export default function RecordsScreen() {
         <View style={{ height: 32 }} />
       </ScrollView>
 
-      {/* ── Send Photo modal ── */}
-      {/* ── Log Measurement modal ── */}
-      <Modal visible={measModal} transparent animationType="slide" onRequestClose={() => setMeasModal(false)}>
-        <Pressable style={s.modalBackdrop} onPress={() => setMeasModal(false)} />
-        <ScrollView style={s.measModalSheet} keyboardShouldPersistTaps="handled">
-          <Text style={s.modalTitle}>Log Measurements</Text>
-          <Text style={[s.sub, { marginBottom: 16 }]}>Today — {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</Text>
-
-          <View style={s.measInputRow}>
-            <View style={s.measInputGroup}>
-              <Text style={s.measInputLabel}>Weight (kg)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 72.5" placeholderTextColor={colors.textSecondary}
-                keyboardType="decimal-pad" value={mWeight} onChangeText={setMWeight} />
-            </View>
-            <View style={s.measInputGroup}>
-              <Text style={s.measInputLabel}>Body fat (%)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 18.0" placeholderTextColor={colors.textSecondary}
-                keyboardType="decimal-pad" value={mFat} onChangeText={setMFat} />
-            </View>
-          </View>
-          <View style={s.measInputRow}>
-            <View style={s.measInputGroup}>
-              <Text style={s.measInputLabel}>Muscle mass (kg)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 35.0" placeholderTextColor={colors.textSecondary}
-                keyboardType="decimal-pad" value={mMuscle} onChangeText={setMMuscle} />
-            </View>
-            <View style={s.measInputGroup}>
-              <Text style={s.measInputLabel}>Chest (cm)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 95" placeholderTextColor={colors.textSecondary}
-                keyboardType="decimal-pad" value={mChest} onChangeText={setMChest} />
-            </View>
-          </View>
-          <View style={s.measInputRow}>
-            <View style={s.measInputGroup}>
-              <Text style={s.measInputLabel}>Waist (cm)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 80" placeholderTextColor={colors.textSecondary}
-                keyboardType="decimal-pad" value={mWaist} onChangeText={setMWaist} />
-            </View>
-            <View style={s.measInputGroup}>
-              <Text style={s.measInputLabel}>Hips (cm)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 98" placeholderTextColor={colors.textSecondary}
-                keyboardType="decimal-pad" value={mHips} onChangeText={setMHips} />
-            </View>
-          </View>
-          <View style={s.measInputRow}>
-            <View style={s.measInputGroup}>
-              <Text style={s.measInputLabel}>Arms (cm)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 35" placeholderTextColor={colors.textSecondary}
-                keyboardType="decimal-pad" value={mArms} onChangeText={setMArms} />
-            </View>
-            <View style={s.measInputGroup}>
-              <Text style={s.measInputLabel}>Thighs (cm)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 58" placeholderTextColor={colors.textSecondary}
-                keyboardType="decimal-pad" value={mThighs} onChangeText={setMThighs} />
-            </View>
-          </View>
-          <TextInput
-            style={[s.measInput, { marginBottom: 16 }]}
-            placeholder="Notes (optional)"
-            placeholderTextColor={colors.textSecondary}
-            value={mNotes} onChangeText={setMNotes}
-          />
-          <Pressable
-            style={[s.sendConfirmBtn, savingMeas && { opacity: 0.6 }]}
-            onPress={handleSaveMeasurement}
-            disabled={savingMeas}
-          >
-            <Text style={s.sendConfirmText}>{savingMeas ? 'Saving…' : 'Save'}</Text>
-          </Pressable>
-          <View style={{ height: 40 }} />
-        </ScrollView>
-      </Modal>
-
-      <Modal visible={photoModal} transparent animationType="slide" onRequestClose={() => setPhotoModal(false)}>
-        <Pressable style={s.modalBackdrop} onPress={() => setPhotoModal(false)} />
+      <Modal visible={photoModal} transparent animationType="slide" onRequestClose={closePhotoModal}>
+        <Pressable style={s.modalBackdrop} onPress={closePhotoModal} />
         <View style={s.modalSheet}>
           <Text style={s.modalTitle}>Send to Coach</Text>
           {pickedUri && (
@@ -704,6 +591,11 @@ export default function RecordsScreen() {
             onChangeText={setNoteText}
             maxLength={200}
           />
+          {photoError ? (
+            <Text style={{ color: colors.danger, fontSize: 13, textAlign: 'center', marginBottom: 8 }}>
+              {photoError}
+            </Text>
+          ) : null}
           <Pressable
             style={[s.sendConfirmBtn, sending && { opacity: 0.6 }]}
             onPress={handleSendPhoto}
@@ -780,6 +672,11 @@ export default function RecordsScreen() {
             multiline
             maxLength={500}
           />
+          {ciError ? (
+            <Text style={{ color: colors.danger, fontSize: 13, textAlign: 'center', marginBottom: 8 }}>
+              {ciError}
+            </Text>
+          ) : null}
           <Pressable style={[s.sendConfirmBtn, ciSaving && { opacity: 0.6 }]} onPress={handleSaveCheckin} disabled={ciSaving}>
             <Text style={s.sendConfirmText}>{ciSaving ? 'Saving…' : 'Save Check-in'}</Text>
           </Pressable>
@@ -788,17 +685,21 @@ export default function RecordsScreen() {
       </Modal>
 
       {/* ── Fullscreen viewer ── */}
-      <Modal visible={!!viewing} transparent animationType="fade" onRequestClose={() => setViewing(null)}>
+      <Modal
+        visible={!!viewing}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { setDeleteConfirm(false); setViewing(null); }}
+      >
         <View style={s.viewerOverlay}>
-          <Pressable style={s.viewerClose} onPress={() => setViewing(null)}>
+          <Pressable style={s.viewerClose} onPress={() => { setDeleteConfirm(false); setViewing(null); }}>
             <Ionicons name="close" size={26} color="#fff" />
           </Pressable>
-          <Pressable
-            style={s.viewerDelete}
-            onPress={() => viewing && handleDeletePhoto(viewing)}
-          >
-            <Ionicons name="trash-outline" size={22} color="#FF4D4D" />
-          </Pressable>
+          {!deleteConfirm && (
+            <Pressable style={s.viewerDelete} onPress={() => setDeleteConfirm(true)}>
+              <Ionicons name="trash-outline" size={22} color="#FF4D4D" />
+            </Pressable>
+          )}
           {viewing && (
             <>
               <Image source={{ uri: viewing.file_url }} style={s.viewerImg} resizeMode="contain" />
@@ -807,6 +708,19 @@ export default function RecordsScreen() {
                 {viewing.note ? <Text style={s.viewerNote}>{viewing.note}</Text> : null}
               </View>
             </>
+          )}
+          {deleteConfirm && viewing && (
+            <View style={s.viewerConfirm}>
+              <Text style={s.viewerConfirmText}>Delete this photo?</Text>
+              <View style={s.viewerConfirmBtns}>
+                <Pressable style={s.viewerCancelBtn} onPress={() => setDeleteConfirm(false)}>
+                  <Text style={s.viewerCancelText}>Cancel</Text>
+                </Pressable>
+                <Pressable style={s.viewerDeleteBtn} onPress={() => doDeletePhoto(viewing)}>
+                  <Text style={s.viewerDeleteText}>Delete</Text>
+                </Pressable>
+              </View>
+            </View>
           )}
         </View>
       </Modal>
@@ -874,7 +788,7 @@ function makeStyles(c: ColorScheme) {
     photoThumb: { width: THUMB, height: THUMB, borderRadius: 4, backgroundColor: c.surface },
 
     // Send modal
-    modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+    modalBackdrop: { flex: 1, backgroundColor: c.overlay },
     modalSheet: {
       backgroundColor: c.surface,
       borderTopLeftRadius: 20, borderTopRightRadius: 20,
@@ -922,6 +836,7 @@ function makeStyles(c: ColorScheme) {
       backgroundColor: c.surface,
       borderTopLeftRadius: 20, borderTopRightRadius: 20,
       padding: 24,
+      maxHeight: '85%',
     },
     measInputRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
     measInputGroup: { flex: 1, gap: 5 },
@@ -943,6 +858,23 @@ function makeStyles(c: ColorScheme) {
     viewerCaption: { marginTop: 16, alignItems: 'center', gap: 4, paddingHorizontal: 24 },
     viewerDate: { ...Typography.caption, color: 'rgba(255,255,255,0.6)' },
     viewerNote: { ...Typography.body, color: '#fff', textAlign: 'center' },
+    viewerConfirm: {
+      position: 'absolute', bottom: 48, left: 24, right: 24,
+      backgroundColor: 'rgba(0,0,0,0.85)', borderRadius: 14,
+      padding: 20, alignItems: 'center', gap: 14,
+    },
+    viewerConfirmText: { ...Typography.subtitle, color: '#fff', fontWeight: '700' },
+    viewerConfirmBtns: { flexDirection: 'row', gap: 12, width: '100%' },
+    viewerCancelBtn: {
+      flex: 1, paddingVertical: 12, borderRadius: 10,
+      borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', alignItems: 'center',
+    },
+    viewerCancelText: { ...Typography.body, color: '#fff', fontWeight: '600' },
+    viewerDeleteBtn: {
+      flex: 1, paddingVertical: 12, borderRadius: 10,
+      backgroundColor: '#FF4D4D', alignItems: 'center',
+    },
+    viewerDeleteText: { ...Typography.body, color: '#fff', fontWeight: '700' },
 
     // Photo compare
     photoHeaderBtns: { flexDirection: 'row', gap: 8, alignItems: 'center' },

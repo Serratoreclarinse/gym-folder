@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Image, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Linking, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
@@ -38,6 +38,181 @@ const AVATAR_COLORS = [
   '#8BC34A', '#E91E63', '#FFC107', '#795548',
 ];
 
+function QuickStartModal({
+  visible, clients, coachId, onClose, onStarted,
+}: {
+  visible: boolean;
+  clients: ClientWithPackage[];
+  coachId: string;
+  onClose: () => void;
+  onStarted: () => void;
+}) {
+  const { colors } = useTheme();
+  const qs = useMemo(() => makeQs(colors), [colors]);
+  const [selectedId, setSelectedId] = useState('');
+  const [duration, setDuration] = useState<30 | 45 | 60 | 90>(60);
+  const [search, setSearch] = useState('');
+  const [starting, setStarting] = useState(false);
+
+  const filtered = clients.filter((c) =>
+    c.name.toLowerCase().includes(search.toLowerCase()) && c.activePackage?.status === 'active'
+  );
+
+  const reset = () => { setSelectedId(''); setDuration(60); setSearch(''); };
+
+  const handleStart = async () => {
+    if (!selectedId) { Alert.alert('Select a client first'); return; }
+    const client = clients.find((c) => c.id === selectedId);
+    const pkg = client?.activePackage;
+    if (!pkg) { Alert.alert('No Package', 'This client has no active package.'); return; }
+
+    setStarting(true);
+    const today = new Date().toISOString().split('T')[0];
+
+    // Check for a pre-planned session today
+    const { data: planned } = await supabase
+      .from('workout_sessions')
+      .select('id')
+      .eq('coach_id', coachId)
+      .eq('client_id', selectedId)
+      .eq('session_date', today)
+      .eq('status', 'planned')
+      .maybeSingle();
+
+    let sessionId: string;
+    if (planned) {
+      await supabase.from('workout_sessions').update({
+        package_id: pkg.id,
+        duration_minutes: duration,
+        status: 'confirmed',
+      }).eq('id', planned.id);
+      sessionId = planned.id;
+    } else {
+      const { data: ws, error: wsErr } = await supabase.from('workout_sessions').insert({
+        coach_id: coachId,
+        client_id: selectedId,
+        package_id: pkg.id,
+        session_date: today,
+        duration_minutes: duration,
+        exercises: [],
+      }).select('id').single();
+      if (wsErr || !ws) {
+        setStarting(false);
+        Alert.alert('Error', wsErr?.message ?? 'Could not create session.');
+        return;
+      }
+      sessionId = ws.id;
+    }
+
+    const { error: aeErr } = await supabase.from('active_sessions').insert({
+      coach_id: coachId,
+      client_id: selectedId,
+      session_id: sessionId,
+      start_time: new Date().toISOString(),
+      original_duration: duration,
+      current_duration: duration,
+      is_active: true,
+      is_paused: false,
+    });
+
+    setStarting(false);
+
+    if (aeErr) {
+      if (!planned) await supabase.from('workout_sessions').delete().eq('id', sessionId);
+      Alert.alert('Error', aeErr.message);
+      return;
+    }
+
+    reset();
+    onClose();
+    onStarted();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={qs.overlay} onPress={onClose}>
+        <Pressable style={qs.sheet} onPress={() => {}}>
+          <View style={qs.handle} />
+          <View style={qs.header}>
+            <Text style={qs.title}>QUICK START SESSION</Text>
+            <Pressable onPress={() => { reset(); onClose(); }} hitSlop={12}>
+              <Ionicons name="close" size={22} color={colors.textSecondary} />
+            </Pressable>
+          </View>
+
+          {/* Search */}
+          <View style={qs.searchRow}>
+            <Ionicons name="search-outline" size={16} color={colors.textSecondary} />
+            <TextInput
+              style={qs.searchInput}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search client…"
+              placeholderTextColor={colors.textSecondary + '60'}
+            />
+            {search.length > 0 && (
+              <Pressable onPress={() => setSearch('')} hitSlop={8}>
+                <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
+              </Pressable>
+            )}
+          </View>
+
+          {/* Client list */}
+          <ScrollView style={qs.list} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            {filtered.map((c) => {
+              const ini = c.name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
+              const active = c.id === selectedId;
+              return (
+                <Pressable
+                  key={c.id}
+                  style={[qs.clientRow, active && qs.clientRowActive]}
+                  onPress={() => setSelectedId(c.id)}
+                >
+                  <View style={[qs.avatar, active && qs.avatarActive]}>
+                    <Text style={[qs.avatarText, active && { color: colors.bg }]}>{ini}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[qs.clientName, active && { color: colors.accent }]}>{c.name}</Text>
+                    <Text style={qs.clientSub}>{c.activePackage!.sessions_remaining} sessions left</Text>
+                  </View>
+                  {active && <Ionicons name="checkmark-circle" size={20} color={colors.accent} />}
+                </Pressable>
+              );
+            })}
+            {filtered.length === 0 && (
+              <Text style={qs.empty}>No active clients found</Text>
+            )}
+          </ScrollView>
+
+          {/* Duration */}
+          <Text style={qs.durationLabel}>DURATION</Text>
+          <View style={qs.durRow}>
+            {([30, 45, 60, 90] as const).map((d) => (
+              <Pressable
+                key={d}
+                style={[qs.durBtn, duration === d && qs.durBtnActive]}
+                onPress={() => setDuration(d)}
+              >
+                <Text style={[qs.durText, duration === d && qs.durTextActive]}>{d}m</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Pressable
+            style={[qs.startBtn, (!selectedId || starting) && { opacity: 0.4 }]}
+            onPress={handleStart}
+            disabled={!selectedId || starting}
+          >
+            <Ionicons name="play-circle-outline" size={18} color={colors.bg} />
+            <Text style={qs.startBtnText}>{starting ? 'STARTING…' : 'START SESSION'}</Text>
+          </Pressable>
+          <View style={{ height: 24 }} />
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function ClientPickerModal({
   visible, clients, onClose, onSelect,
 }: {
@@ -46,6 +221,8 @@ function ClientPickerModal({
   onClose: () => void;
   onSelect: (id: string) => void;
 }) {
+  const { colors } = useTheme();
+  const ps = useMemo(() => makePs(colors), [colors]);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={ps.container}>
@@ -66,7 +243,7 @@ function ClientPickerModal({
               const isActive = pkg?.status === 'active';
               const isExpired = pkg?.status === 'expired';
               const isLow = isActive && (pkg?.sessions_remaining ?? 0) <= 3;
-              const statusColor = isExpired ? '#E8001D' : isLow ? '#FF9800' : '#4CAF50';
+              const statusColor = isExpired ? colors.accent : isLow ? colors.warning : colors.success;
               const statusLabel = isExpired
                 ? 'EXPIRED'
                 : isActive
@@ -82,13 +259,20 @@ function ClientPickerModal({
                     <Text style={[ps.avatarText, { color }]}>{initials}</Text>
                   </View>
                   <View style={ps.rowInfo}>
-                    <Text style={ps.rowName} numberOfLines={1}>{c.name}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={ps.rowName} numberOfLines={1}>{c.name}</Text>
+                      {c.isRetention && (
+                        <View style={{ backgroundColor: '#C8FF0018', borderRadius: 4, borderWidth: 1, borderColor: '#C8FF0040', paddingHorizontal: 4, paddingVertical: 1 }}>
+                          <Text style={{ fontSize: 8, fontWeight: '800', color: '#C8FF00', letterSpacing: 0.5 }}>🔄</Text>
+                        </View>
+                      )}
+                    </View>
                     <View style={ps.rowStatusRow}>
                       <View style={[ps.statusDot, { backgroundColor: statusColor }]} />
                       <Text style={[ps.statusLabel, { color: statusColor }]}>{statusLabel}</Text>
                     </View>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color="#444" />
+                  <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
                 </Pressable>
               );
             })}
@@ -114,7 +298,9 @@ export default function CoachDashboard() {
   const { activeSession, nextSession, extendSession, endSession, cancelSession, refetch: refetchTimer } = useActiveSessionContext();
   const [pausedWorkout, setPausedWorkout] = useState<any | null>(null);
   const [showPicker, setShowPicker] = useState(false);
-  const [monthEarnings, setMonthEarnings] = useState<number | null>(null);
+  const [showQuickStart, setShowQuickStart] = useState(false);
+
+  const [atRiskClients, setAtRiskClients] = useState<{ id: string; name: string; daysSince: number; phone: string | null }[]>([]);
   const [incomingTransfers, setIncomingTransfers] = useState<{
     id: string; client_name: string; from_coach_id: string; from_coach_name: string;
     package_type: string; sessions_remaining: number; notes: string | null;
@@ -185,31 +371,70 @@ export default function CoachDashboard() {
     ]);
   };
 
-  const fetchEarnings = useCallback(async () => {
+  const fetchAtRisk = useCallback(async () => {
     if (!profile?.id) return;
-    const now   = new Date();
-    const start = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-    const { data } = await supabase
-      .from('payments')
-      .select('amount')
-      .eq('coach_id', profile.id)
-      .gte('paid_at', start);
-    const total = (data ?? []).reduce((s: number, r: any) => s + (r.amount ?? 0), 0);
-    setMonthEarnings(total);
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 14);
+    const cutoffISO = cutoff.toISOString().split('T')[0];
+
+    const [sessRes, pkgRes] = await Promise.all([
+      supabase
+        .from('workout_sessions')
+        .select('client_id, session_date')
+        .eq('coach_id', profile.id)
+        .gte('session_date', new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0]),
+      supabase
+        .from('packages')
+        .select('client_id, start_date, client:profiles!packages_client_id_fkey(name, phone, deactivated_at)')
+        .eq('coach_id', profile.id)
+        .eq('status', 'active'),
+    ]);
+
+    const lastSess = new Map<string, string>();
+    for (const row of sessRes.data ?? []) {
+      const prev = lastSess.get(row.client_id);
+      if (!prev || row.session_date > prev) lastSess.set(row.client_id, row.session_date);
+    }
+
+    const today = new Date();
+    const riskMap = new Map<string, { id: string; name: string; daysSince: number; phone: string | null }>();
+    for (const pkg of pkgRes.data ?? []) {
+      if ((pkg.client as any)?.deactivated_at) continue;
+      const clientId = pkg.client_id;
+      const lastDate = lastSess.get(clientId);
+      const refDate  = lastDate ?? pkg.start_date;
+      const days     = Math.floor((today.getTime() - new Date(refDate).getTime()) / 86400000);
+      if (days >= 14 && !riskMap.has(clientId)) {
+        riskMap.set(clientId, {
+          id: clientId,
+          name: (pkg.client as any)?.name ?? '—',
+          daysSince: days,
+          phone: (pkg.client as any)?.phone ?? null,
+        });
+      }
+    }
+    setAtRiskClients([...riskMap.values()].sort((a, b) => b.daysSince - a.daysSince));
   }, [profile?.id]);
 
   const refreshing = cLoading || sLoading;
-  const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers(); fetchEarnings(); };
+  const onRefresh = () => { refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers(); fetchAtRisk(); };
 
   useFocusEffect(useCallback(() => {
-    refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers(); fetchEarnings();
-    AsyncStorage.getItem('@elevat3/paused_workout').then((data) => {
+    refetchClients(); refetchSessions(); refetchStrikes(); refetchWaitlist(); refetchTimer(); refetchBookingReqs(); fetchIncomingTransfers(); fetchAtRisk();
+    AsyncStorage.getItem('@elevat3/paused_workout').then(async (data) => {
       if (data) {
         const w = JSON.parse(data);
-        if (Date.now() - w.savedAt < 24 * 60 * 60 * 1000) {
+        const SIX_HOURS = 6 * 60 * 60 * 1000;
+        if (Date.now() - w.savedAt < SIX_HOURS) {
           setPausedWorkout(w);
         } else {
-          AsyncStorage.removeItem('@elevat3/paused_workout');
+          // Expired — clean up local + server
+          await AsyncStorage.removeItem('@elevat3/paused_workout');
+          if (w.coachId) {
+            await supabase.from('active_sessions')
+              .update({ is_active: false, ended_at: new Date().toISOString() })
+              .eq('coach_id', w.coachId).eq('is_active', true);
+          }
           setPausedWorkout(null);
         }
       } else {
@@ -229,6 +454,7 @@ export default function CoachDashboard() {
       if (done) return;
       const todayBdays = clients.filter((c) => c.birthday != null && getDaysUntilBirthday(c.birthday) === 0);
       if (todayBdays.length === 0) return;
+      if (Platform.OS === 'web') return;
       const { status } = await Notifications.requestPermissionsAsync();
       if (status !== 'granted') return;
       for (const c of todayBdays) {
@@ -244,6 +470,36 @@ export default function CoachDashboard() {
     })();
   }, [cLoading]);
 
+  // Schedule local push reminders for the coach's next session (3hr, 30min, 15min before)
+  useEffect(() => {
+    if (!nextSession) return;
+    const sessionDt = new Date(nextSession.scheduled_at);
+    const time = sessionDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const name = nextSession.client_name;
+    (async () => {
+      if (Platform.OS === 'web') return;
+      await Notifications.cancelScheduledNotificationAsync('coach-session-3hr').catch(() => {});
+      await Notifications.cancelScheduledNotificationAsync('coach-session-30min').catch(() => {});
+      await Notifications.cancelScheduledNotificationAsync('coach-session-15min').catch(() => {});
+      const now = Date.now();
+      const reminders = [
+        { id: 'coach-session-3hr',   ms: 3 * 60 * 60 * 1000, title: '📅 Upcoming Session',      body: `You have a session with ${name} at ${time}` },
+        { id: 'coach-session-30min', ms: 30 * 60 * 1000,      title: '⏰ Session in 30 Minutes', body: `Get ready! ${name}'s session starts at ${time}` },
+        { id: 'coach-session-15min', ms: 15 * 60 * 1000,      title: '🔔 Session in 15 Minutes', body: `${name}'s session starts in 15 minutes!` },
+      ];
+      for (const r of reminders) {
+        const fireAt = new Date(sessionDt.getTime() - r.ms);
+        if (fireAt.getTime() > now) {
+          await Notifications.scheduleNotificationAsync({
+            identifier: r.id,
+            content: { title: r.title, body: r.body, sound: true },
+            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: fireAt },
+          });
+        }
+      }
+    })();
+  }, [nextSession?.id]);
+
   const activeClients = clients.filter((c) => c.activePackage?.status === 'active').length;
   const packageAlertClients = clients.filter(
     (c) => c.activePackage && c.activePackage.sessions_remaining <= 3,
@@ -256,6 +512,22 @@ export default function CoachDashboard() {
   weekAgo.setDate(weekAgo.getDate() - 7);
   const weekSessions = sessions.filter((s) => new Date(s.session_date) >= weekAgo).length;
 
+  const salesBanner = useMemo(() => {
+    const now = new Date();
+    const day = now.getDate();
+    const nextMonthName = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+      .toLocaleDateString('en-US', { month: 'long' });
+    if (day >= 28) {
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      const daysLeft = (lastDay - day) + 4;
+      return { level: 'warning' as const, daysLeft, closingMonthName: nextMonthName };
+    }
+    if (day <= 4) {
+      return { level: 'closing' as const, daysLeft: 4 - day, closingMonthName: '' };
+    }
+    return null;
+  }, []);
+
   return (
     <ScrollView
       style={styles.scroll}
@@ -267,7 +539,7 @@ export default function CoachDashboard() {
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
           <Pressable style={styles.addBtn} onPress={() => setShowPicker(true)}>
-            <Ionicons name="menu-outline" size={22} color={colors.accent} />
+            <Ionicons name="people-outline" size={22} color={colors.accent} />
           </Pressable>
           <View style={{ flex: 1 }}>
             <Text style={styles.greeting} numberOfLines={1}>Hi Coach, {firstName} 👊</Text>
@@ -276,9 +548,6 @@ export default function CoachDashboard() {
             </Text>
           </View>
         </View>
-        <Pressable style={styles.iconBtn} onPress={() => router.push('/(coach)/announcements' as any)}>
-          <Ionicons name="megaphone-outline" size={18} color={colors.accent} />
-        </Pressable>
       </View>
 
       {(cError || sError) && (
@@ -287,67 +556,74 @@ export default function CoachDashboard() {
 
       {/* Compact stats strip */}
       <View style={styles.statsStrip}>
-        <View style={styles.statItem}>
+        <Pressable style={({ pressed }) => [styles.statItem, pressed && { opacity: 0.6 }]} onPress={() => router.push('/(coach)/(tabs)/clients')}>
           <Text style={styles.statValue}>{activeClients}</Text>
           <Text style={styles.statLabel}>Clients</Text>
-        </View>
+        </Pressable>
         <View style={styles.statDiv} />
-        <View style={styles.statItem}>
+        <Pressable style={({ pressed }) => [styles.statItem, pressed && { opacity: 0.6 }]} onPress={() => router.push('/(coach)/(tabs)/sessions')}>
           <Text style={styles.statValue}>{todaySessions}</Text>
           <Text style={styles.statLabel}>Today</Text>
-        </View>
+        </Pressable>
         <View style={styles.statDiv} />
-        <View style={styles.statItem}>
+        <Pressable style={({ pressed }) => [styles.statItem, pressed && { opacity: 0.6 }]} onPress={() => router.push('/(coach)/(tabs)/sessions')}>
           <Text style={styles.statValue}>{weekSessions}</Text>
           <Text style={styles.statLabel}>This Week</Text>
-        </View>
+        </Pressable>
       </View>
     </View>
 
-      {/* Earnings this month */}
-      {monthEarnings !== null && (
-        <Pressable
-          style={({ pressed }) => [styles.earningsCard, pressed && { opacity: 0.85 }]}
-          onPress={() => router.push('/(coach)/revenue')}
-        >
-          <View>
-            <Text style={styles.earningsLabel}>EARNINGS THIS MONTH</Text>
-            <Text style={styles.earningsValue}>
-              OMR {monthEarnings.toFixed(3).replace(/\.?0+$/, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+      {/* Sales closing banner */}
+      {salesBanner && (
+        <View style={[
+          styles.salesBanner,
+          salesBanner.level === 'closing' && styles.salesBannerFinal,
+        ]}>
+          <Ionicons
+            name={salesBanner.level === 'warning' ? 'time-outline' : 'alert-circle'}
+            size={18}
+            color={salesBanner.level === 'warning' ? colors.warning : colors.danger}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.salesBannerTitle, salesBanner.level === 'closing' && { color: colors.danger }]}>
+              {salesBanner.level === 'warning'
+                ? `Sales Closing in ${salesBanner.daysLeft} day${salesBanner.daysLeft !== 1 ? 's' : ''}`
+                : salesBanner.daysLeft === 0
+                  ? 'Sales Close TODAY — Last Chance!'
+                  : `Sales Close in ${salesBanner.daysLeft} day${salesBanner.daysLeft !== 1 ? 's' : ''}!`
+              }
+            </Text>
+            <Text style={styles.salesBannerSub}>
+              {salesBanner.level === 'warning'
+                ? `Submit all renewals & new packages by the 4th of ${salesBanner.closingMonthName}`
+                : 'Monthly sales deadline — submit all renewals and new packages today'
+              }
             </Text>
           </View>
-          <Ionicons name="trending-up-outline" size={28} color={colors.accent} />
-        </Pressable>
+        </View>
       )}
 
       {/* Quick actions */}
-      <Pressable
-        style={({ pressed }) => [styles.logSessionBtn, pressed && { opacity: 0.85 }]}
-        onPress={() => router.push('/(coach)/log-session')}
-      >
-        <Ionicons name="add-circle-outline" size={20} color={colors.bg} />
-        <Text style={styles.logSessionText}>LOG SESSION</Text>
-      </Pressable>
-
-      <View style={{ flexDirection: 'row', gap: 8 }}>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, marginBottom: 12 }}>
         <Pressable
-          style={({ pressed }) => [styles.emergencyBtn, { flex: 1 }, pressed && { opacity: 0.8 }]}
-          onPress={() => router.push({ pathname: '/(coach)/announcements', params: { preset: 'emergency' } } as any)}
+          style={({ pressed }) => [styles.logSessionBtn, { flex: 1 }, pressed && { opacity: 0.85 }]}
+          onPress={() => router.push('/(coach)/log-session')}
         >
-          <Ionicons name="warning-outline" size={16} color={colors.danger} />
-          <Text style={styles.emergencyBtnText}>EMERGENCY NOTICE</Text>
+          <Ionicons name="add-circle-outline" size={18} color={colors.bg} />
+          <Text style={styles.logSessionText}>LOG SESSION</Text>
         </Pressable>
         <Pressable
-          style={({ pressed }) => [styles.emergencyBtn, { flex: 1 }, pressed && { opacity: 0.8 }]}
-          onPress={() => router.push('/(coach)/form-checker' as any)}
+          style={({ pressed }) => [styles.quickStartBtn, pressed && { opacity: 0.85 }]}
+          onPress={() => setShowQuickStart(true)}
+          disabled={!!activeSession}
         >
-          <Ionicons name="scan-outline" size={16} color={colors.accent} />
-          <Text style={[styles.emergencyBtnText, { color: colors.accent }]}>FORM CHECKER</Text>
+          <Ionicons name="play-circle-outline" size={18} color={colors.accent} />
+          <Text style={styles.quickStartText}>QUICK START</Text>
         </Pressable>
       </View>
 
-      {/* Resume paused workout */}
-      {pausedWorkout && (
+      {/* Resume paused workout — hide when active session card is showing (its FULL LOG button covers this) */}
+      {pausedWorkout && !activeSession && (
         <Pressable
           style={({ pressed }) => [styles.resumeCard, pressed && { opacity: 0.8 }]}
           onPress={() => router.push({
@@ -366,7 +642,7 @@ export default function CoachDashboard() {
           } as any)}
         >
           <View style={styles.resumeIcon}>
-            <Ionicons name="play-circle" size={28} color="#4CAF50" />
+            <Ionicons name="play-circle" size={28} color={colors.success} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.resumeTitle}>RESUME WORKOUT</Text>
@@ -397,8 +673,14 @@ export default function CoachDashboard() {
         />
       )}
 
-      {/* Next scheduled session */}
-      {nextSession && (
+      {/* Next scheduled session — show only if today or tomorrow */}
+      {nextSession && (() => {
+        const sessionDate = new Date(nextSession.scheduled_at);
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() + 2);
+        cutoff.setHours(0, 0, 0, 0);
+        return sessionDate < cutoff;
+      })() && (
         <NextSessionCard nextSession={nextSession} />
       )}
 
@@ -479,9 +761,9 @@ export default function CoachDashboard() {
                   <Ionicons
                     name={req.type === 'renewal' ? 'refresh-outline' : 'calendar-outline'}
                     size={13}
-                    color={req.type === 'renewal' ? '#4CAF50' : colors.accent}
+                    color={req.type === 'renewal' ? colors.success : colors.accent}
                   />
-                  <Text style={[styles.reqTypeText, req.type === 'renewal' && { color: '#4CAF50' }]}>
+                  <Text style={[styles.reqTypeText, req.type === 'renewal' && { color: colors.success }]}>
                     {req.type === 'renewal' ? 'Renewal' : 'Booking'}
                   </Text>
                 </View>
@@ -517,7 +799,7 @@ export default function CoachDashboard() {
           </View>
           {strikeAlerts.map((alert) => {
             const isMax = alert.strike_count >= MAX_STRIKES;
-            const color = isMax ? colors.danger : '#FFA500';
+            const color = isMax ? colors.danger : colors.warning;
             const initials = alert.client_name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
             const latestDate = new Date(alert.latest_strike_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             return (
@@ -551,13 +833,13 @@ export default function CoachDashboard() {
         <>
           <View style={styles.strikeSectionHeader}>
             <Text style={styles.sectionTitle}>PACKAGE ALERTS</Text>
-            <View style={[styles.strikeBadge, { backgroundColor: '#FF980020', borderColor: '#FF980060' }]}>
-              <Text style={[styles.strikeBadgeText, { color: '#FF9800' }]}>{packageAlertClients.length}</Text>
+            <View style={[styles.strikeBadge, { backgroundColor: colors.warning + '20', borderColor: colors.warning + '60' }]}>
+              <Text style={[styles.strikeBadgeText, { color: colors.warning }]}>{packageAlertClients.length}</Text>
             </View>
           </View>
           {packageAlertClients.map((c) => {
             const isExpired = c.activePackage!.sessions_remaining === 0;
-            const color = isExpired ? colors.danger : '#FF9800';
+            const color = isExpired ? colors.danger : colors.warning;
             const initials = c.name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
             return (
               <Pressable
@@ -586,6 +868,61 @@ export default function CoachDashboard() {
         </>
       )}
 
+      {/* At-Risk Clients */}
+      {atRiskClients.length > 0 && (
+        <>
+          <View style={styles.strikeSectionHeader}>
+            <Text style={styles.sectionTitle}>AT-RISK CLIENTS</Text>
+            <View style={[styles.strikeBadge, { backgroundColor: colors.warning + '20', borderColor: colors.warning + '60' }]}>
+              <Text style={[styles.strikeBadgeText, { color: colors.warning }]}>{atRiskClients.length}</Text>
+            </View>
+          </View>
+          {atRiskClients.map((c) => {
+            const ini = c.name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
+            return (
+              <View
+                key={c.id}
+                style={[styles.strikeAlertCard, { borderColor: colors.warning + '50' }]}
+              >
+                <Pressable
+                  style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }, pressed && { opacity: 0.75 }]}
+                  onPress={() => router.push(`/(coach)/client/${c.id}`)}
+                >
+                  <View style={[styles.strikeAvatar, { backgroundColor: colors.warning + '18', borderColor: colors.warning + '40' }]}>
+                    <Text style={[styles.strikeAvatarText, { color: colors.warning }]}>{ini}</Text>
+                  </View>
+                  <View style={styles.strikeAlertInfo}>
+                    <Text style={styles.strikeAlertName}>{c.name}</Text>
+                    <Text style={[styles.strikeAlertDate, { color: colors.warning }]}>
+                      No session in {c.daysSince} day{c.daysSince !== 1 ? 's' : ''}
+                    </Text>
+                  </View>
+                </Pressable>
+                <View style={styles.atRiskActions}>
+                  <Pressable
+                    style={({ pressed }) => [styles.atRiskBtn, pressed && { opacity: 0.7 }]}
+                    onPress={() => router.push(`/(coach)/log-session?clientId=${c.id}` as any)}
+                  >
+                    <Ionicons name="add-circle-outline" size={13} color={colors.warning} />
+                    <Text style={styles.atRiskBtnText}>LOG</Text>
+                  </Pressable>
+                  {c.phone ? (
+                    <Pressable
+                      style={({ pressed }) => [styles.atRiskBtn, pressed && { opacity: 0.7 }]}
+                      onPress={() => Linking.openURL(`tel:${c.phone}`)}
+                    >
+                      <Ionicons name="call-outline" size={13} color={colors.warning} />
+                      <Text style={styles.atRiskBtnText}>CALL</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              </View>
+            );
+          })}
+          <View style={{ height: 8 }} />
+        </>
+      )}
+
       {/* Waitlist notice */}
       {waitlistCount > 0 && (
         <Pressable style={styles.waitlistNotice} onPress={() => router.push('/(coach)/(tabs)/calendar')}>
@@ -603,6 +940,14 @@ export default function CoachDashboard() {
       onSelect={(id) => { setShowPicker(false); router.push(`/(coach)/client/${id}` as any); }}
     />
     </ScrollView>
+
+    <QuickStartModal
+      visible={showQuickStart}
+      clients={clients}
+      coachId={profile?.id ?? ''}
+      onClose={() => setShowQuickStart(false)}
+      onStarted={refetchTimer}
+    />
   );
 }
 
@@ -610,11 +955,11 @@ function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
     resumeCard: {
       flexDirection: 'row', alignItems: 'center', gap: 12,
-      backgroundColor: '#4CAF5015', borderWidth: 1.5, borderColor: '#4CAF5050',
+      backgroundColor: c.success + '15', borderWidth: 1.5, borderColor: c.success + '50',
       borderRadius: 16, padding: 14, marginBottom: 10,
     },
     resumeIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-    resumeTitle: { color: '#4CAF50', fontWeight: '800', fontSize: 13, letterSpacing: 0.5, marginBottom: 3 },
+    resumeTitle: { color: c.success, fontWeight: '800', fontSize: 13, letterSpacing: 0.5, marginBottom: 3 },
     resumeSub: { color: c.textSecondary, fontSize: 13 },
 
     fixedTop: {
@@ -658,15 +1003,17 @@ function makeStyles(c: ColorScheme) {
     statValue: { ...Typography.title, color: c.textPrimary, fontSize: 22, fontWeight: '800' },
     statLabel: { ...Typography.caption, color: c.textSecondary, marginTop: 2 },
     statDiv: { width: 1, height: 32, backgroundColor: c.border },
-    earningsCard:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: c.accent + '30', padding: 16, marginBottom: 8 },
-    earningsLabel: { ...Typography.label, color: c.textSecondary, marginBottom: 4, fontSize: 10 },
-    earningsValue: { fontSize: 22, fontWeight: '800', color: c.accent },
     logSessionBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
       backgroundColor: c.accent, borderRadius: 14, paddingVertical: 16,
-      marginTop: 12, marginBottom: 12,
     },
-    logSessionText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1 },
+    logSessionText: { color: c.bg, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+    quickStartBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+      borderWidth: 1.5, borderColor: c.accent + '60', borderRadius: 14, paddingVertical: 16,
+      paddingHorizontal: 18, backgroundColor: c.accent + '10',
+    },
+    quickStartText: { color: c.accent, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
     sectionTitle: { ...Typography.label, color: c.textSecondary },
     strikeSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
     strikeBadge: {
@@ -700,6 +1047,13 @@ function makeStyles(c: ColorScheme) {
     strikeAlertInfo: { flex: 1 },
     strikeAlertName: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
     strikeAlertDate: { ...Typography.caption, color: c.textSecondary },
+    atRiskActions: { flexDirection: 'row', gap: 6 },
+    atRiskBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      backgroundColor: c.warning + '18', borderWidth: 1, borderColor: c.warning + '50',
+      borderRadius: 8, paddingHorizontal: 9, paddingVertical: 6,
+    },
+    atRiskBtnText: { fontSize: 11, fontWeight: '800', color: c.warning, letterSpacing: 0.5 },
     strikeCountBadge: {
       alignItems: 'center',
       gap: 6,
@@ -739,7 +1093,7 @@ function makeStyles(c: ColorScheme) {
       paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
       backgroundColor: c.accent + '18', borderWidth: 1, borderColor: c.accent + '40',
     },
-    reqTypeBadgeRenew: { backgroundColor: '#4CAF5018', borderColor: '#4CAF5040' },
+    reqTypeBadgeRenew: { backgroundColor: c.success + '18', borderColor: c.success + '40' },
     reqTypeText: { fontSize: 12, fontWeight: '700', color: c.accent },
     reqClientName: { ...Typography.body, color: c.textPrimary, fontWeight: '700', flex: 1 },
     reqDateTime: { ...Typography.caption, color: c.textSecondary },
@@ -755,13 +1109,21 @@ function makeStyles(c: ColorScheme) {
       backgroundColor: c.accent,
     },
     reqAcceptBtnText: { color: c.bg, fontWeight: '800', fontSize: 13 },
-    // Emergency button
-    emergencyBtn: {
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-      backgroundColor: c.danger + '15', borderRadius: 14, paddingVertical: 13, marginBottom: 20,
-      borderWidth: 1, borderColor: c.danger + '50',
+    // Sales closing banner
+    salesBanner: {
+      flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+      borderWidth: 1, borderColor: c.warning + '55', borderRadius: 12,
+      padding: 13, marginBottom: 12, backgroundColor: c.warning + '10',
     },
-    emergencyBtnText: { color: c.danger, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+    salesBannerFinal: {
+      borderColor: c.danger + '55', backgroundColor: c.danger + '10',
+    },
+    salesBannerTitle: {
+      fontSize: 13, fontWeight: '800', color: c.warning, marginBottom: 2,
+    },
+    salesBannerSub: {
+      fontSize: 12, color: c.textSecondary, lineHeight: 16,
+    },
 
     // Pinned announcement banner
     pinnedBanner: {
@@ -777,47 +1139,106 @@ function makeStyles(c: ColorScheme) {
   });
 }
 
-const ps = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: '#1A1A1A',
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingBottom: 32, maxHeight: '70%',
-    borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1,
-    borderColor: '#2A2A2A',
-  },
-  handle: {
-    width: 36, height: 4, borderRadius: 2,
-    backgroundColor: '#444', alignSelf: 'center', marginVertical: 12,
-  },
-  sheetHead: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 20, paddingBottom: 14,
-    borderBottomWidth: 1, borderBottomColor: '#2A2A2A', marginBottom: 4,
-  },
-  sheetTitle: {
-    fontSize: 12, fontWeight: '800', letterSpacing: 1.5,
-    color: '#888', flex: 1,
-  },
-  sheetBadge: {
-    backgroundColor: '#E8001D20', borderRadius: 10,
-    paddingHorizontal: 8, paddingVertical: 2,
-    borderWidth: 1, borderColor: '#E8001D40',
-  },
-  sheetBadgeText: { color: '#E8001D', fontSize: 11, fontWeight: '800' },
-  row: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    paddingHorizontal: 20, paddingVertical: 13,
-    borderBottomWidth: 1, borderBottomColor: '#242424',
-  },
-  avatar: {
-    width: 46, height: 46, borderRadius: 23,
-    justifyContent: 'center', alignItems: 'center', borderWidth: 2, flexShrink: 0,
-  },
-  avatarText: { fontSize: 15, fontWeight: '800' },
-  rowInfo: { flex: 1 },
-  rowName: { color: '#fff', fontWeight: '700', fontSize: 14, marginBottom: 4 },
-  rowStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  statusDot: { width: 7, height: 7, borderRadius: 4 },
-  statusLabel: { fontSize: 12, fontWeight: '600' },
-});
+function makePs(c: ColorScheme) {
+  return StyleSheet.create({
+    container: { flex: 1, justifyContent: 'flex-end' },
+    sheet: {
+      backgroundColor: c.surface,
+      borderTopLeftRadius: 24, borderTopRightRadius: 24,
+      paddingBottom: 32, maxHeight: '70%',
+      borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1,
+      borderColor: c.border,
+    },
+    handle: {
+      width: 36, height: 4, borderRadius: 2,
+      backgroundColor: c.border, alignSelf: 'center', marginVertical: 12,
+    },
+    sheetHead: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      paddingHorizontal: 20, paddingBottom: 14,
+      borderBottomWidth: 1, borderBottomColor: c.border, marginBottom: 4,
+    },
+    sheetTitle: {
+      fontSize: 12, fontWeight: '800', letterSpacing: 1.5,
+      color: c.textSecondary, flex: 1,
+    },
+    sheetBadge: {
+      backgroundColor: c.accent + '20', borderRadius: 10,
+      paddingHorizontal: 8, paddingVertical: 2,
+      borderWidth: 1, borderColor: c.accent + '40',
+    },
+    sheetBadgeText: { color: c.accent, fontSize: 11, fontWeight: '800' },
+    row: {
+      flexDirection: 'row', alignItems: 'center', gap: 14,
+      paddingHorizontal: 20, paddingVertical: 13,
+      borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    avatar: {
+      width: 46, height: 46, borderRadius: 23,
+      justifyContent: 'center', alignItems: 'center', borderWidth: 2, flexShrink: 0,
+    },
+    avatarText: { fontSize: 15, fontWeight: '800' },
+    rowInfo: { flex: 1 },
+    rowName: { color: c.textPrimary, fontWeight: '700', fontSize: 14, marginBottom: 4 },
+    rowStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    statusDot: { width: 7, height: 7, borderRadius: 4 },
+    statusLabel: { fontSize: 12, fontWeight: '600' },
+  });
+}
+
+function makeQs(c: ColorScheme) {
+  return StyleSheet.create({
+    overlay: { flex: 1, backgroundColor: c.overlay, justifyContent: 'flex-end' },
+    sheet: {
+      backgroundColor: c.surface,
+      borderTopLeftRadius: 24, borderTopRightRadius: 24,
+      paddingHorizontal: 20, paddingBottom: 8,
+      maxHeight: '80%',
+    },
+    handle: {
+      width: 40, height: 4, borderRadius: 2,
+      backgroundColor: c.border, alignSelf: 'center', marginTop: 12, marginBottom: 8,
+    },
+    header: {
+      flexDirection: 'row', justifyContent: 'space-between',
+      alignItems: 'center', marginBottom: 14,
+    },
+    title: { ...Typography.label, color: c.textPrimary, fontSize: 14 },
+    searchRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      backgroundColor: c.bg, borderRadius: 12, borderWidth: 1, borderColor: c.border,
+      paddingHorizontal: 12, paddingVertical: 2, marginBottom: 10,
+    },
+    searchInput: { flex: 1, color: c.textPrimary, fontSize: 14, paddingVertical: 10 },
+    list: { maxHeight: 260 },
+    clientRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    clientRowActive: { backgroundColor: c.accent + '08' },
+    avatar: {
+      width: 38, height: 38, borderRadius: 19,
+      backgroundColor: c.accent + '18', borderWidth: 1.5, borderColor: c.accent + '40',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    avatarActive: { backgroundColor: c.accent, borderColor: c.accent },
+    avatarText: { color: c.accent, fontWeight: '800', fontSize: 13 },
+    clientName: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    clientSub: { ...Typography.caption, color: c.textSecondary, marginTop: 1 },
+    empty: { ...Typography.body, color: c.textSecondary, textAlign: 'center', paddingVertical: 24 },
+    durationLabel: { ...Typography.label, color: c.textSecondary, marginTop: 16, marginBottom: 10 },
+    durRow: { flexDirection: 'row', gap: 8, marginBottom: 18 },
+    durBtn: {
+      flex: 1, paddingVertical: 11, borderRadius: 10, alignItems: 'center',
+      backgroundColor: c.surface, borderWidth: 1.5, borderColor: c.border,
+    },
+    durBtnActive: { backgroundColor: c.accent, borderColor: c.accent },
+    durText: { fontWeight: '700', fontSize: 13, color: c.textSecondary },
+    durTextActive: { color: c.bg },
+    startBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+      backgroundColor: c.accent, borderRadius: 14, paddingVertical: 15,
+    },
+    startBtnText: { color: c.bg, fontWeight: '800', fontSize: 14, letterSpacing: 1 },
+  });
+}

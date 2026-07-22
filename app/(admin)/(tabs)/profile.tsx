@@ -1,12 +1,15 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Image, Modal, Platform,
+  ActivityIndicator, Alert, Image, Linking, Modal, Platform,
   Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
+import { BugReportModal } from '@/components/BugReportModal';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/lib/supabase';
+import { PhoneInput } from '@/components/PhoneInput';
 import { useAuth } from '@/context/AuthContext';
 import { ColorScheme, Typography } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
@@ -30,10 +33,13 @@ export default function AdminProfileScreen() {
 
   // Change password
   const [pwModal, setPwModal] = useState(false);
+  const [bugModal, setBugModal] = useState(false);
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
   const [changingPw, setChangingPw] = useState(false);
   const [pwSuccess, setPwSuccess] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
 
   const loadAvatar = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -49,7 +55,7 @@ export default function AdminProfileScreen() {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.7,
@@ -187,14 +193,7 @@ export default function AdminProfileScreen() {
             autoCapitalize="words"
           />
           <Text style={[s.fieldLabel, { marginTop: 12 }]}>Phone</Text>
-          <TextInput
-            style={s.input}
-            value={editPhone}
-            onChangeText={setEditPhone}
-            placeholder="Phone number (optional)"
-            placeholderTextColor={colors.textSecondary}
-            keyboardType="phone-pad"
-          />
+          <PhoneInput value={editPhone} onChange={setEditPhone} colors={colors} />
           <Pressable
             style={[s.saveBtn, saving && { opacity: 0.6 }]}
             onPress={handleSaveProfile}
@@ -243,9 +242,21 @@ export default function AdminProfileScreen() {
 
         {/* ── Sign out ── */}
         <Pressable style={s.signOutBtn} onPress={handleSignOut}>
-          <Ionicons name="log-out-outline" size={18} color="#FF4D4D" />
+          <Ionicons name="log-out-outline" size={18} color={colors.danger} />
           <Text style={s.signOutText}>Sign Out</Text>
         </Pressable>
+
+        {/* ── Bug report ── */}
+        <Pressable
+          style={({ pressed }) => [s.bugReportBtn, pressed && { opacity: 0.7 }]}
+          onPress={() => setBugModal(true)}
+        >
+          <Ionicons name="bug-outline" size={16} color="#888" />
+          <Text style={s.bugReportText}>Report a Bug</Text>
+        </Pressable>
+        <BugReportModal visible={bugModal} onClose={() => setBugModal(false)} />
+
+        <Text style={s.versionText}>v{Constants.expoConfig?.version ?? '1.0.0'}</Text>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -264,32 +275,42 @@ export default function AdminProfileScreen() {
 
             {pwSuccess ? (
               <View style={s.pwSuccess}>
-                <Ionicons name="checkmark-circle" size={32} color="#4CAF50" />
+                <Ionicons name="checkmark-circle" size={32} color={colors.success} />
                 <Text style={s.pwSuccessText}>Password Changed!</Text>
               </View>
             ) : (
               <>
                 <Text style={s.modalLabel}>New Password</Text>
-                <TextInput
-                  style={s.modalInput}
-                  value={newPw}
-                  onChangeText={setNewPw}
-                  placeholder="At least 6 characters"
-                  placeholderTextColor={colors.textSecondary}
-                  secureTextEntry
-                  autoFocus
-                />
+                <View style={s.pwInputRow}>
+                  <TextInput
+                    style={[s.modalInput, { flex: 1, borderWidth: 0 }]}
+                    value={newPw}
+                    onChangeText={setNewPw}
+                    placeholder="At least 6 characters"
+                    placeholderTextColor={colors.textSecondary}
+                    secureTextEntry={!showNewPw}
+                    autoFocus
+                  />
+                  <Pressable onPress={() => setShowNewPw(v => !v)} style={s.eyeBtn}>
+                    <Ionicons name={showNewPw ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.textSecondary} />
+                  </Pressable>
+                </View>
                 <Text style={[s.modalLabel, { marginTop: 12 }]}>Confirm Password</Text>
-                <TextInput
-                  style={s.modalInput}
-                  value={confirmPw}
-                  onChangeText={setConfirmPw}
-                  placeholder="Repeat new password"
-                  placeholderTextColor={colors.textSecondary}
-                  secureTextEntry
-                  returnKeyType="done"
-                  onSubmitEditing={handleChangePassword}
-                />
+                <View style={s.pwInputRow}>
+                  <TextInput
+                    style={[s.modalInput, { flex: 1, borderWidth: 0 }]}
+                    value={confirmPw}
+                    onChangeText={setConfirmPw}
+                    placeholder="Repeat new password"
+                    placeholderTextColor={colors.textSecondary}
+                    secureTextEntry={!showConfirmPw}
+                    returnKeyType="done"
+                    onSubmitEditing={handleChangePassword}
+                  />
+                  <Pressable onPress={() => setShowConfirmPw(v => !v)} style={s.eyeBtn}>
+                    <Ionicons name={showConfirmPw ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.textSecondary} />
+                  </Pressable>
+                </View>
                 <Pressable
                   style={[s.modalBtn, changingPw && { opacity: 0.6 }]}
                   onPress={handleChangePassword}
@@ -401,11 +422,17 @@ function makeStyles(c: ColorScheme) {
     signOutBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
       marginHorizontal: 20, borderRadius: 14,
-      borderWidth: 1, borderColor: '#FF4D4D40',
-      backgroundColor: '#FF4D4D0C',
+      borderWidth: 1, borderColor: c.danger + '40',
+      backgroundColor: c.danger + '0C',
       paddingVertical: 15,
     },
-    signOutText: { fontSize: 15, fontWeight: '700', color: '#FF4D4D' },
+    signOutText: { fontSize: 15, fontWeight: '700', color: c.danger },
+    bugReportBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      marginTop: 12, paddingVertical: 10,
+    },
+    bugReportText: { color: c.textSecondary, fontSize: 13 },
+    versionText: { textAlign: 'center', color: c.textSecondary, fontSize: 12, marginTop: 4, opacity: 0.6 },
 
     // Modal
     overlay: { flex: 1, backgroundColor: '#00000070', justifyContent: 'flex-end' },
@@ -430,7 +457,9 @@ function makeStyles(c: ColorScheme) {
       paddingVertical: 14, alignItems: 'center', marginTop: 8,
     },
     modalBtnText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 0.8 },
+    pwInputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.bg, borderWidth: 1, borderColor: c.border, borderRadius: 12 },
+    eyeBtn: { paddingHorizontal: 12, paddingVertical: 12 },
     pwSuccess: { alignItems: 'center', paddingVertical: 28, gap: 12 },
-    pwSuccessText: { fontSize: 18, fontWeight: '800', color: '#4CAF50' },
+    pwSuccessText: { fontSize: 18, fontWeight: '800', color: c.success },
   });
 }

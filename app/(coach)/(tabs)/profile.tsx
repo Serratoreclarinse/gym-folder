@@ -1,16 +1,19 @@
-import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { useMemo, useState } from 'react';
+import { Alert, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { BugReportModal } from '@/components/BugReportModal';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/lib/supabase';
+import { PhoneInput } from '@/components/PhoneInput';
 import { useAuth } from '@/context/AuthContext';
 import { ColorScheme, Typography } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 
 export default function CoachProfileScreen() {
   const { profile, signOut, refreshProfile } = useAuth();
-  const { isDark, toggleTheme, colors } = useTheme();
+  const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [editing, setEditing] = useState(false);
@@ -31,6 +34,65 @@ export default function CoachProfileScreen() {
   const [editingEmail, setEditingEmail] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [savingEmail, setSavingEmail] = useState(false);
+
+  // Equipment request
+  const [showEqModal, setShowEqModal] = useState(false);
+  const [bugModal, setBugModal] = useState(false);
+  const [eqItem, setEqItem] = useState('');
+  const [eqQty, setEqQty] = useState('1');
+  const [eqNotes, setEqNotes] = useState('');
+  const [submittingEq, setSubmittingEq] = useState(false);
+  const [myRequests, setMyRequests] = useState<{ id: string; itemName: string; quantity: number; status: string; createdAt: string }[]>([]);
+
+  const loadMyRequests = useCallback(async () => {
+    if (!profile?.id) return;
+    const { data } = await supabase
+      .from('equipment_requests')
+      .select('id, item_name, quantity, status, created_at')
+      .eq('coach_id', profile.id)
+      .order('created_at', { ascending: false })
+      .limit(5);
+    setMyRequests(
+      (data ?? []).map((r: any) => ({
+        id: r.id,
+        itemName: r.item_name,
+        quantity: r.quantity,
+        status: r.status,
+        createdAt: r.created_at,
+      })),
+    );
+  }, [profile?.id]);
+
+  useEffect(() => { loadMyRequests(); }, [loadMyRequests]);
+
+  const handleSubmitEquipment = async () => {
+    if (!eqItem.trim() || !profile?.id) return;
+    setSubmittingEq(true);
+    const { error } = await supabase.from('equipment_requests').insert({
+      coach_id: profile.id,
+      item_name: eqItem.trim(),
+      quantity: Math.max(1, parseInt(eqQty, 10) || 1),
+      notes: eqNotes.trim() || null,
+      status: 'pending',
+    });
+    setSubmittingEq(false);
+    if (error) { Alert.alert('Error', error.message); return; }
+
+    // Notify admin
+    const { data: admins } = await supabase.from('profiles').select('id').eq('role', 'admin').limit(1);
+    if (admins?.[0]?.id) {
+      const { sendPushNotification } = await import('@/lib/pushNotifications');
+      await sendPushNotification(admins[0].id, {
+        title: '🔧 Equipment Request',
+        body: `${profile.name ?? 'A coach'} requested: ${eqItem.trim()}${parseInt(eqQty, 10) > 1 ? ` ×${eqQty}` : ''}`,
+      });
+    }
+
+    setShowEqModal(false);
+    setEqItem(''); setEqQty('1'); setEqNotes('');
+    loadMyRequests();
+    Alert.alert('Request Sent', 'Your equipment request has been submitted to the admin.');
+  };
 
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -173,8 +235,20 @@ export default function CoachProfileScreen() {
 
       {editing ? (
         <View style={styles.editCard}>
-          <EditField icon="call-outline" label="PHONE" value={phone} onChangeText={setPhone} placeholder="+63 912 345 6789" keyboardType="phone-pad" colors={colors} />
-          <EditField icon="logo-whatsapp" label="WHATSAPP" value={whatsapp} onChangeText={setWhatsapp} placeholder="+63 912 345 6789" keyboardType="phone-pad" iconColor="#25D366" colors={colors} />
+          <View style={[styles.editField, styles.editFieldBorder]}>
+            <Ionicons name="call-outline" size={18} color={colors.textSecondary} style={styles.rowIcon} />
+            <View style={styles.rowContent}>
+              <Text style={styles.infoLabel}>PHONE</Text>
+              <PhoneInput value={phone} onChange={setPhone} colors={colors} inputStyle={{ backgroundColor: 'transparent', borderWidth: 0, paddingHorizontal: 0, paddingVertical: 2, ...Typography.body, color: colors.textPrimary }} />
+            </View>
+          </View>
+          <View style={[styles.editField, styles.editFieldBorder]}>
+            <Ionicons name="logo-whatsapp" size={18} color="#25D366" style={styles.rowIcon} />
+            <View style={styles.rowContent}>
+              <Text style={styles.infoLabel}>WHATSAPP</Text>
+              <PhoneInput value={whatsapp} onChange={setWhatsapp} colors={colors} inputStyle={{ backgroundColor: 'transparent', borderWidth: 0, paddingHorizontal: 0, paddingVertical: 2, ...Typography.body, color: colors.textPrimary }} placeholder="WhatsApp number" />
+            </View>
+          </View>
           <EditField icon="logo-instagram" label="INSTAGRAM" value={instagram} onChangeText={setInstagram} placeholder="@yourhandle" iconColor="#E1306C" last colors={colors} />
           <View style={styles.editActions}>
             <Pressable style={styles.cancelBtn} onPress={() => setEditing(false)}>
@@ -233,30 +307,6 @@ export default function CoachProfileScreen() {
           </View>
           <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
         </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.infoRow, styles.infoRowBorder, pressed && { opacity: 0.7 }]}
-          onPress={() => router.push('/(coach)/revenue')}
-        >
-          <Ionicons name="bar-chart-outline" size={18} color={colors.textSecondary} style={styles.rowIcon} />
-          <View style={styles.rowContent}>
-            <Text style={styles.infoLabel}>REVENUE</Text>
-            <Text style={styles.infoValue}>Earnings, packages & session breakdown</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
-        </Pressable>
-        <View style={styles.infoRow}>
-          <Ionicons name={isDark ? 'moon-outline' : 'sunny-outline'} size={18} color={colors.textSecondary} style={styles.rowIcon} />
-          <View style={styles.rowContent}>
-            <Text style={styles.infoLabel}>APPEARANCE</Text>
-            <Text style={styles.infoValue}>{isDark ? 'Dark Mode' : 'Light Mode'}</Text>
-          </View>
-          <Switch
-            value={!isDark}
-            onValueChange={toggleTheme}
-            trackColor={{ false: colors.border, true: colors.accent + '80' }}
-            thumbColor={!isDark ? colors.accent : colors.textSecondary}
-          />
-        </View>
       </View>
 
       {/* Account */}
@@ -385,15 +435,87 @@ export default function CoachProfileScreen() {
         </View>
       )}
 
-      {/* Guide */}
+      {/* Equipment Request */}
       <Pressable
-        style={({ pressed }) => [styles.guideBtn, pressed && { opacity: 0.7 }]}
-        onPress={() => router.push('/(coach)/guide')}
+        style={({ pressed }) => [styles.guideBtn, { borderColor: colors.warning + '50', backgroundColor: colors.warning + '08' }, pressed && { opacity: 0.7 }]}
+        onPress={() => setShowEqModal(true)}
       >
-        <Ionicons name="book-outline" size={16} color={colors.accent} />
-        <Text style={styles.guideBtnText}>User Guide</Text>
-        <Ionicons name="chevron-forward" size={14} color={colors.accent} style={{ marginLeft: 'auto' }} />
+        <Ionicons name="construct-outline" size={16} color={colors.warning} />
+        <Text style={[styles.guideBtnText, { color: colors.warning }]}>Request Equipment</Text>
+        <Ionicons name="chevron-forward" size={14} color={colors.warning} style={{ marginLeft: 'auto' }} />
       </Pressable>
+
+      {/* Recent equipment requests */}
+      {myRequests.length > 0 && (
+        <View style={styles.eqHistory}>
+          {myRequests.map((r) => {
+            const STATUS_DISPLAY: Record<string, { label: string; color: string }> = {
+              pending:   { label: 'PENDING',  color: colors.warning },
+              approved:  { label: 'INCOMING', color: '#2196F3' },
+              fulfilled: { label: 'RECEIVED', color: colors.success },
+              rejected:  { label: 'REJECTED', color: colors.danger },
+            };
+            const { label, color } = STATUS_DISPLAY[r.status] ?? { label: r.status.toUpperCase(), color: colors.textSecondary };
+            return (
+              <View key={r.id} style={styles.eqHistoryRow}>
+                <Text style={styles.eqHistoryItem} numberOfLines={1}>{r.itemName}{r.quantity > 1 ? ` ×${r.quantity}` : ''}</Text>
+                <View style={[styles.eqStatusBadge, { backgroundColor: color + '18', borderColor: color + '40' }]}>
+                  <Text style={[styles.eqStatusText, { color }]}>{label}</Text>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      {/* Equipment Request Modal */}
+      <Modal visible={showEqModal} transparent animationType="slide" onRequestClose={() => setShowEqModal(false)}>
+        <View style={styles.eqOverlay}>
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowEqModal(false)} />
+          <View style={styles.eqSheet}>
+            <View style={styles.eqHandle} />
+            <Text style={styles.eqSheetTitle}>Request Equipment</Text>
+
+            <Text style={styles.eqLabel}>ITEM NAME <Text style={{ color: colors.accent }}>*</Text></Text>
+            <TextInput
+              style={styles.eqInput}
+              placeholder="e.g. Resistance bands, Kettlebell 16kg…"
+              placeholderTextColor={colors.textSecondary}
+              value={eqItem}
+              onChangeText={setEqItem}
+              autoFocus
+            />
+
+            <Text style={styles.eqLabel}>QUANTITY</Text>
+            <TextInput
+              style={[styles.eqInput, { width: 80 }]}
+              placeholder="1"
+              placeholderTextColor={colors.textSecondary}
+              value={eqQty}
+              onChangeText={setEqQty}
+              keyboardType="number-pad"
+            />
+
+            <Text style={styles.eqLabel}>NOTES (optional)</Text>
+            <TextInput
+              style={[styles.eqInput, { minHeight: 70 }]}
+              placeholder="Reason, brand preference, urgency…"
+              placeholderTextColor={colors.textSecondary}
+              value={eqNotes}
+              onChangeText={setEqNotes}
+              multiline
+            />
+
+            <Pressable
+              style={({ pressed }) => [styles.eqSubmitBtn, (!eqItem.trim() || submittingEq) && { opacity: 0.5 }, pressed && { opacity: 0.8 }]}
+              onPress={handleSubmitEquipment}
+              disabled={!eqItem.trim() || submittingEq}
+            >
+              <Text style={styles.eqSubmitText}>{submittingEq ? 'SUBMITTING…' : 'SUBMIT REQUEST'}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       {/* Sign out */}
       <Pressable
@@ -402,6 +524,18 @@ export default function CoachProfileScreen() {
       >
         <Text style={styles.signOutText}>Sign Out</Text>
       </Pressable>
+
+      {/* Bug report */}
+      <Pressable
+        style={({ pressed }) => [styles.bugReportBtn, pressed && { opacity: 0.7 }]}
+        onPress={() => setBugModal(true)}
+      >
+        <Ionicons name="bug-outline" size={16} color={colors.textSecondary} />
+        <Text style={styles.bugReportText}>Report a Bug</Text>
+      </Pressable>
+      <BugReportModal visible={bugModal} onClose={() => setBugModal(false)} />
+
+      <Text style={styles.versionText}>v{Constants.expoConfig?.version ?? '1.0.0'}</Text>
     </ScrollView>
   );
 }
@@ -548,5 +682,43 @@ function makeStyles(c: ColorScheme) {
       alignItems: 'center', borderWidth: 1, borderColor: c.danger,
     },
     signOutText: { color: c.danger, fontSize: 15, fontWeight: '700' },
+    bugReportBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      marginTop: 12, paddingVertical: 10,
+    },
+    bugReportText: { color: c.textSecondary, fontSize: 13 },
+    versionText: { textAlign: 'center', color: c.textSecondary, fontSize: 12, marginTop: 4, marginBottom: 20, opacity: 0.6 },
+
+    // Equipment request
+    eqHistory: {
+      backgroundColor: c.surface, borderRadius: 12, borderWidth: 1,
+      borderColor: c.border, marginBottom: 10, overflow: 'hidden',
+    },
+    eqHistoryRow: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 14, paddingVertical: 10,
+      borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    eqHistoryItem: { ...Typography.body, color: c.textPrimary, flex: 1, marginRight: 8 },
+    eqStatusBadge: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
+    eqStatusText: { fontSize: 10, fontWeight: '800' },
+    eqOverlay: { flex: 1, backgroundColor: c.overlay, justifyContent: 'flex-end' },
+    eqSheet: {
+      backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+      padding: 24, gap: 6,
+    },
+    eqHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: c.border, alignSelf: 'center', marginBottom: 12 },
+    eqSheetTitle: { ...Typography.title, color: c.textPrimary, fontWeight: '800', marginBottom: 8 },
+    eqLabel: { ...Typography.label, color: c.textSecondary, marginTop: 8, marginBottom: 4 },
+    eqInput: {
+      ...Typography.body, color: c.textPrimary,
+      borderWidth: 1, borderColor: c.border, borderRadius: 10,
+      paddingHorizontal: 12, paddingVertical: 10,
+    },
+    eqSubmitBtn: {
+      backgroundColor: c.warning, borderRadius: 12,
+      paddingVertical: 15, alignItems: 'center', marginTop: 16,
+    },
+    eqSubmitText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   });
 }

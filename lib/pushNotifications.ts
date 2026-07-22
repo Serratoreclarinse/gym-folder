@@ -26,7 +26,9 @@ export async function sendPushNotification(
   // Log to in-app notification inbox regardless of push token
   supabase.from('notifications').insert({
     user_id: userId, title, body, data: data ?? {},
-  }).then(() => {});
+  }).then(({ error }) => {
+    if (error) console.warn('[notif insert]', error.code, error.message);
+  });
 
   try {
     const { data: row } = await supabase

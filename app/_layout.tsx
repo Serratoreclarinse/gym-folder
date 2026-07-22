@@ -1,8 +1,18 @@
-import { Slot, useRouter, useSegments } from 'expo-router';
+import { Slot, useRouter } from 'expo-router';
 import { DarkTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Alert, Animated, Platform, StyleSheet, Text, View } from 'react-native';
+import { GlobalAlert, showAppAlert } from '@/components/GlobalAlert';
+
+// Monkey-patch Alert.alert so all existing calls use the themed modal
+const _nativeAlert = Alert.alert.bind(Alert);
+(Alert as any).alert = (
+  title: string,
+  message?: string,
+  buttons?: Parameters<typeof Alert.alert>[2],
+  _options?: Parameters<typeof Alert.alert>[3],
+) => showAppAlert(title, message, buttons as any);
 import * as Linking from 'expo-linking';
 import * as Updates from 'expo-updates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -13,6 +23,7 @@ import { useFonts } from 'expo-font';
 import {
   Montserrat_700Bold,
   Montserrat_800ExtraBold,
+  Montserrat_900Black,
   Montserrat_600SemiBold,
 } from '@expo-google-fonts/montserrat';
 import {
@@ -21,19 +32,21 @@ import {
   Inter_600SemiBold,
 } from '@expo-google-fonts/inter';
 
-function AnimatedSplash() {
+function AnimatedSplash({ fontsLoaded }: { fontsLoaded: boolean }) {
   const fadeAnim  = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
 
   useEffect(() => {
     Animated.spring(scaleAnim, { toValue: 1, friction: 7, useNativeDriver: true }).start();
+  }, []);
 
+  useEffect(() => {
+    if (!fontsLoaded) return;
     const t = setTimeout(() => {
       Animated.timing(fadeAnim, { toValue: 0, duration: 350, useNativeDriver: true }).start();
-    }, 900);
-
+    }, 400);
     return () => clearTimeout(t);
-  }, []);
+  }, [fontsLoaded]);
 
   return (
     <Animated.View style={[styles.splash, { opacity: fadeAnim }]} pointerEvents="none">
@@ -76,49 +89,38 @@ function useAutoUpdate() {
 
 function AuthNavigation() {
   const { session, profile, loading, needsPasswordReset } = useAuth();
-  const segments = useSegments();
-  const router   = useRouter();
+  const router = useRouter();
 
-  const [onboardingChecked, setOnboardingChecked] = useState(false);
-  const [onboardingDone,    setOnboardingDone]    = useState(false);
-
-  useEffect(() => {
-    AsyncStorage.getItem('onboarding_done').then((val) => {
-      setOnboardingDone(val === 'true');
-      setOnboardingChecked(true);
-    });
-  }, []);
+  const sessionId   = session?.user?.id ?? null;
+  const profileRole = profile?.role     ?? null;
 
   useEffect(() => {
-    if (!onboardingChecked) return;
-
-    const inOnboarding  = segments[0] === 'onboarding';
-    const inAuthGroup   = segments[0] === '(auth)';
-    const inCoachGroup  = segments[0] === '(coach)';
-    const inClientGroup = segments[0] === '(client)';
-    const inAdminGroup  = segments[0] === '(admin)';
-    const onResetScreen = segments[1] === 'reset-password';
-
-    if (Platform.OS !== 'web' && !onboardingDone && !inOnboarding) {
-      router.replace('/onboarding');
-      return;
-    }
-
+    // Don't navigate while auth is still resolving
     if (loading) return;
 
-    if (needsPasswordReset) {
-      if (!onResetScreen) router.replace('/(auth)/reset-password');
-      return;
-    }
+    let live = true;
+    AsyncStorage.getItem('onboarding_done').then((val) => {
+      if (!live) return;
 
-    if (!session) {
-      if (!inAuthGroup) router.replace('/(auth)/login');
-    } else if (profile) {
-      if      (profile.role === 'coach'  && !inCoachGroup)  router.replace('/(coach)');
-      else if (profile.role === 'client' && !inClientGroup) router.replace('/(client)');
-      else if (profile.role === 'admin'  && !inAdminGroup)  router.replace('/(admin)');
-    }
-  }, [session, profile, loading, needsPasswordReset, segments, onboardingDone, onboardingChecked]);
+      if (!sessionId) {
+        // Not logged in: show onboarding for first-timers, login otherwise
+        if (Platform.OS !== 'web' && val !== 'true') {
+          router.replace('/onboarding' as any);
+        } else {
+          router.replace('/(auth)/login' as any);
+        }
+        return;
+      }
+
+      // Logged in: always go to role screen — never bounce back to onboarding
+      if (needsPasswordReset) { router.replace('/(auth)/reset-password' as any); return; }
+      if      (profileRole === 'coach')  router.replace('/(coach)'  as any);
+      else if (profileRole === 'client') router.replace('/(client)' as any);
+      else if (profileRole === 'admin')  router.replace('/(admin)'  as any);
+    });
+
+    return () => { live = false; };
+  }, [sessionId, profileRole, loading, needsPasswordReset]);
 
   return null;
 }
@@ -136,6 +138,7 @@ export default function RootLayout() {
     Montserrat_600SemiBold,
     Montserrat_700Bold,
     Montserrat_800ExtraBold,
+    Montserrat_900Black,
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
@@ -150,11 +153,12 @@ export default function RootLayout() {
               <ThemedStatusBar />
               <AuthNavigation />
               <Slot />
+              <GlobalAlert />
             </AuthProvider>
           </ThemeProvider>
         )}
         {/* Splash renders immediately — covers the font-loading gap AND auth wait */}
-        <AnimatedSplash />
+        <AnimatedSplash fontsLoaded={fontsLoaded} />
       </View>
     </NavThemeProvider>
   );

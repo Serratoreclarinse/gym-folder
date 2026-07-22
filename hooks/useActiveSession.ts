@@ -81,6 +81,7 @@ export function useActiveSession() {
       .select('id, client_id, scheduled_at, notes')
       .eq('coach_id', profile.id)
       .gt('scheduled_at', new Date().toISOString())
+      .in('status', ['pending', 'client_confirmed', 'reschedule_pending'])
       .order('scheduled_at', { ascending: true })
       .limit(1)
       .maybeSingle();

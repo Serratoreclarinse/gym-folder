@@ -1,14 +1,37 @@
-import { Image, Platform, View } from 'react-native';
-import { Tabs } from 'expo-router';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { Image, Platform, Pressable, View } from 'react-native';
+import { router, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/context/ThemeContext';
 import { NotificationBell } from '@/components/NotificationBell';
+import { AdminDrawer } from '@/components/AdminDrawer';
+
+const DrawerCtx = createContext<() => void>(() => {});
+
+function BurgerButton() {
+  const open = useContext(DrawerCtx);
+  const { colors } = useTheme();
+  return (
+    <Pressable onPress={open} style={{ paddingLeft: 8 }} hitSlop={8}>
+      <Ionicons name="menu-outline" size={26} color={colors.textPrimary} />
+    </Pressable>
+  );
+}
+
+function BackButton() {
+  const { colors } = useTheme();
+  return (
+    <Pressable onPress={() => router.back()} style={{ paddingLeft: 8 }} hitSlop={8}>
+      <Ionicons name="chevron-back" size={26} color={colors.textPrimary} />
+    </Pressable>
+  );
+}
 
 export default function AdminTabsLayout() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -16,13 +39,16 @@ export default function AdminTabsLayout() {
       document.documentElement.style.backgroundColor = colors.bg;
     }
   }, [colors.bg]);
+
   return (
+    <DrawerCtx.Provider value={() => setDrawerOpen(true)}>
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Image
         source={require('@/assets/images/logo.png')}
         style={{ position: 'absolute', width: '100%', height: '100%', opacity: isDark ? 0.05 : 0.08 }}
         resizeMode="contain"
         tintColor={isDark ? undefined : '#000000'}
+        pointerEvents="none"
       />
       <Tabs
         screenOptions={{
@@ -41,6 +67,7 @@ export default function AdminTabsLayout() {
           headerTintColor: colors.textPrimary,
           headerTitleStyle: { fontWeight: '700', fontSize: 17 },
           headerShadowVisible: false,
+          headerLeft: () => <BurgerButton />,
           headerRight: () => <NotificationBell path="/(admin)/notifications" />,
         }}
       >
@@ -68,8 +95,9 @@ export default function AdminTabsLayout() {
         <Tabs.Screen
           name="transfers"
           options={{
+            href: null,
             title: 'Transfers',
-            tabBarIcon: ({ color, size }) => <Ionicons name="swap-horizontal-outline" size={size} color={color} />,
+            headerLeft: () => <BackButton />,
           }}
         />
         <Tabs.Screen
@@ -82,18 +110,23 @@ export default function AdminTabsLayout() {
         <Tabs.Screen
           name="rankings"
           options={{
+            href: null,
             title: 'Rankings',
-            tabBarIcon: ({ color, size }) => <Ionicons name="podium-outline" size={size} color={color} />,
+            headerLeft: () => <BackButton />,
           }}
         />
         <Tabs.Screen
           name="profile"
           options={{
+            href: null,
             title: 'Profile',
-            tabBarIcon: ({ color, size }) => <Ionicons name="person-circle-outline" size={size} color={color} />,
+            headerLeft: () => <BackButton />,
           }}
         />
       </Tabs>
+
+      <AdminDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </View>
+    </DrawerCtx.Provider>
   );
 }

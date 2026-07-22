@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Modal, Platform, Pressable, RefreshControl,
+  ActivityIndicator, Alert, Image, Linking, Modal, Platform, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
+import { PhoneInput } from '@/components/PhoneInput';
 import { sendPushNotification } from '@/lib/pushNotifications';
 import { Typography, ColorScheme } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
@@ -15,6 +17,7 @@ type ClientProfile = {
   name: string;
   email: string;
   phone: string | null;
+  referred_by: string | null;
 };
 
 type Pkg = {
@@ -26,8 +29,22 @@ type Pkg = {
   status: 'active' | 'expired';
   startDate: string;
   durationWeeks: number | null;
+  extendedDays: number;
   coachId: string;
   coachName: string;
+};
+
+type FreezeRequest = {
+  id: string;
+  packageId: string;
+  coachId: string;
+  coachName: string;
+  freezeStart: string;
+  freezeEnd: string;
+  daysFrozen: number;
+  reason: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  requestedAt: string;
 };
 
 type SessionRow = {
@@ -54,6 +71,7 @@ type PaymentRow = {
   paid_at: string;
   transaction_ref: string | null;
   invoice_number: string | null;
+  receipt_url: string | null;
 };
 
 const PAY_METHOD: Record<string, string> = {
@@ -88,12 +106,14 @@ export default function ClientDetailScreen() {
   const [packages, setPackages] = useState<Pkg[]>([]);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [lastRenewedAt, setLastRenewedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
 
   // Payment request
   const [showPayReqModal, setShowPayReqModal] = useState(false);
+  const [viewingReceiptUrl, setViewingReceiptUrl] = useState<string | null>(null);
   const [payReqAmount, setPayReqAmount] = useState('');
   const [payReqNotes, setPayReqNotes] = useState('');
   const [sendingPayReq, setSendingPayReq] = useState(false);
@@ -103,6 +123,7 @@ export default function ClientDetailScreen() {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
   const [saving, setSaving] = useState(false);
 
   // Add sessions modal
@@ -118,7 +139,13 @@ export default function ClientDetailScreen() {
   const [renewTotal, setRenewTotal] = useState('');
   const [renewWeeks, setRenewWeeks] = useState('');
   const [renewing, setRenewing] = useState(false);
+  const [renewError, setRenewError] = useState('');
   const [deactivating, setDeactivating] = useState(false);
+
+  // Freeze requests
+  const [freezes, setFreezes] = useState<FreezeRequest[]>([]);
+  const [approvingFreezeId, setApprovingFreezeId] = useState<string | null>(null);
+  const [rejectingFreezeId, setRejectingFreezeId] = useState<string | null>(null);
 
   // Assign package modal (first-time, no previous package)
   const [assignModal, setAssignModal] = useState(false);
@@ -159,13 +186,13 @@ export default function ClientDetailScreen() {
     if (!id) return;
     setLoading(true);
 
-    const [profileRes, pkgsRes, sessRes, payRes] = await Promise.all([
-      supabase.from('profiles').select('id, name, email, phone').eq('id', id).single(),
+    const [profileRes, pkgsRes, sessRes, payRes, freezeRes, renewalRes] = await Promise.all([
+      supabase.from('profiles').select('id, name, email, phone, referred_by').eq('id', id).single(),
       supabase
         .from('packages')
         .select(`
           id, package_type, total_sessions, sessions_used, sessions_remaining,
-          status, start_date, duration_weeks, coach_id,
+          status, start_date, duration_weeks, extended_days, coach_id,
           coach:profiles!packages_coach_id_fkey(name)
         `)
         .eq('client_id', id)
@@ -175,20 +202,40 @@ export default function ClientDetailScreen() {
         .select('id, session_date, duration_minutes, session_type, notes, status, exercises')
         .eq('client_id', id)
         .order('session_date', { ascending: false })
-        .limit(200),
+        .limit(5),
       supabase
         .from('payments')
-        .select('id, amount, payment_method, notes, paid_at, transaction_ref, invoice_number')
+        .select('id, amount, payment_method, notes, paid_at, transaction_ref, invoice_number, receipt_url')
         .eq('client_id', id)
         .order('paid_at', { ascending: false })
         .limit(10),
+      supabase
+        .from('package_freezes')
+        .select(`
+          id, package_id, coach_id, freeze_start, freeze_end, reason, status, requested_at,
+          coach:profiles!package_freezes_coach_id_fkey(name)
+        `)
+        .eq('client_id', id)
+        .in('status', ['pending', 'approved'])
+        .order('requested_at', { ascending: false }),
+      supabase
+        .from('renewal_requests')
+        .select('created_at')
+        .eq('client_id', id)
+        .eq('status', 'accepted')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
+
+    setLastRenewedAt((renewalRes.data as any)?.created_at ?? null);
 
     if (profileRes.data) {
       const p = profileRes.data as any;
       setClient(p);
       setEditName(p.name);
       setEditPhone(p.phone ?? '');
+      setEditEmail(p.email ?? '');
     }
 
     setPackages(
@@ -201,9 +248,30 @@ export default function ClientDetailScreen() {
         status: row.status,
         startDate: row.start_date,
         durationWeeks: row.duration_weeks ?? null,
+        extendedDays: row.extended_days ?? 0,
         coachId: row.coach_id,
         coachName: (row.coach as { name: string } | null)?.name ?? 'Unknown',
       })),
+    );
+
+    setFreezes(
+      (freezeRes.data ?? []).map((row: any) => {
+        const start = new Date(row.freeze_start);
+        const end   = new Date(row.freeze_end);
+        const days  = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+        return {
+          id: row.id,
+          packageId: row.package_id,
+          coachId: row.coach_id,
+          coachName: (row.coach as { name: string } | null)?.name ?? 'Unknown',
+          freezeStart: row.freeze_start,
+          freezeEnd: row.freeze_end,
+          daysFrozen: days,
+          reason: row.reason ?? null,
+          status: row.status,
+          requestedAt: row.requested_at,
+        };
+      }),
     );
 
     setSessions(
@@ -233,20 +301,39 @@ export default function ClientDetailScreen() {
       p_name: editName.trim(),
       p_phone: editPhone.trim(),
     });
+    if (error) { setSaving(false); Alert.alert('Error', error.message); return; }
+    const newEmail = editEmail.trim().toLowerCase();
+    if (newEmail && newEmail !== client?.email) {
+      const { data: emailData, error: emailErr } = await supabase.functions.invoke('update-user-email', {
+        body: { user_id: id, new_email: newEmail },
+      });
+      if (emailErr || emailData?.error) {
+        setSaving(false);
+        Alert.alert('Error', emailData?.error ?? emailErr?.message ?? 'Failed to update email');
+        return;
+      }
+    }
     setSaving(false);
-    if (error) { Alert.alert('Error', error.message); return; }
-    setClient((c) => c ? { ...c, name: editName.trim(), phone: editPhone.trim() || null } : c);
+    setClient((c) => c ? { ...c, name: editName.trim(), phone: editPhone.trim() || null, email: newEmail || c.email } : c);
     setEditing(false);
   };
 
-  const handleDeactivate = (pkg: Pkg) => {
+  const handleDeactivate = async (pkg: Pkg) => {
+    const msg = `This will mark ${client?.name ?? "this client"}'s package as expired. Continue?`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(msg)) return;
+      const { error } = await supabase.rpc('admin_deactivate_package', { p_package_id: pkg.id });
+      if (error) { window.alert('Error: ' + error.message); return; }
+      load();
+      return;
+    }
     Alert.alert(
-      'Deactivate Package',
-      `This will mark ${client?.name ?? "this client"}'s package as expired. Continue?`,
+      'Expire Package',
+      msg,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Deactivate', style: 'destructive',
+          text: 'Expire', style: 'destructive',
           onPress: async () => {
             const { error } = await supabase.rpc('admin_deactivate_package', { p_package_id: pkg.id });
             if (error) { Alert.alert('Error', error.message); return; }
@@ -274,8 +361,9 @@ export default function ClientDetailScreen() {
   };
 
   const handleRenew = async () => {
+    setRenewError('');
     if (!renewTarget || !renewTotal || parseInt(renewTotal, 10) < 1) {
-      Alert.alert('Invalid', 'Enter total sessions (at least 1).');
+      setRenewError('Enter total sessions (at least 1).');
       return;
     }
     if (!client) return;
@@ -295,12 +383,25 @@ export default function ClientDetailScreen() {
 
     if (insertErr) {
       setRenewing(false);
-      Alert.alert('Error', insertErr.message ?? 'Failed to create new package');
+      setRenewError(insertErr.message ?? 'Failed to create new package');
       return;
     }
 
     // New package confirmed — now expire the previous one
     await supabase.from('packages').update({ status: 'expired' }).eq('id', renewTarget.id);
+
+    // Notify client
+    await sendPushNotification(client.id, {
+      title: '🎉 Package Renewed!',
+      body: `Your package has been renewed by admin. +${parseInt(renewTotal, 10)} sessions added.`,
+      data: { type: 'package_renewed' },
+    });
+    // Notify coach
+    await sendPushNotification(renewTarget.coachId, {
+      title: 'ℹ️ Package Renewed',
+      body: `Admin renewed ${client.name ?? 'a client'}'s package. +${parseInt(renewTotal, 10)} sessions.`,
+      data: { type: 'renewal_info' },
+    });
 
     setRenewing(false);
     setRenewModal(false);
@@ -336,6 +437,18 @@ export default function ClientDetailScreen() {
     });
     setAssigning(false);
     if (error) { Alert.alert('Error', error.message); return; }
+    // Notify client
+    await sendPushNotification(client.id, {
+      title: '🎉 Package Assigned!',
+      body: `Your training package has been set up. ${parseInt(assignTotal, 10)} sessions ready to go!`,
+      data: { type: 'package_assigned' },
+    });
+    // Notify coach
+    await sendPushNotification(assignCoachId, {
+      title: '👤 New Client Package',
+      body: `Admin assigned ${client.name ?? 'a client'} to you with ${parseInt(assignTotal, 10)} sessions.`,
+      data: { type: 'package_assigned' },
+    });
     setAssignModal(false);
     load();
   };
@@ -359,12 +472,74 @@ export default function ClientDetailScreen() {
     setTimeout(() => { setShowPayReqModal(false); setPayReqSent(false); }, 1500);
   };
 
+  const handleApproveFreeze = async (freeze: FreezeRequest) => {
+    if (!activePkg) return;
+    const msg = `Approve ${freeze.daysFrozen}-day freeze for ${client?.name ?? 'this client'}? End date will extend by ${freeze.daysFrozen} days.`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(msg)) return;
+    }
+    setApprovingFreezeId(freeze.id);
+    const newExtended = activePkg.extendedDays + freeze.daysFrozen;
+    const [pkgErr, frzErr] = await Promise.all([
+      supabase.from('packages').update({ extended_days: newExtended }).eq('id', activePkg.id).then(r => r.error),
+      supabase.from('package_freezes').update({ status: 'approved', reviewed_at: new Date().toISOString() }).eq('id', freeze.id).then(r => r.error),
+    ]);
+    setApprovingFreezeId(null);
+    if (pkgErr || frzErr) {
+      const msg2 = (pkgErr ?? frzErr)!.message;
+      if (Platform.OS === 'web') window.alert('Error: ' + msg2);
+      else Alert.alert('Error', msg2);
+      return;
+    }
+    await sendPushNotification(id!, {
+      title: '❄️ Freeze Approved',
+      body: `Your package freeze (${freeze.freezeStart} → ${freeze.freezeEnd}) has been approved. End date extended by ${freeze.daysFrozen} days.`,
+    });
+    load();
+  };
+
+  const handleRejectFreeze = async (freeze: FreezeRequest) => {
+    const msg = `Reject freeze request for ${client?.name ?? 'this client'}?`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(msg)) return;
+    }
+    setRejectingFreezeId(freeze.id);
+    await supabase.from('package_freezes').update({ status: 'rejected', reviewed_at: new Date().toISOString() }).eq('id', freeze.id);
+    setRejectingFreezeId(null);
+    await sendPushNotification(id!, {
+      title: 'Freeze Request Update',
+      body: `Your freeze request (${freeze.freezeStart} → ${freeze.freezeEnd}) was not approved.`,
+    });
+    load();
+  };
+
   if (loading) {
     return <View style={s.center}><ActivityIndicator size="large" color={colors.accent} /></View>;
   }
   if (!client) {
     return <View style={s.center}><Text style={s.grayText}>Client not found.</Text></View>;
   }
+
+  const exportSessions = () => {
+    if (sessions.length === 0) return;
+    const header = ['Date', 'Duration (min)', 'Type', 'Status', 'Notes', 'Exercises'].join(',');
+    const rows = sessions.map((s) => [
+      s.sessionDate,
+      s.durationMinutes,
+      s.sessionType,
+      s.status ?? '',
+      `"${(s.notes ?? '').replace(/"/g, '""')}"`,
+      `"${(s.exercises ?? []).map((e) => e.exercise_name).join('; ')}"`,
+    ].join(','));
+    const csv = [header, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `sessions_${client!.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const activePkg = packages.find((p) => p.status === 'active') ?? null;
   const pastPkgs = packages.filter((p) => p.status !== 'active');
@@ -399,11 +574,19 @@ export default function ClientDetailScreen() {
                   />
                   <TextInput
                     style={[s.editInput, { marginTop: 8 }]}
-                    value={editPhone}
-                    onChangeText={setEditPhone}
-                    placeholder="Phone (optional)"
+                    value={editEmail}
+                    onChangeText={setEditEmail}
+                    placeholder="Email"
                     placeholderTextColor={colors.textSecondary}
-                    keyboardType="phone-pad"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                  <PhoneInput
+                    value={editPhone}
+                    onChange={setEditPhone}
+                    colors={colors}
+                    containerStyle={{ marginTop: 8 }}
+                    inputStyle={s.editInput}
                   />
                   <View style={s.editActions}>
                     <Pressable style={s.saveBtn} onPress={handleSave} disabled={saving}>
@@ -411,7 +594,7 @@ export default function ClientDetailScreen() {
                     </Pressable>
                     <Pressable
                       style={s.cancelEditBtn}
-                      onPress={() => { setEditing(false); setEditName(client.name); setEditPhone(client.phone ?? ''); }}
+                      onPress={() => { setEditing(false); setEditName(client.name); setEditPhone(client.phone ?? ''); setEditEmail(client.email ?? ''); }}
                     >
                       <Text style={s.cancelEditText}>CANCEL</Text>
                     </Pressable>
@@ -426,6 +609,12 @@ export default function ClientDetailScreen() {
                     <View style={s.coachPill}>
                       <Ionicons name="person-circle-outline" size={13} color={colors.textSecondary} />
                       <Text style={s.coachPillText}>{activePkg.coachName}</Text>
+                    </View>
+                  )}
+                  {client.referred_by && (
+                    <View style={[s.coachPill, { marginTop: 4 }]}>
+                      <Ionicons name="git-branch-outline" size={13} color={colors.textSecondary} />
+                      <Text style={s.coachPillText}>Referred by {client.referred_by}</Text>
                     </View>
                   )}
                 </>
@@ -453,6 +642,7 @@ export default function ClientDetailScreen() {
                     setRenewPkgType(pastPkgs[0].packageType);
                     setRenewTotal('');
                     setRenewWeeks('');
+                    setRenewError('');
                     setRenewModal(true);
                   }}
                 >
@@ -493,14 +683,14 @@ export default function ClientDetailScreen() {
                       s.progressFill,
                       {
                         width: `${fillPct}%` as any,
-                        backgroundColor: activePkg.sessionsRemaining <= 3 ? colors.accent : '#4CAF50',
+                        backgroundColor: activePkg.sessionsRemaining <= 3 ? colors.accent : colors.success,
                       },
                     ]}
                   />
                 </View>
                 <Text style={s.sessionsLeft}>
                   <Text style={{
-                    color: activePkg.sessionsRemaining <= 3 ? colors.accent : '#4CAF50',
+                    color: activePkg.sessionsRemaining <= 3 ? colors.accent : colors.success,
                     fontWeight: '800',
                   }}>
                     {activePkg.sessionsRemaining}
@@ -515,6 +705,14 @@ export default function ClientDetailScreen() {
                   <Text style={s.pkgMetaLabel}>Started</Text>
                   <Text style={s.pkgMetaValue}>{fmtDate(activePkg.startDate)}</Text>
                 </View>
+                {lastRenewedAt && (
+                  <View style={s.pkgMetaRow}>
+                    <Text style={s.pkgMetaLabel}>Last Renewed</Text>
+                    <Text style={[s.pkgMetaValue, { color: colors.accent }]}>
+                      {fmtDate(lastRenewedAt.slice(0, 10))}
+                    </Text>
+                  </View>
+                )}
                 {activePkg.durationWeeks && (
                   <View style={s.pkgMetaRow}>
                     <Text style={s.pkgMetaLabel}>Duration</Text>
@@ -523,21 +721,21 @@ export default function ClientDetailScreen() {
                 )}
                 {activePkg.durationWeeks && activePkg.startDate && (() => {
                   const end = new Date(activePkg.startDate);
-                  end.setDate(end.getDate() + activePkg.durationWeeks * 7);
+                  end.setDate(end.getDate() + activePkg.durationWeeks * 7 + activePkg.extendedDays);
                   const daysLeft = Math.round((end.getTime() - Date.now()) / 86400000);
                   const endLabel = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                   const expired = daysLeft < 0;
                   const urgent  = daysLeft >= 0 && daysLeft <= 7;
                   const warn    = daysLeft > 7 && daysLeft <= 14;
-                  const color   = expired ? '#FF1744' : urgent ? '#FF6D00' : warn ? '#FF9800' : '#4CAF50';
+                  const color   = expired ? colors.danger : urgent ? colors.danger : warn ? colors.warning : colors.success;
                   return (
                     <View style={s.pkgMetaRow}>
                       <Text style={s.pkgMetaLabel}>End Date</Text>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         <Text style={[s.pkgMetaValue, { color }]}>{endLabel}</Text>
-                        {expired && <Text style={[s.endBadge, { backgroundColor: '#FF174420', color: '#FF1744' }]}>EXPIRED</Text>}
-                        {urgent  && <Text style={[s.endBadge, { backgroundColor: '#FF6D0020', color: '#FF6D00' }]}>{daysLeft}d left</Text>}
-                        {warn    && <Text style={[s.endBadge, { backgroundColor: '#FF980020', color: '#FF9800' }]}>{daysLeft}d left</Text>}
+                        {expired && <Text style={[s.endBadge, { backgroundColor: colors.danger + '20', color: colors.danger }]}>EXPIRED</Text>}
+                        {urgent  && <Text style={[s.endBadge, { backgroundColor: colors.danger + '20', color: colors.danger }]}>{daysLeft}d left</Text>}
+                        {warn    && <Text style={[s.endBadge, { backgroundColor: colors.warning + '20', color: colors.warning }]}>{daysLeft}d left</Text>}
                       </View>
                     </View>
                   );
@@ -547,6 +745,62 @@ export default function ClientDetailScreen() {
                   <Text style={s.pkgMetaValue}>{activePkg.coachName}</Text>
                 </View>
               </View>
+
+              {/* Freeze requests */}
+              {freezes.filter(f => f.packageId === activePkg.id).map((freeze) => (
+                <View key={freeze.id} style={[
+                  s.freezeCard,
+                  freeze.status === 'approved' && { borderColor: '#64B5F650', backgroundColor: '#64B5F608' },
+                ]}>
+                  <View style={s.freezeHeader}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="snow-outline" size={15} color="#64B5F6" />
+                      <Text style={s.freezeTitle}>
+                        {freeze.status === 'pending' ? 'Freeze Request' : 'Freeze Approved'}
+                      </Text>
+                      <View style={[
+                        s.freezeStatusPill,
+                        freeze.status === 'approved'
+                          ? { backgroundColor: '#64B5F620', borderColor: '#64B5F650' }
+                          : { backgroundColor: colors.warning + '20', borderColor: colors.warning + '50' },
+                      ]}>
+                        <Text style={[s.freezeStatusText, { color: freeze.status === 'approved' ? '#64B5F6' : colors.warning }]}>
+                          {freeze.status.toUpperCase()}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                  <Text style={s.freezeDateRange}>
+                    {fmtDate(freeze.freezeStart)} → {fmtDate(freeze.freezeEnd)} · {freeze.daysFrozen} days
+                  </Text>
+                  {freeze.reason && <Text style={s.freezeReason}>"{freeze.reason}"</Text>}
+                  <Text style={s.freezeCoach}>Requested by {freeze.coachName}</Text>
+                  {freeze.status === 'pending' && (
+                    <View style={s.freezeActions}>
+                      <Pressable
+                        style={[s.freezeApproveBtn, approvingFreezeId === freeze.id && { opacity: 0.5 }]}
+                        onPress={() => handleApproveFreeze(freeze)}
+                        disabled={!!approvingFreezeId || !!rejectingFreezeId}
+                      >
+                        <Ionicons name="checkmark-outline" size={14} color="#000" />
+                        <Text style={s.freezeApproveBtnText}>
+                          {approvingFreezeId === freeze.id ? 'Approving…' : 'Approve'}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        style={[s.freezeRejectBtn, rejectingFreezeId === freeze.id && { opacity: 0.5 }]}
+                        onPress={() => handleRejectFreeze(freeze)}
+                        disabled={!!approvingFreezeId || !!rejectingFreezeId}
+                      >
+                        <Ionicons name="close-outline" size={14} color={colors.accent} />
+                        <Text style={s.freezeRejectBtnText}>
+                          {rejectingFreezeId === freeze.id ? 'Rejecting…' : 'Reject'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
+              ))}
 
               {/* Actions */}
               <View style={s.pkgActions}>
@@ -564,6 +818,7 @@ export default function ClientDetailScreen() {
                     setRenewPkgType(activePkg.packageType);
                     setRenewTotal('');
                     setRenewWeeks('');
+                    setRenewError('');
                     setRenewModal(true);
                   }}
                 >
@@ -572,16 +827,33 @@ export default function ClientDetailScreen() {
                 </Pressable>
                 <Pressable style={s.actionDanger} onPress={() => handleDeactivate(activePkg)}>
                   <Ionicons name="close-circle-outline" size={15} color={colors.accent} />
-                  <Text style={s.actionDangerText}>Deactivate</Text>
+                  <Text style={s.actionDangerText}>Expire Package</Text>
                 </Pressable>
               </View>
             </View>
           )}
 
           {/* Session history */}
-          <Text style={[s.sectionTitle, { marginTop: 24 }]}>
-            SESSION HISTORY{sessions.length > 0 ? ` (${sessions.length})` : ''}
-          </Text>
+          <View style={[s.sectionRow, { marginTop: 24 }]}>
+            <Text style={s.sectionTitle}>SESSION HISTORY</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              {Platform.OS === 'web' && sessions.length > 0 && (
+                <Pressable style={s.exportBtn} onPress={exportSessions}>
+                  <Ionicons name="download-outline" size={14} color={colors.accent} />
+                  <Text style={s.exportBtnText}>Export CSV</Text>
+                </Pressable>
+              )}
+              {sessions.length > 0 && (
+                <Pressable
+                  style={({ pressed }) => [s.viewAllBtn, pressed && { opacity: 0.7 }]}
+                  onPress={() => router.push({ pathname: '/(admin)/client-sessions/[id]', params: { id } } as any)}
+                >
+                  <Text style={s.viewAllTxt}>View All</Text>
+                  <Ionicons name="chevron-forward" size={13} color={colors.accent} />
+                </Pressable>
+              )}
+            </View>
+          </View>
           {sessions.length === 0 ? (
             <View style={[s.historyList, { padding: 24, alignItems: 'center' }]}>
               <Text style={s.grayText}>No sessions logged yet</Text>
@@ -592,7 +864,7 @@ export default function ClientDetailScreen() {
                 const expanded = expandedSessionId === sess.id;
                 const d = new Date(sess.sessionDate + 'T00:00:00');
                 const STATUS_COLOR: Record<string, string> = {
-                  confirmed: '#4CAF50', pending: '#FF9800', absent: '#FF4D4D', no_show: '#FF4D4D',
+                  confirmed: colors.success, pending: colors.warning, absent: colors.danger, no_show: colors.danger,
                 };
                 const STATUS_LABEL: Record<string, string> = {
                   confirmed: 'Done', pending: 'Pending', absent: 'Absent', no_show: 'No Show',
@@ -708,6 +980,11 @@ export default function ClientDetailScreen() {
                 const d = new Date(p.paid_at);
                 return (
                   <View key={p.id} style={[s.historyRow, { justifyContent: 'space-between', alignItems: 'flex-start' }]}>
+                    {p.receipt_url && (
+                      <Pressable onPress={() => Platform.OS === 'web' ? (window as any).open(p.receipt_url, '_blank') : setViewingReceiptUrl(p.receipt_url)}>
+                        <Image source={{ uri: p.receipt_url }} style={s.receiptThumb} />
+                      </Pressable>
+                    )}
                     <View style={s.historyMid}>
                       <Text style={s.historyDur}>{PAY_METHOD[p.payment_method] ?? p.payment_method}</Text>
                       <Text style={s.historyNotes}>
@@ -725,6 +1002,12 @@ export default function ClientDetailScreen() {
                       <Text style={s.payAmount}>
                         OMR {Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                       </Text>
+                      {p.receipt_url && (
+                        <Pressable style={s.receiptBtn} onPress={() => Platform.OS === 'web' ? (window as any).open(p.receipt_url, '_blank') : setViewingReceiptUrl(p.receipt_url)}>
+                          <Ionicons name="receipt-outline" size={12} color={colors.accent} />
+                          <Text style={s.invoiceBtnText}>Receipt</Text>
+                        </Pressable>
+                      )}
                       <Pressable
                         style={s.invoiceBtn}
                         onPress={() => router.push(`/(admin)/invoice/${p.id}` as any)}
@@ -792,6 +1075,21 @@ export default function ClientDetailScreen() {
           <View style={s.modalBox}>
             <Text style={s.modalTitle}>Renew Package</Text>
             <Text style={s.modalSub}>A new package will be created for this client.</Text>
+
+            {renewTarget && (renewTarget.sessionsRemaining ?? 0) > 0 && (
+              <View style={{ flexDirection: 'row', gap: 8, backgroundColor: '#2a2000', borderRadius: 8, padding: 10, marginBottom: 8, alignItems: 'flex-start' }}>
+                <Ionicons name="warning-outline" size={15} color="#FFC107" style={{ marginTop: 1 }} />
+                <Text style={{ color: '#FFC107', fontSize: 13, flex: 1, lineHeight: 18 }}>
+                  {renewTarget.sessionsRemaining} session{renewTarget.sessionsRemaining !== 1 ? 's' : ''} still remaining. The current package will be expired.
+                </Text>
+              </View>
+            )}
+
+            {!!renewError && (
+              <Text style={{ color: colors.accent, fontSize: 13, marginBottom: 10, backgroundColor: '#3a1a1a', borderRadius: 8, padding: 10 }}>
+                {renewError}
+              </Text>
+            )}
 
             <Text style={s.modalLabel}>Session Duration</Text>
             <View style={s.segmented}>
@@ -935,7 +1233,7 @@ export default function ClientDetailScreen() {
 
             {payReqSent ? (
               <View style={s.payReqSuccess}>
-                <Ionicons name="checkmark-circle" size={28} color="#4CAF50" />
+                <Ionicons name="checkmark-circle" size={28} color={colors.success} />
                 <Text style={s.payReqSuccessText}>Request Sent!</Text>
               </View>
             ) : (
@@ -973,6 +1271,62 @@ export default function ClientDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ── Receipt Full-screen Viewer ── */}
+      <Modal
+        visible={!!viewingReceiptUrl}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setViewingReceiptUrl(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: '#000000EE', justifyContent: 'center', alignItems: 'center' }}>
+          <Pressable
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            onPress={() => setViewingReceiptUrl(null)}
+          />
+          {viewingReceiptUrl && (
+            <Image
+              source={{ uri: viewingReceiptUrl }}
+              style={{ width: '92%', height: '75%', borderRadius: 12, backgroundColor: '#333' }}
+              resizeMode="contain"
+            />
+          )}
+          <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
+            {viewingReceiptUrl && Platform.OS !== 'web' && (
+              <Pressable
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#ffffff20', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 }}
+                onPress={async () => {
+                  if (Platform.OS === 'ios') {
+                    const available = await Sharing.isAvailableAsync();
+                    if (available) await Sharing.shareAsync(viewingReceiptUrl!, { mimeType: 'image/jpeg' });
+                  } else {
+                    Linking.openURL(viewingReceiptUrl!);
+                  }
+                }}
+              >
+                <Ionicons name="download-outline" size={16} color="#fff" />
+                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Save</Text>
+              </Pressable>
+            )}
+            {viewingReceiptUrl && Platform.OS === 'web' && (
+              <Pressable
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#ffffff20', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 }}
+                onPress={() => window.open(viewingReceiptUrl!, '_blank')}
+              >
+                <Ionicons name="open-outline" size={16} color="#fff" />
+                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Open / Download</Text>
+              </Pressable>
+            )}
+            <Pressable
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#ffffff20', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 }}
+              onPress={() => setViewingReceiptUrl(null)}
+            >
+              <Ionicons name="close" size={16} color="#fff" />
+              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -996,11 +1350,11 @@ function makeStyles(c: ColorScheme) {
     },
     avatarLg: {
       width: 60, height: 60, borderRadius: 30,
-      backgroundColor: '#4CAF5018',
-      borderWidth: 2, borderColor: '#4CAF5050',
+      backgroundColor: c.success + '18',
+      borderWidth: 2, borderColor: c.success + '50',
       justifyContent: 'center', alignItems: 'center', flexShrink: 0,
     },
-    avatarLgText: { fontSize: 20, fontWeight: '800', color: '#4CAF50' },
+    avatarLgText: { fontSize: 20, fontWeight: '800', color: c.success },
     profileRight: { flex: 1 },
     clientName: { ...Typography.subtitle, color: c.textPrimary, fontWeight: '700', marginBottom: 3 },
     clientEmail: { ...Typography.body, color: c.textSecondary, marginBottom: 2 },
@@ -1030,6 +1384,15 @@ function makeStyles(c: ColorScheme) {
     cancelEditText: { color: c.textSecondary, fontSize: 12, fontWeight: '700' },
 
     sectionTitle: { ...Typography.label, color: c.textSecondary, marginBottom: 12 },
+    sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+    exportBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      borderWidth: 1, borderColor: c.accent + '60', borderRadius: 8,
+      paddingHorizontal: 10, paddingVertical: 5,
+    },
+    exportBtnText: { fontSize: 12, fontWeight: '700', color: c.accent },
+    viewAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+    viewAllTxt: { fontSize: 13, fontWeight: '700', color: c.accent },
 
     coachList: { gap: 6, marginBottom: 14 },
     coachOption: {
@@ -1070,11 +1433,11 @@ function makeStyles(c: ColorScheme) {
     },
     pkgTypeText: { color: c.accent, fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
     activePill: {
-      backgroundColor: '#4CAF5018', borderRadius: 8,
+      backgroundColor: c.success + '18', borderRadius: 8,
       paddingHorizontal: 10, paddingVertical: 4,
-      borderWidth: 1, borderColor: '#4CAF5040',
+      borderWidth: 1, borderColor: c.success + '40',
     },
-    activePillText: { color: '#4CAF50', fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
+    activePillText: { color: c.success, fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
 
     progressSection: { gap: 6 },
     progressLabelRow: { flexDirection: 'row', justifyContent: 'space-between' },
@@ -1099,6 +1462,30 @@ function makeStyles(c: ColorScheme) {
     pkgMetaLabel: { ...Typography.caption, color: c.textSecondary },
     pkgMetaValue: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
     endBadge: { fontSize: 10, fontWeight: '800', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+
+    // Freeze cards
+    freezeCard: {
+      borderWidth: 1, borderColor: c.warning + '50', backgroundColor: c.warning + '08',
+      borderRadius: 12, padding: 12, marginTop: 12,
+    },
+    freezeHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+    freezeTitle: { ...Typography.body, color: c.textPrimary, fontWeight: '700', fontSize: 13 },
+    freezeStatusPill: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+    freezeStatusText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+    freezeDateRange: { ...Typography.body, color: c.textPrimary, fontWeight: '600', fontSize: 13, marginBottom: 2 },
+    freezeReason: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic', marginBottom: 2 },
+    freezeCoach: { ...Typography.caption, color: c.textSecondary, marginBottom: 10 },
+    freezeActions: { flexDirection: 'row', gap: 8 },
+    freezeApproveBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+      backgroundColor: '#64B5F6', borderRadius: 8, paddingVertical: 8,
+    },
+    freezeApproveBtnText: { color: '#000', fontSize: 12, fontWeight: '800' },
+    freezeRejectBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+      borderWidth: 1, borderColor: c.accent + '50', borderRadius: 8, paddingVertical: 8,
+    },
+    freezeRejectBtnText: { color: c.accent, fontSize: 12, fontWeight: '700' },
 
     pkgActions: { flexDirection: 'row', gap: 8 },
     actionPrimary: {
@@ -1148,7 +1535,17 @@ function makeStyles(c: ColorScheme) {
     pastPkgType: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
     pastPkgDate: { ...Typography.caption, color: c.textSecondary },
     pastPkgUsed: { ...Typography.caption, color: c.textSecondary },
-    payAmount: { fontSize: 15, fontWeight: '800', color: '#4CAF50', flexShrink: 0 },
+    payAmount: { fontSize: 15, fontWeight: '800', color: c.success, flexShrink: 0 },
+    receiptThumb: {
+      width: 44, height: 56, borderRadius: 8,
+      backgroundColor: c.border, marginRight: 4, flexShrink: 0,
+    },
+    receiptBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      borderWidth: 1, borderColor: c.accent + '60',
+      borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4,
+      backgroundColor: c.accent + '12',
+    },
     invoiceBtn: {
       flexDirection: 'row', alignItems: 'center', gap: 4,
       borderWidth: 1, borderColor: c.accent + '60',
@@ -1159,12 +1556,12 @@ function makeStyles(c: ColorScheme) {
     sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
     reqPayBtn: {
       flexDirection: 'row', alignItems: 'center', gap: 6,
-      backgroundColor: '#1a6b2a', borderRadius: 8,
+      backgroundColor: c.success, borderRadius: 8,
       paddingHorizontal: 10, paddingVertical: 6,
     },
-    reqPayBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+    reqPayBtnText: { fontSize: 12, fontWeight: '700', color: c.bg },
     payReqSuccess: { alignItems: 'center', paddingVertical: 24, gap: 10 },
-    payReqSuccessText: { fontSize: 16, fontWeight: '700', color: '#4CAF50' },
+    payReqSuccessText: { fontSize: 16, fontWeight: '700', color: c.success },
 
     // Modals
     overlay: {

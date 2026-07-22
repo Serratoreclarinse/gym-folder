@@ -5,6 +5,7 @@ import {
   Dimensions,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -14,6 +15,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import Svg, { G, Rect, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useClients } from '@/hooks/useClients';
@@ -155,7 +157,7 @@ function PaymentRow({
           {fmt(payment.amount)}
         </Text>
         <View style={[styles.statusPill, isPaid ? styles.statusPaid : styles.statusPending]}>
-          <Text style={[styles.statusText, { color: isPaid ? '#4CAF50' : '#FFA500' }]}>
+          <Text style={[styles.statusText, { color: isPaid ? colors.success : colors.warning }]}>
             {isPaid ? 'Paid' : 'Pending'}
           </Text>
         </View>
@@ -319,7 +321,7 @@ function ReportModal({
             {pendingCount > 0 && (
               <View style={rp.previewRow}>
                 <Text style={rp.previewLabel}>Pending</Text>
-                <Text style={[rp.previewValue, { color: '#FFA500' }]}>{pendingCount} record{pendingCount !== 1 ? 's' : ''}</Text>
+                <Text style={[rp.previewValue, { color: colors.warning }]}>{pendingCount} record{pendingCount !== 1 ? 's' : ''}</Text>
               </View>
             )}
             <Text style={rp.previewNote}>Exports as CSV — open in Excel, Sheets, or email to accounting.</Text>
@@ -366,6 +368,7 @@ function PaymentFormModal({ visible, editing, clients, onClose, onSave }: FormPr
   const [status, setStatus] = useState<PaymentStatus>('paid');
   const [notes, setNotes] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -491,16 +494,36 @@ function PaymentFormModal({ visible, editing, clients, onClose, onSave }: FormPr
             </View>
 
             {/* Date */}
-            <Text style={fm.label}>DATE (YYYY-MM-DD)</Text>
-            <TextInput
-              style={fm.input}
-              value={date}
-              onChangeText={setDate}
-              placeholder="2025-06-01"
-              placeholderTextColor={colors.textSecondary + '60'}
-              keyboardType="numbers-and-punctuation"
-              maxLength={10}
-            />
+            <Text style={fm.label}>DATE</Text>
+            {Platform.OS === 'ios' ? (
+              <DateTimePicker
+                value={new Date(date + 'T00:00:00')}
+                mode="date"
+                display="compact"
+                onChange={(_, selected) => {
+                  if (selected) setDate(selected.toISOString().split('T')[0]);
+                }}
+                style={{ alignSelf: 'flex-start', marginLeft: -8 }}
+              />
+            ) : (
+              <>
+                <Pressable style={fm.datePressable} onPress={() => setShowDatePicker(true)}>
+                  <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+                  <Text style={fm.datePressableText}>{fmtDate(date)}</Text>
+                </Pressable>
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={new Date(date + 'T00:00:00')}
+                    mode="date"
+                    display="default"
+                    onChange={(_, selected) => {
+                      setShowDatePicker(false);
+                      if (selected) setDate(selected.toISOString().split('T')[0]);
+                    }}
+                  />
+                )}
+              </>
+            )}
 
             {/* Status */}
             <Text style={fm.label}>STATUS</Text>
@@ -565,7 +588,7 @@ export default function RevenueScreen() {
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [showReport, setShowReport] = useState(false);
 
-  useFocusEffect(useCallback(() => { refetch(); }, []));
+  useFocusEffect(useCallback(() => { refetch(); }, [refetch]));
 
   const toggleExpand = (key: string) =>
     setExpandedKeys((prev) => {
@@ -666,7 +689,7 @@ export default function RevenueScreen() {
             <Text style={styles.cardLabel}>Packages This Month</Text>
           </View>
           <View style={styles.card}>
-            <Text style={[styles.cardValue, pendingCount > 0 && { color: '#FFA500' }]}>
+            <Text style={[styles.cardValue, pendingCount > 0 && { color: colors.warning }]}>
               {pendingCount > 0 ? `⚠ ${pendingCount}` : activeClientCount}
             </Text>
             <Text style={styles.cardLabel}>
@@ -871,8 +894,8 @@ function makeStyles(c: ColorScheme) {
   statusPill: {
     borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1,
   },
-  statusPaid: { backgroundColor: '#4CAF5015', borderColor: '#4CAF5040' },
-  statusPending: { backgroundColor: '#FFA50015', borderColor: '#FFA50040' },
+  statusPaid: { backgroundColor: c.success + '15', borderColor: c.success + '40' },
+  statusPending: { backgroundColor: c.warning + '15', borderColor: c.warning + '40' },
   statusText: { fontSize: 11, fontWeight: '700' },
 
   // Empty state
@@ -896,7 +919,7 @@ function makeStyles(c: ColorScheme) {
 function makeFmStyles(colors: ColorScheme) {
   return StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
   sheet: {
     backgroundColor: colors.surface,
     borderTopLeftRadius: 22, borderTopRightRadius: 22,
@@ -939,6 +962,13 @@ function makeFmStyles(colors: ColorScheme) {
     paddingHorizontal: 14, paddingVertical: 12,
     color: colors.textPrimary, fontSize: 15,
   },
+  datePressable: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: colors.surfaceRaised, borderRadius: 10,
+    borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: 14, paddingVertical: 12,
+  },
+  datePressableText: { ...Typography.body, color: colors.textPrimary },
   inputMulti: { height: 80, textAlignVertical: 'top' },
   amountWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   peso: { ...Typography.body, color: colors.accent, fontWeight: '800' },
@@ -953,7 +983,7 @@ function makeFmStyles(colors: ColorScheme) {
     alignItems: 'center',
   },
   segActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  segPending: { backgroundColor: '#FFA50020', borderColor: '#FFA50060' },
+  segPending: { backgroundColor: colors.warning + '20', borderColor: colors.warning + '60' },
   segText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
   segTextActive: { color: colors.bg },
 
@@ -988,7 +1018,7 @@ function makeFmStyles(colors: ColorScheme) {
 function makeRpStyles(colors: ColorScheme) {
   return StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
   sheet: {
     backgroundColor: colors.surface,
     borderTopLeftRadius: 22, borderTopRightRadius: 22,

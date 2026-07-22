@@ -14,6 +14,7 @@ type ClientRow = {
   id: string;
   name: string;
   email: string;
+  isRetention: boolean;
   coachName: string | null;
   sessionsRemaining: number | null;
   packageStatus: 'active' | 'expired' | 'none';
@@ -42,7 +43,7 @@ export default function AdminClientsScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     const [profilesRes, pkgsRes] = await Promise.all([
-      supabase.from('profiles').select('id, name, email').eq('role', 'client').is('deactivated_at', null).order('name'),
+      supabase.from('profiles').select('id, name, email, is_retention').eq('role', 'client').is('deactivated_at', null).order('name'),
       supabase
         .from('packages')
         .select(`
@@ -73,6 +74,7 @@ export default function AdminClientsScreen() {
           id: p.id,
           name: p.name,
           email: p.email,
+          isRetention: (p as any).is_retention ?? false,
           coachName: pkg?.coachName ?? null,
           sessionsRemaining: pkg?.sessionsRemaining ?? null,
           packageStatus: pkg ? (pkg.status as 'active' | 'expired') : 'none',
@@ -166,6 +168,11 @@ export default function AdminClientsScreen() {
                             <Text style={s.avatarSmText}>{initials(client.name)}</Text>
                           </View>
                           <Text style={s.tdName}>{client.name}</Text>
+                          {client.isRetention && (
+                            <View style={s.retentionBadge}>
+                              <Text style={s.retentionText}>🔄</Text>
+                            </View>
+                          )}
                         </View>
                       </View>
                       <Text style={[s.tdText, { flex: 2 }]}>{client.email}</Text>
@@ -202,7 +209,14 @@ export default function AdminClientsScreen() {
                       <Text style={s.avatarText}>{initials(client.name)}</Text>
                     </View>
                     <View style={s.info}>
-                      <Text style={s.name}>{client.name}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={s.name}>{client.name}</Text>
+                        {client.isRetention && (
+                          <View style={s.retentionBadge}>
+                            <Text style={s.retentionText}>🔄 RETENTION</Text>
+                          </View>
+                        )}
+                      </View>
                       <Text style={s.email}>{client.email}</Text>
                       {client.coachName ? (
                         <View style={s.coachRow}>
@@ -289,10 +303,10 @@ function makeStyles(c: ColorScheme) {
     nameRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     avatarSm: {
       width: 32, height: 32, borderRadius: 16,
-      backgroundColor: '#4CAF5018', borderWidth: 1, borderColor: '#4CAF5040',
+      backgroundColor: c.success + '18', borderWidth: 1, borderColor: c.success + '40',
       justifyContent: 'center', alignItems: 'center',
     },
-    avatarSmText: { fontSize: 11, fontWeight: '800', color: '#4CAF50' },
+    avatarSmText: { fontSize: 11, fontWeight: '800', color: c.success },
     tdName: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
     tdText: { ...Typography.body, color: c.textSecondary },
     tdNum: { ...Typography.subtitle, fontWeight: '700' },
@@ -309,10 +323,10 @@ function makeStyles(c: ColorScheme) {
     },
     avatar: {
       width: 46, height: 46, borderRadius: 23,
-      backgroundColor: '#4CAF5018', borderWidth: 1.5, borderColor: '#4CAF5040',
+      backgroundColor: c.success + '18', borderWidth: 1.5, borderColor: c.success + '40',
       justifyContent: 'center', alignItems: 'center', flexShrink: 0,
     },
-    avatarText: { fontSize: 16, fontWeight: '800', color: '#4CAF50' },
+    avatarText: { fontSize: 16, fontWeight: '800', color: c.success },
     info: { flex: 1 },
     name:    { ...Typography.body, color: c.textPrimary, fontWeight: '700', marginBottom: 2 },
     email:   { ...Typography.caption, color: c.textSecondary, marginBottom: 3 },
@@ -324,5 +338,11 @@ function makeStyles(c: ColorScheme) {
     },
     pkgSessions: { fontSize: 15, fontWeight: '800', lineHeight: 18 },
     pkgLabel: { fontSize: 9, fontWeight: '700', letterSpacing: 0.5 },
+    retentionBadge: {
+      backgroundColor: '#C8FF0018', borderRadius: 5,
+      borderWidth: 1, borderColor: '#C8FF0040',
+      paddingHorizontal: 5, paddingVertical: 1,
+    },
+    retentionText: { fontSize: 9, fontWeight: '800', color: '#C8FF00', letterSpacing: 0.5 },
   });
 }

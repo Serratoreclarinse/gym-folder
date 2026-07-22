@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Animated, Linking, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useClientData, type ClientPackage } from '@/hooks/useClientData';
 import { useClientAnnouncements } from '@/hooks/useClientAnnouncements';
 import { useClientBookingRequests } from '@/hooks/useBookingRequests';
+import { useCoachSlots, type SlotInfo } from '@/hooks/useCoachSlots';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { MilestonesSection } from '@/components/MilestonesSection';
 import { supabase } from '@/lib/supabase';
@@ -25,74 +26,43 @@ const PKG_LABEL: Record<string, string> = {
 
 function getTypeIcon(c: ColorScheme): Record<string, { name: string; color: string }> {
   return {
-    emergency: { name: 'warning-outline',   color: '#FF4D4D' },
-    holiday:   { name: 'calendar-outline',  color: '#4CAF50' },
+    emergency: { name: 'warning-outline',   color: c.danger },
+    holiday:   { name: 'calendar-outline',  color: c.success },
     promo:     { name: 'pricetag-outline',  color: '#9C27B0' },
     general:   { name: 'megaphone-outline', color: c.accent },
   };
 }
 
-// ─── Status helpers ──────────────────────────────────────────
-function packageColor(pkg: ClientPackage, c: ColorScheme): string {
-  if (pkg.status === 'expired')        return c.textSecondary;
-  if (pkg.sessions_remaining <= 3)     return '#FFA500';
-  return c.accent;
-}
-
-function packageStatusLabel(pkg: ClientPackage): string {
-  if (pkg.status === 'expired')        return 'EXPIRED';
-  if (pkg.sessions_remaining === 0)    return 'ALL DONE';
-  if (pkg.sessions_remaining <= 3)     return 'ALMOST OUT';
-  return 'ACTIVE';
-}
-
 // ─── Package card ────────────────────────────────────────────
 function PackageCard({ pkg, styles, colors }: { pkg: ClientPackage; styles: ReturnType<typeof makeStyles>; colors: ColorScheme }) {
-  const color       = packageColor(pkg, colors);
-  const pct         = pkg.total_sessions > 0 ? pkg.sessions_used / pkg.total_sessions : 0;
-  const statusLabel = packageStatusLabel(pkg);
-  const segments    = Math.min(pkg.total_sessions, 20);
-  const filledSegs  = Math.round(pct * segments);
+  const progressPct = pkg.total_sessions > 0 ? Math.min(pkg.sessions_used / pkg.total_sessions, 1) : 0;
 
   return (
-    <View style={[styles.pkgCard, { borderColor: color + '40' }]}>
+    <View style={styles.pkgCard}>
       <View style={styles.pkgTop}>
-        <Text style={styles.pkgType}>{PKG_LABEL[pkg.package_type] ?? pkg.package_type}</Text>
-        <View style={[styles.statusPill, { backgroundColor: color + '18', borderColor: color + '50' }]}>
-          <Text style={[styles.statusText, { color }]}>{statusLabel}</Text>
+        <View>
+          <Text style={styles.pkgLabel}>ACTIVE PACKAGE</Text>
+          <Text style={styles.pkgType}>{PKG_LABEL[pkg.package_type] ?? pkg.package_type}</Text>
+        </View>
+        <View style={[
+          styles.statusBadge,
+          pkg.sessions_remaining <= 3 && pkg.sessions_remaining > 0 && styles.statusWarning,
+          pkg.sessions_remaining === 0 && styles.statusExpired,
+        ]}>
+          <Text style={[
+            styles.statusText,
+            pkg.sessions_remaining <= 3 && pkg.sessions_remaining > 0 && styles.statusTextWarning,
+            pkg.sessions_remaining === 0 && styles.statusTextExpired,
+          ]}>
+            {pkg.sessions_remaining} REMAINING
+          </Text>
         </View>
       </View>
 
-      <View style={styles.heroRow}>
-        <Text style={[styles.heroNumber, { color }]}>{pkg.sessions_remaining}</Text>
-        <Text style={styles.heroLabel}>sessions{'\n'}remaining</Text>
+      <View style={styles.progressTrack}>
+        <View style={[styles.progressFill, { width: `${progressPct * 100}%` as any }]} />
       </View>
-
-      <View style={styles.segmentRow}>
-        {Array.from({ length: segments }).map((_, i) => (
-          <View
-            key={i}
-            style={[
-              styles.segment,
-              { backgroundColor: i < filledSegs ? color : colors.border },
-              { width: `${(1 / segments) * 100 - 1.5}%` },
-            ]}
-          />
-        ))}
-      </View>
-
-      <View style={styles.statsRow}>
-        <Stat label="TOTAL"     value={String(pkg.total_sessions)} styles={styles} colors={colors} />
-        <View style={styles.statDivider} />
-        <Stat label="USED"      value={String(pkg.sessions_used)} color={color} styles={styles} colors={colors} />
-        <View style={styles.statDivider} />
-        <Stat label="REMAINING" value={String(pkg.sessions_remaining)} color={color} styles={styles} colors={colors} />
-      </View>
-
-      <Text style={styles.startDate}>
-        Package started{' '}
-        {new Date(pkg.start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-      </Text>
+      <Text style={styles.progressLabel}>{pkg.sessions_used} of {pkg.total_sessions} sessions used</Text>
 
       {pkg.duration_weeks && (() => {
         const days = Math.max(0, Math.floor((Date.now() - new Date(pkg.start_date + 'T00:00:00').getTime()) / 86_400_000));
@@ -107,27 +77,18 @@ function PackageCard({ pkg, styles, colors }: { pkg: ClientPackage; styles: Retu
             <View style={styles.timelineHeader}>
               <Text style={styles.timelineLabel}>SCHEDULE · {paceLabel}</Text>
               <View style={[styles.timelineTrack, !onTrack && styles.timelineTrackBehind]}>
-                <Text style={[styles.timelineTrackText, !onTrack && { color: '#FFA500' }]}>
+                <Text style={[styles.timelineTrackText, !onTrack && { color: colors.warning }]}>
                   {onTrack ? '✓ On Track' : '⚠ Behind'}
                 </Text>
               </View>
             </View>
             <Text style={styles.timelineWeek}>Week {currentWeek} of {pkg.duration_weeks}</Text>
             <View style={styles.timelineBar}>
-              <View style={[styles.timelineFill, { width: `${timelinePct * 100}%` }]} />
+              <View style={[styles.timelineFill, { width: `${timelinePct * 100}%` as any }]} />
             </View>
           </View>
         );
       })()}
-    </View>
-  );
-}
-
-function Stat({ label, value, color, styles, colors }: { label: string; value: string; color?: string; styles: ReturnType<typeof makeStyles>; colors: ColorScheme }) {
-  return (
-    <View style={styles.stat}>
-      <Text style={[styles.statValue, color ? { color } : {}]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
@@ -149,10 +110,10 @@ function RecentSessionRow({
 
   return (
     <View style={[styles.recentRow, isNoShow && styles.recentRowNoShow]}>
-      <View style={[styles.recentDot, isNoShow && { backgroundColor: '#FFA500' }]} />
+      <View style={[styles.recentDot, isNoShow && { backgroundColor: colors.warning }]} />
       <View style={styles.recentInfo}>
         <Text style={styles.recentDate}>{date}{!isNoShow && `  ·  ${session.duration_minutes} min`}</Text>
-        <Text style={[styles.recentExercises, isNoShow && { color: '#FFA500' }]} numberOfLines={1}>
+        <Text style={[styles.recentExercises, isNoShow && { color: colors.warning }]} numberOfLines={1}>
           {isNoShow ? 'No-show — 1 session deducted' : (topExercises || 'No exercises recorded') + extra}
         </Text>
       </View>
@@ -207,10 +168,12 @@ export default function ClientProgressScreen() {
   const firstName = profile?.name?.split(' ')[0] ?? 'there';
   const { pkg, sessions, coachInfo, nextScheduled, upcomingScheduled, loading, error, refetch } = useClientData();
   const { announcements } = useClientAnnouncements(pkg?.coach_id ?? null);
-  const { requests: bookingRequests, submitRequest, refetch: refetchRequests } = useClientBookingRequests(
+  const { requests: bookingRequests, submitRequest, cancelRequest, refetch: refetchRequests } = useClientBookingRequests(
     pkg?.coach_id ?? null,
     pkg?.id ?? null,
   );
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const typeIcon = useMemo(() => getTypeIcon(colors), [colors]);
@@ -222,24 +185,29 @@ export default function ClientProgressScreen() {
     if (user?.id) registerPushToken(user.id);
   }, [user?.id]);
 
-  // ── Session reminders (1 hr before each upcoming session) ───
+  // ── Session reminders (3hr, 30min, 15min before each upcoming session) ───
   useEffect(() => {
     if (!upcomingScheduled.length) return;
     let cancelled = false;
     (async () => {
-      await Notifications.cancelAllScheduledNotificationsAsync();
+      if (Platform.OS !== 'web') await Notifications.cancelAllScheduledNotificationsAsync();
       if (cancelled) return;
       for (const s of upcomingScheduled) {
-        const fireAt = new Date(new Date(s.scheduled_at).getTime() - 60 * 60 * 1000);
-        if (fireAt > new Date()) {
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: '⏰ Session in 1 hour',
-              body: `Your training session starts at ${new Date(s.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Get ready!`,
-              sound: true,
-            },
-            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: fireAt },
-          });
+        const sessionDt = new Date(s.scheduled_at);
+        const time = sessionDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const reminders = [
+          { ms: 3 * 60 * 60 * 1000, title: '📅 Session Reminder',      body: `Hi! Just a heads up — your training session is at ${time} today. See you there! 💪` },
+          { ms: 30 * 60 * 1000,      title: '⏰ Almost Time!',           body: `Your session starts in 30 minutes at ${time}. Time to get moving! 🏋️` },
+          { ms: 15 * 60 * 1000,      title: '🔔 15 Minutes to Go!',      body: `Your session is starting soon at ${time}. Don't forget to hydrate! 💧` },
+        ];
+        for (const r of reminders) {
+          const fireAt = new Date(sessionDt.getTime() - r.ms);
+          if (fireAt > new Date() && Platform.OS !== 'web') {
+            await Notifications.scheduleNotificationAsync({
+              content: { title: r.title, body: r.body, sound: true },
+              trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: fireAt },
+            });
+          }
         }
       }
     })();
@@ -258,12 +226,122 @@ export default function ClientProgressScreen() {
       .then(({ count }) => setStrikeCount(count ?? 0));
   }, [user?.id, pkg?.coach_id]);
 
+  // ── Active session timer (client sees their live session) ───
+  const [clientActiveSession, setClientActiveSession] = useState<{
+    start_time: string;
+    current_duration: number;
+    is_paused: boolean;
+    pause_started_at: string | null;
+  } | null>(null);
+  const [sessionRemainingSecs, setSessionRemainingSecs] = useState(0);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // Tracks the start_time of a session we already locally dismissed at 0:00.
+  // Prevents re-fetch (useFocusEffect / realtime) from reinstating the banner
+  // while the coach hasn't tapped End Session yet.
+  const expiredSessionRef = useRef<string | null>(null);
+
+  const fetchActiveSession = useCallback(async () => {
+    if (!user?.id) return;
+    const { data } = await supabase
+      .from('active_sessions')
+      .select('start_time, current_duration, is_paused, pause_started_at')
+      .eq('client_id', user.id)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    // If this is the same session we already dismissed at 0:00, don't reinstate it
+    if (data && data.start_time === expiredSessionRef.current) return;
+
+    // New session or real end — clear the expired marker
+    expiredSessionRef.current = null;
+    setClientActiveSession(data ?? null);
+  }, [user?.id]);
+
+  useFocusEffect(useCallback(() => { fetchActiveSession(); }, [fetchActiveSession]));
+
+  // Realtime: auto-hide banner when coach ends session
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel(`client-active-session-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'active_sessions', filter: `client_id=eq.${user.id}` }, () => fetchActiveSession())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id, fetchActiveSession]);
+
+  useEffect(() => {
+    if (!clientActiveSession || clientActiveSession.is_paused) return;
+    const endMs = new Date(clientActiveSession.start_time).getTime() + clientActiveSession.current_duration * 60_000;
+    const tick = () => setSessionRemainingSecs(Math.max(0, Math.floor((endMs - Date.now()) / 1000)));
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [clientActiveSession?.start_time, clientActiveSession?.current_duration, clientActiveSession?.is_paused]);
+
+  // When timer hits 0 (and not paused), dismiss after 10s grace period.
+  // Mark the session as expired first so re-fetches don't reinstate the banner.
+  useEffect(() => {
+    if (sessionRemainingSecs > 0 || !clientActiveSession || clientActiveSession.is_paused) return;
+    expiredSessionRef.current = clientActiveSession.start_time;
+    const t = setTimeout(() => setClientActiveSession(null), 10_000);
+    return () => clearTimeout(t);
+  }, [sessionRemainingSecs > 0, !!clientActiveSession, clientActiveSession?.is_paused]);
+
+  useEffect(() => {
+    if (!clientActiveSession) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 0.3, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [clientActiveSession]);
+
+  const sessionMins = Math.floor(sessionRemainingSecs / 60);
+  const sessionSecs = String(sessionRemainingSecs % 60).padStart(2, '0');
+
   // ── Booking request modal ────────────────────────────────────
   const [requestModal, setRequestModal] = useState<'booking' | 'renewal' | null>(null);
-  const [reqDate, setReqDate] = useState('');
-  const [reqTime, setReqTime] = useState('');
+  const [reqDate, setReqDate] = useState('');     // YYYY-MM-DD (slot picker) or free text (renewal)
+  const [reqTime, setReqTime] = useState('');     // "09:00" from slot picker
   const [reqNotes, setReqNotes] = useState('');
   const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [slots, setSlots] = useState<SlotInfo[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const { getSlots } = useCoachSlots(pkg?.coach_id ?? null);
+
+  // Generate next 14 days starting tomorrow
+  const next14Days = useMemo(() => {
+    const days: Date[] = [];
+    for (let i = 1; i <= 14; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      days.push(d);
+    }
+    return days;
+  }, []);
+
+  const localDateStr = (d: Date): string => {
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    const dy = String(d.getDate()).padStart(2, '0');
+    return `${y}-${mo}-${dy}`;
+  };
+
+  const DAY_ABBR = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+  // Load slots whenever selected date changes (booking only)
+  useEffect(() => {
+    if (!reqDate || requestModal !== 'booking' || !pkg?.coach_id) {
+      setSlots([]);
+      return;
+    }
+    setSlotsLoading(true);
+    getSlots(reqDate).then((s) => { setSlots(s); setSlotsLoading(false); });
+  }, [reqDate, requestModal, pkg?.coach_id, getSlots]);
 
   const handleSubmitRequest = async () => {
     if (!requestModal) return;
@@ -286,8 +364,17 @@ export default function ClientProgressScreen() {
         body: `${profile?.name ?? 'A client'} has sent a ${requestModal === 'renewal' ? 'renewal' : 'booking'} request.`,
       });
     }
+    // Notify admin — FYI
+    const { data: adminForReq } = await supabase.from('profiles').select('id').eq('role', 'admin').limit(1);
+    if (adminForReq?.[0]?.id) {
+      await sendPushNotification(adminForReq[0].id, {
+        title: requestModal === 'renewal' ? '🔄 Renewal Request' : '📅 Booking Request',
+        body: `${profile?.name ?? 'A client'} sent a ${requestModal === 'renewal' ? 'renewal' : 'booking'} request to their coach.`,
+        data: { type: 'client_request' },
+      });
+    }
     setRequestModal(null);
-    setReqDate(''); setReqTime(''); setReqNotes('');
+    setReqDate(''); setReqTime(''); setReqNotes(''); setSlots([]);
     Alert.alert('Sent!', `Your ${requestModal === 'renewal' ? 'renewal' : 'booking'} request has been sent to your coach.`);
   };
 
@@ -296,6 +383,7 @@ export default function ClientProgressScreen() {
   const [confirming, setConfirming] = useState(false);
   const [localConfirmed, setLocalConfirmed] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [requestingReschedule, setRequestingReschedule] = useState<string | null>(null);
   const [acceptingReschedule, setAcceptingReschedule] = useState<string | null>(null);
   const [decliningReschedule, setDecliningReschedule] = useState<string | null>(null);
 
@@ -341,6 +429,15 @@ export default function ClientProgressScreen() {
     if (!err) {
       setLocalConfirmed(true);
       refetch();
+      if (pkg?.coach_id) {
+        const dateStr = new Date(nextScheduled.scheduled_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        const timeStr = new Date(nextScheduled.scheduled_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        await sendPushNotification(pkg.coach_id, {
+          title: '✅ Session Confirmed',
+          body: `${profile?.name ?? 'Your client'} confirmed attendance for ${dateStr} at ${timeStr}.`,
+          data: { type: 'session_confirmed', session_id: nextScheduled.id },
+        });
+      }
     } else {
       Alert.alert('Error', 'Could not confirm. Please try again.');
     }
@@ -396,10 +493,29 @@ export default function ClientProgressScreen() {
 
       {error && <ErrorBanner message={error} onRetry={refetch} />}
 
+
+      {/* Active session banner */}
+      {clientActiveSession && (
+        <View style={styles.activeSessionBanner}>
+          <Animated.View style={[styles.activePulseDot, { opacity: pulseAnim }]} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.activeSessionTitle}>SESSION IN PROGRESS</Text>
+            <Text style={styles.activeSessionTime}>
+              {clientActiveSession.is_paused
+                ? 'Paused'
+                : `${sessionMins}:${sessionSecs} remaining`}
+            </Text>
+          </View>
+          {coachInfo && (
+            <Text style={styles.activeSessionCoach}>{coachInfo.name}</Text>
+          )}
+        </View>
+      )}
+
       {/* Strike warning */}
       {strikeCount > 0 && (
         <View style={styles.strikeBanner}>
-          <Ionicons name="warning-outline" size={16} color="#FFA500" />
+          <Ionicons name="warning-outline" size={16} color={colors.warning} />
           <Text style={styles.strikeBannerText}>
             {strikeCount} of 3 strike{strikeCount !== 1 ? 's' : ''} — 3 strikes deducts 1 session
           </Text>
@@ -415,8 +531,8 @@ export default function ClientProgressScreen() {
           </Pressable>
           {(pkg.sessions_remaining <= 3) && (
             <Pressable style={[styles.quickBtn, styles.quickBtnRenew]} onPress={() => setRequestModal('renewal')}>
-              <Ionicons name="refresh-outline" size={16} color="#4CAF50" />
-              <Text style={[styles.quickBtnText, { color: '#4CAF50' }]}>Renew Package</Text>
+              <Ionicons name="refresh-outline" size={16} color={colors.success} />
+              <Text style={[styles.quickBtnText, { color: colors.success }]}>Renew Package</Text>
             </Pressable>
           )}
         </View>
@@ -424,13 +540,17 @@ export default function ClientProgressScreen() {
 
       {/* Pending requests (recent) */}
       {bookingRequests.filter((r) => r.status === 'pending').length > 0 && (
-        <View style={styles.pendingRequestBanner}>
+        <Pressable
+          style={({ pressed }) => [styles.pendingRequestBanner, pressed && { opacity: 0.75 }]}
+          onPress={() => setShowPendingModal(true)}
+        >
           <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
-          <Text style={styles.pendingRequestText}>
+          <Text style={[styles.pendingRequestText, { flex: 1 }]}>
             {bookingRequests.filter((r) => r.status === 'pending').length} request
             {bookingRequests.filter((r) => r.status === 'pending').length !== 1 ? 's' : ''} pending — waiting for coach
           </Text>
-        </View>
+          <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
+        </Pressable>
       )}
 
       {/* Booking request modal */}
@@ -442,23 +562,95 @@ export default function ClientProgressScreen() {
               {requestModal === 'renewal' ? 'Request Package Renewal' : 'Request a Session'}
             </Text>
 
-            <Text style={styles.reqLabel}>PREFERRED DATE</Text>
-            <TextInput
-              style={styles.reqInput}
-              value={reqDate}
-              onChangeText={setReqDate}
-              placeholder="e.g. July 5, 2025 (optional)"
-              placeholderTextColor={colors.textSecondary + '60'}
-            />
+            {requestModal === 'booking' ? (
+              <>
+                {/* ── Day chips ── */}
+                <Text style={styles.reqLabel}>PICK A DATE</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dayScroll}>
+                  {next14Days.map((d) => {
+                    const ds = localDateStr(d);
+                    const sel = reqDate === ds;
+                    return (
+                      <Pressable
+                        key={ds}
+                        style={[styles.dayChip, sel && styles.dayChipSel]}
+                        onPress={() => { setReqDate(ds); setReqTime(''); }}
+                      >
+                        <Text style={[styles.dayChipDay, sel && styles.dayChipDaySel]}>
+                          {DAY_ABBR[d.getDay()]}
+                        </Text>
+                        <Text style={[styles.dayChipDate, sel && styles.dayChipDateSel]}>
+                          {d.getDate()}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
 
-            <Text style={styles.reqLabel}>PREFERRED TIME</Text>
-            <TextInput
-              style={styles.reqInput}
-              value={reqTime}
-              onChangeText={setReqTime}
-              placeholder="e.g. 9:00 AM (optional)"
-              placeholderTextColor={colors.textSecondary + '60'}
-            />
+                {/* ── Time slot chips ── */}
+                {reqDate ? (
+                  <>
+                    <Text style={[styles.reqLabel, { marginTop: 16 }]}>AVAILABLE TIMES</Text>
+                    {slotsLoading ? (
+                      <Text style={styles.slotsNote}>Loading…</Text>
+                    ) : slots.length === 0 ? (
+                      <Text style={styles.slotsNote}>Coach has no availability this day.</Text>
+                    ) : (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.slotScroll}>
+                        {slots.map((slot) => {
+                          const isSel = reqTime === slot.time;
+                          return (
+                            <Pressable
+                              key={slot.time}
+                              style={[
+                                styles.slotChip,
+                                isSel && styles.slotChipSel,
+                                !slot.isAvailable && styles.slotChipTaken,
+                              ]}
+                              onPress={() => slot.isAvailable && setReqTime(isSel ? '' : slot.time)}
+                              disabled={!slot.isAvailable}
+                            >
+                              <Text style={[
+                                styles.slotChipTxt,
+                                isSel && styles.slotChipTxtSel,
+                                !slot.isAvailable && styles.slotChipTxtTaken,
+                              ]}>
+                                {slot.label}
+                              </Text>
+                              {!slot.isAvailable && (
+                                <Text style={styles.takenBadge}>TAKEN</Text>
+                              )}
+                            </Pressable>
+                          );
+                        })}
+                      </ScrollView>
+                    )}
+                  </>
+                ) : (
+                  <Text style={styles.slotsNote}>Select a date to see available times.</Text>
+                )}
+              </>
+            ) : (
+              /* Renewal: keep simple date/time text inputs */
+              <>
+                <Text style={styles.reqLabel}>PREFERRED DATE</Text>
+                <TextInput
+                  style={styles.reqInput}
+                  value={reqDate}
+                  onChangeText={setReqDate}
+                  placeholder="e.g. July 5, 2025 (optional)"
+                  placeholderTextColor={colors.textSecondary + '60'}
+                />
+                <Text style={styles.reqLabel}>PREFERRED TIME</Text>
+                <TextInput
+                  style={styles.reqInput}
+                  value={reqTime}
+                  onChangeText={setReqTime}
+                  placeholder="e.g. 9:00 AM (optional)"
+                  placeholderTextColor={colors.textSecondary + '60'}
+                />
+              </>
+            )}
 
             <Text style={styles.reqLabel}>NOTES</Text>
             <TextInput
@@ -481,9 +673,54 @@ export default function ClientProgressScreen() {
             </Pressable>
             <Pressable
               style={styles.reqCancelBtn}
-              onPress={() => { setRequestModal(null); setReqDate(''); setReqTime(''); setReqNotes(''); }}
+              onPress={() => { setRequestModal(null); setReqDate(''); setReqTime(''); setReqNotes(''); setSlots([]); }}
             >
               <Text style={styles.reqCancelBtnText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Pending requests modal */}
+      <Modal visible={showPendingModal} transparent animationType="slide" onRequestClose={() => setShowPendingModal(false)}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }} onPress={() => setShowPendingModal(false)} />
+          <View style={styles.modalSheet}>
+            <View style={styles.modalSheetHandle} />
+            <Text style={styles.modalSheetTitle}>Pending Requests</Text>
+            {bookingRequests.filter((r) => r.status === 'pending').map((r) => (
+              <View key={r.id} style={styles.pendingReqRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.pendingReqType}>
+                    {r.type === 'renewal' ? 'Package Renewal' : 'Session Booking'}
+                  </Text>
+                  {r.preferred_date ? (
+                    <Text style={styles.pendingReqMeta}>Date: {r.preferred_date}{r.preferred_time ? ` at ${r.preferred_time}` : ''}</Text>
+                  ) : null}
+                  {r.notes ? <Text style={styles.pendingReqMeta} numberOfLines={2}>{r.notes}</Text> : null}
+                  <Text style={styles.pendingReqDate}>
+                    Sent {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </Text>
+                </View>
+                <Pressable
+                  style={({ pressed }) => [styles.pendingReqCancelBtn, (cancellingId === r.id || pressed) && { opacity: 0.5 }]}
+                  disabled={cancellingId === r.id}
+                  onPress={async () => {
+                    setCancellingId(r.id);
+                    const { error } = await cancelRequest(r.id);
+                    setCancellingId(null);
+                    if (error) Alert.alert('Error', error);
+                    if (bookingRequests.filter((x) => x.status === 'pending').length <= 1) setShowPendingModal(false);
+                  }}
+                >
+                  <Text style={styles.pendingReqCancelText}>
+                    {cancellingId === r.id ? '…' : 'Cancel'}
+                  </Text>
+                </Pressable>
+              </View>
+            ))}
+            <Pressable style={styles.reqCancelBtn} onPress={() => setShowPendingModal(false)}>
+              <Text style={styles.reqCancelBtnText}>Close</Text>
             </Pressable>
           </View>
         </View>
@@ -492,30 +729,39 @@ export default function ClientProgressScreen() {
       {/* Next scheduled session */}
       {nextScheduled && (
         <View style={styles.nextCard}>
+          {/* Header row */}
           <View style={styles.nextCardTop}>
             <View style={styles.nextIcon}>
               <Ionicons name="calendar" size={18} color={colors.accent} />
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.nextLabel}>NEXT SESSION</Text>
-              <Text style={styles.nextDate}>{formatScheduled(nextScheduled.scheduled_at)}</Text>
-              {nextScheduled.notes ? (
-                <Text style={styles.nextNotes}>{nextScheduled.notes}</Text>
-              ) : null}
-            </View>
+            <Text style={styles.nextLabel}>NEXT SESSION</Text>
           </View>
 
-          {/* Live countdown */}
+          {/* Date + Time prominent display */}
+          <View style={styles.nextDateBlock}>
+            <Text style={styles.nextDateText}>
+              {new Date(nextScheduled.scheduled_at).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </Text>
+            <Text style={styles.nextTimeText}>
+              {new Date(nextScheduled.scheduled_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+            </Text>
+          </View>
+
+          {/* Big countdown */}
           <View style={styles.countdownRow}>
-            <Ionicons name="time-outline" size={13} color={colors.accent} />
+            <Ionicons name="timer-outline" size={16} color={colors.accent} />
             <Text style={styles.countdownText}>{formatCountdown(secondsUntil)}</Text>
           </View>
+
+          {nextScheduled.notes ? (
+            <Text style={styles.nextNotes}>{nextScheduled.notes}</Text>
+          ) : null}
 
           {/* Reschedule pending UI */}
           {nextScheduled.status === 'reschedule_pending' ? (
             <View style={styles.reschedulePending}>
               <View style={styles.rescheduleHeader}>
-                <Ionicons name="calendar-outline" size={14} color="#FFA500" />
+                <Ionicons name="calendar-outline" size={14} color={colors.warning} />
                 <Text style={styles.rescheduleHeaderText}>Coach Proposed a New Time</Text>
               </View>
               <Text style={styles.rescheduleFrom}>
@@ -543,7 +789,7 @@ export default function ClientProgressScreen() {
                   onPress={() => handleDeclineReschedule(nextScheduled.id)}
                   disabled={!!acceptingReschedule || !!decliningReschedule}
                 >
-                  <Ionicons name="close" size={14} color="#FF4D4D" />
+                  <Ionicons name="close" size={14} color={colors.danger} />
                   <Text style={styles.rescheduleDeclineText}>
                     {decliningReschedule === nextScheduled.id ? 'Declining…' : 'Decline'}
                   </Text>
@@ -555,7 +801,7 @@ export default function ClientProgressScreen() {
               {/* Confirm attendance */}
               {(nextScheduled.client_confirmed_at || localConfirmed) ? (
                 <View style={styles.confirmedBadge}>
-                  <Ionicons name="checkmark-circle" size={15} color="#4CAF50" />
+                  <Ionicons name="checkmark-circle" size={15} color={colors.success} />
                   <Text style={styles.confirmedText}>Attendance Confirmed</Text>
                 </View>
               ) : (
@@ -569,22 +815,46 @@ export default function ClientProgressScreen() {
                 </Pressable>
               )}
 
-              {/* Cancel button */}
-              {secondsUntil > 10800 ? (
+              {/* Reschedule button */}
+              {secondsUntil > 14400 ? (
                 <Pressable
-                  style={[styles.cancelBtn, cancelling === nextScheduled.id && { opacity: 0.5 }]}
-                  onPress={() => handleCancel(nextScheduled.id)}
-                  disabled={cancelling === nextScheduled.id}
+                  style={[styles.cancelBtn, requestingReschedule === nextScheduled.id && { opacity: 0.5 }]}
+                  onPress={() => {
+                    Alert.alert(
+                      'Request Reschedule',
+                      'Send your coach a request to move this session to a different time?',
+                      [
+                        { text: 'No', style: 'cancel' },
+                        {
+                          text: 'Request', onPress: async () => {
+                            setRequestingReschedule(nextScheduled.id);
+                            const dateStr = new Date(nextScheduled.scheduled_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                            const timeStr = new Date(nextScheduled.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                            if (pkg?.coach_id) {
+                              await sendPushNotification(pkg.coach_id, {
+                                title: '🔄 Reschedule Request',
+                                body: `${profile?.name ?? 'Your client'} wants to reschedule their session on ${dateStr} at ${timeStr}.`,
+                                data: { type: 'reschedule_request', session_id: nextScheduled.id },
+                              });
+                            }
+                            setRequestingReschedule(null);
+                            Alert.alert('Sent!', 'Your coach has been notified and will reach out with a new time.');
+                          },
+                        },
+                      ]
+                    );
+                  }}
+                  disabled={requestingReschedule === nextScheduled.id}
                 >
-                  <Ionicons name="close-circle-outline" size={15} color={colors.accent} />
+                  <Ionicons name="refresh-outline" size={15} color={colors.accent} />
                   <Text style={styles.cancelBtnText}>
-                    {cancelling === nextScheduled.id ? 'Cancelling…' : 'Cancel Session'}
+                    {requestingReschedule === nextScheduled.id ? 'Sending…' : 'Request Reschedule'}
                   </Text>
                 </Pressable>
               ) : (
                 <View style={styles.cancelBtnLocked}>
                   <Ionicons name="lock-closed-outline" size={13} color={colors.textSecondary} />
-                  <Text style={styles.cancelBtnLockedText}>Cannot cancel — less than 3 hrs away</Text>
+                  <Text style={styles.cancelBtnLockedText}>Cannot reschedule — less than 4 hrs away</Text>
                 </View>
               )}
             </>
@@ -598,7 +868,7 @@ export default function ClientProgressScreen() {
           <Text style={[styles.sectionTitle, { marginTop: 20 }]}>UPCOMING SESSIONS</Text>
           {upcomingScheduled.slice(1).map((s) => {
             const secsUntil = Math.max(0, Math.floor((new Date(s.scheduled_at).getTime() - Date.now()) / 1000));
-            const canCancel = secsUntil > 10800;
+            const canCancel = secsUntil > 14400;
             const isConfirmed = !!s.client_confirmed_at;
             return (
               <View key={s.id} style={styles.upcomingCard}>
@@ -620,7 +890,7 @@ export default function ClientProgressScreen() {
                       <Text style={styles.rescheduleBadgeText}>RESCHEDULED</Text>
                     </View>
                   ) : isConfirmed ? (
-                    <Ionicons name="checkmark-circle" size={18} color="#4CAF50" />
+                    <Ionicons name="checkmark-circle" size={18} color={colors.success} />
                   ) : null}
                 </View>
                 <View style={styles.upcomingActions}>
@@ -662,19 +932,43 @@ export default function ClientProgressScreen() {
                   ) : null}
                   {s.status !== 'reschedule_pending' && (canCancel ? (
                     <Pressable
-                      style={[styles.upcomingCancelBtn, cancelling === s.id && { opacity: 0.5 }]}
-                      onPress={() => handleCancel(s.id)}
-                      disabled={cancelling === s.id}
+                      style={[styles.upcomingCancelBtn, requestingReschedule === s.id && { opacity: 0.5 }]}
+                      onPress={() => {
+                        Alert.alert(
+                          'Request Reschedule',
+                          'Send your coach a request to move this session to a different time?',
+                          [
+                            { text: 'No', style: 'cancel' },
+                            {
+                              text: 'Request', onPress: async () => {
+                                setRequestingReschedule(s.id);
+                                const dateStr = new Date(s.scheduled_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                                const timeStr = new Date(s.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                if (pkg?.coach_id) {
+                                  await sendPushNotification(pkg.coach_id, {
+                                    title: '🔄 Reschedule Request',
+                                    body: `${profile?.name ?? 'Your client'} wants to reschedule their session on ${dateStr} at ${timeStr}.`,
+                                    data: { type: 'reschedule_request', session_id: s.id },
+                                  });
+                                }
+                                setRequestingReschedule(null);
+                                Alert.alert('Sent!', 'Your coach has been notified and will reach out with a new time.');
+                              },
+                            },
+                          ],
+                        );
+                      }}
+                      disabled={requestingReschedule === s.id}
                     >
-                      <Ionicons name="close" size={13} color={colors.accent} />
+                      <Ionicons name="refresh-outline" size={13} color={colors.accent} />
                       <Text style={styles.upcomingCancelBtnText}>
-                        {cancelling === s.id ? 'Cancelling…' : 'Cancel'}
+                        {requestingReschedule === s.id ? 'Sending…' : 'Request Reschedule'}
                       </Text>
                     </Pressable>
                   ) : (
                     <View style={styles.upcomingLockedCancel}>
                       <Ionicons name="lock-closed-outline" size={12} color={colors.textSecondary} />
-                      <Text style={styles.upcomingLockedText}>Too late to cancel</Text>
+                      <Text style={styles.upcomingLockedText}>Too late to reschedule</Text>
                     </View>
                   ))}
                 </View>
@@ -843,25 +1137,28 @@ function makeStyles(c: ColorScheme) {
       borderColor: c.accent + '40',
       gap: 12,
     },
-    nextCardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+    nextCardTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     nextIcon: {
-      width: 36, height: 36, borderRadius: 18,
+      width: 32, height: 32, borderRadius: 16,
       backgroundColor: c.accent + '20',
       justifyContent: 'center', alignItems: 'center',
       flexShrink: 0,
     },
-    nextLabel: { ...Typography.label, color: c.accent, fontSize: 10, marginBottom: 3 },
+    nextLabel: { ...Typography.label, color: c.accent, fontSize: 11, flex: 1 },
+    nextDateBlock: { gap: 2 },
+    nextDateText: { ...Typography.body, color: c.textPrimary, fontWeight: '700', fontSize: 15 },
+    nextTimeText: { fontSize: 26, fontWeight: '800', color: c.accent, letterSpacing: 0.5 },
     nextDate:  { ...Typography.body, color: c.textPrimary, fontWeight: '700' },
-    nextNotes: { ...Typography.caption, color: c.textSecondary, marginTop: 3 },
+    nextNotes: { ...Typography.caption, color: c.textSecondary },
 
     // Countdown
     countdownRow: {
       flexDirection: 'row', alignItems: 'center', gap: 6,
-      backgroundColor: c.accent + '18', borderRadius: 8,
-      paddingHorizontal: 10, paddingVertical: 6,
-      alignSelf: 'flex-start',
+      backgroundColor: c.accent + '18', borderRadius: 10,
+      paddingHorizontal: 12, paddingVertical: 8,
+      alignSelf: 'stretch',
     },
-    countdownText: { ...Typography.label, color: c.accent, fontWeight: '800', fontSize: 13 },
+    countdownText: { ...Typography.label, color: c.accent, fontWeight: '800', fontSize: 16, flex: 1 },
 
     // Confirm
     confirmBtn: {
@@ -871,10 +1168,10 @@ function makeStyles(c: ColorScheme) {
     confirmBtnText: { color: c.bg, fontWeight: '800', fontSize: 14 },
     confirmedBadge: {
       flexDirection: 'row', alignItems: 'center', gap: 6,
-      backgroundColor: '#4CAF5015', borderRadius: 10, paddingVertical: 10,
-      justifyContent: 'center', borderWidth: 1, borderColor: '#4CAF5040',
+      backgroundColor: c.success + '15', borderRadius: 10, paddingVertical: 10,
+      justifyContent: 'center', borderWidth: 1, borderColor: c.success + '40',
     },
-    confirmedText: { color: '#4CAF50', fontWeight: '700', fontSize: 14 },
+    confirmedText: { color: c.success, fontWeight: '700', fontSize: 14 },
 
     // Announcement banner
     annBanner: {
@@ -889,44 +1186,26 @@ function makeStyles(c: ColorScheme) {
       borderColor: c.accent + '30',
     },
     annBannerEmergency: {
-      backgroundColor: '#FF4D4D12',
-      borderColor: '#FF4D4D40',
+      backgroundColor: c.danger + '12',
+      borderColor: c.danger + '40',
     },
     annTitle: { ...Typography.caption, fontWeight: '700', marginBottom: 2 },
     annMsg:   { ...Typography.caption, color: c.textSecondary, lineHeight: 17 },
 
     // Package card
-    pkgCard: {
-      backgroundColor: c.surface,
-      borderRadius: 20,
-      padding: 20,
-      borderWidth: 1,
-      marginBottom: 4,
-    },
-    pkgTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    pkgType: { ...Typography.body, color: c.textSecondary, fontWeight: '600', flex: 1, marginRight: 8 },
-    statusPill: {
-      borderRadius: 20,
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderWidth: 1,
-    },
-    statusText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
-
-    heroRow:   { flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginBottom: 20 },
-    heroNumber: { fontSize: 64, fontWeight: '800', lineHeight: 68, letterSpacing: -2 },
-    heroLabel:  { ...Typography.body, color: c.textSecondary, marginBottom: 8, lineHeight: 20 },
-
-    segmentRow: { flexDirection: 'row', gap: 3, marginBottom: 20 },
-    segment:    { height: 6, borderRadius: 3 },
-
-    statsRow:    { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-    stat:        { flex: 1, alignItems: 'center' },
-    statValue:   { ...Typography.subtitle, color: c.textPrimary, marginBottom: 2 },
-    statLabel:   { ...Typography.label, color: c.textSecondary, fontSize: 10 },
-    statDivider: { width: 1, height: 28, backgroundColor: c.border },
-
-    startDate: { ...Typography.caption, color: c.textSecondary, textAlign: 'center', marginBottom: 16 },
+    pkgCard: { backgroundColor: c.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: c.accent + '30', marginBottom: 4 },
+    pkgTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+    pkgLabel: { ...Typography.label, color: c.accent, marginBottom: 4 },
+    pkgType: { ...Typography.subtitle, color: c.textPrimary },
+    statusBadge: { backgroundColor: c.accent + '18', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: c.accent + '40' },
+    statusWarning: { backgroundColor: c.warning + '18', borderColor: c.warning + '50' },
+    statusExpired: { backgroundColor: c.border + '80', borderColor: c.border },
+    statusText: { fontSize: 12, fontWeight: '700', color: c.accent },
+    statusTextWarning: { color: c.warning },
+    statusTextExpired: { color: c.textSecondary },
+    progressTrack: { height: 6, backgroundColor: c.border, borderRadius: 3, overflow: 'hidden', marginBottom: 8 },
+    progressFill: { height: '100%', backgroundColor: c.accent, borderRadius: 3 },
+    progressLabel: { ...Typography.caption, color: c.textSecondary, marginBottom: 10 },
 
     timeline: {
       borderTopWidth: 1, borderTopColor: c.border, paddingTop: 14,
@@ -934,15 +1213,15 @@ function makeStyles(c: ColorScheme) {
     timelineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
     timelineLabel: { ...Typography.label, color: c.textSecondary, fontSize: 10 },
     timelineTrack: {
-      backgroundColor: '#4CAF5015', borderRadius: 6,
+      backgroundColor: c.success + '15', borderRadius: 6,
       paddingHorizontal: 8, paddingVertical: 3,
-      borderWidth: 1, borderColor: '#4CAF5040',
+      borderWidth: 1, borderColor: c.success + '40',
     },
-    timelineTrackBehind: { backgroundColor: '#FFA50015', borderColor: '#FFA50040' },
-    timelineTrackText: { fontSize: 11, fontWeight: '700', color: '#4CAF50' },
+    timelineTrackBehind: { backgroundColor: c.warning + '15', borderColor: c.warning + '40' },
+    timelineTrackText: { fontSize: 11, fontWeight: '700', color: c.success },
     timelineWeek: { ...Typography.caption, color: c.textSecondary, marginBottom: 8 },
     timelineBar: { height: 4, backgroundColor: c.border, borderRadius: 2, overflow: 'hidden' },
-    timelineFill: { height: '100%', backgroundColor: '#4CAF50', borderRadius: 2 },
+    timelineFill: { height: '100%', backgroundColor: c.success, borderRadius: 2 },
 
     // Recent sessions
     recentCard: {
@@ -959,17 +1238,17 @@ function makeStyles(c: ColorScheme) {
       paddingVertical: 14,
       gap: 12,
     },
-    recentRowNoShow: { backgroundColor: '#FFA50008' },
+    recentRowNoShow: { backgroundColor: c.warning + '08' },
     recentDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: c.accent },
     noShowBadge: {
-      backgroundColor: '#FFA50020',
+      backgroundColor: c.warning + '20',
       borderRadius: 6,
       paddingHorizontal: 7,
       paddingVertical: 3,
       borderWidth: 1,
-      borderColor: '#FFA50050',
+      borderColor: c.warning + '50',
     },
-    noShowBadgeText: { color: '#FFA500', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+    noShowBadgeText: { color: c.warning, fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
     recentInfo: { flex: 1 },
     recentDate: { ...Typography.caption, color: c.textSecondary, marginBottom: 2 },
     recentExercises: { ...Typography.body, color: c.textPrimary, fontWeight: '500' },
@@ -1023,13 +1302,33 @@ function makeStyles(c: ColorScheme) {
       justifyContent: 'center', alignItems: 'center',
     },
 
+    // Active session banner
+    activeSessionBanner: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: c.accent + '12', borderRadius: 14, padding: 14, marginBottom: 12,
+      borderWidth: 1, borderColor: c.accent + '35',
+    },
+    activePulseDot: {
+      width: 10, height: 10, borderRadius: 5, backgroundColor: c.accent,
+    },
+    activeSessionTitle: {
+      fontSize: 11, fontWeight: '800', letterSpacing: 1, color: c.accent,
+    },
+    activeSessionTime: {
+      fontSize: 22, fontWeight: '700', color: c.textPrimary, marginTop: 2,
+      fontVariant: ['tabular-nums'] as any,
+    },
+    activeSessionCoach: {
+      fontSize: 12, color: c.textSecondary, fontWeight: '500',
+    },
+
     // Strike warning
     strikeBanner: {
       flexDirection: 'row', alignItems: 'center', gap: 8,
-      backgroundColor: '#FFA50012', borderRadius: 10, padding: 12, marginBottom: 12,
-      borderWidth: 1, borderColor: '#FFA50040',
+      backgroundColor: c.warning + '12', borderRadius: 10, padding: 12, marginBottom: 12,
+      borderWidth: 1, borderColor: c.warning + '40',
     },
-    strikeBannerText: { color: '#FFA500', fontSize: 13, fontWeight: '600', flex: 1 },
+    strikeBannerText: { color: c.warning, fontSize: 13, fontWeight: '600', flex: 1 },
 
     // Quick actions
     quickActions: { flexDirection: 'row', gap: 8, marginBottom: 12 },
@@ -1039,7 +1338,7 @@ function makeStyles(c: ColorScheme) {
       borderWidth: 1, borderColor: c.accent + '50',
       backgroundColor: c.accent + '08',
     },
-    quickBtnRenew: { borderColor: '#4CAF5050', backgroundColor: '#4CAF5008' },
+    quickBtnRenew: { borderColor: c.success + '50', backgroundColor: c.success + '08' },
     quickBtnText: { color: c.accent, fontWeight: '700', fontSize: 13 },
 
     // Pending requests banner
@@ -1049,10 +1348,22 @@ function makeStyles(c: ColorScheme) {
       borderWidth: 1, borderColor: c.border,
     },
     pendingRequestText: { color: c.textSecondary, fontSize: 12, fontWeight: '500' },
+    pendingReqRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    pendingReqType: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
+    pendingReqMeta: { ...Typography.caption, color: c.textSecondary, marginBottom: 1 },
+    pendingReqDate: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic', marginTop: 2 },
+    pendingReqCancelBtn: {
+      backgroundColor: c.danger + '20', borderWidth: 1, borderColor: c.danger + '50',
+      borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7,
+    },
+    pendingReqCancelText: { color: c.danger, fontSize: 12, fontWeight: '700' },
 
     // Booking request modal (bottom sheet)
     modalOverlay: {
-      flex: 1, backgroundColor: 'rgba(0,0,0,0.7)',
+      flex: 1, backgroundColor: c.overlay,
       justifyContent: 'flex-end',
     },
     modalSheet: {
@@ -1080,6 +1391,32 @@ function makeStyles(c: ColorScheme) {
     reqSubmitBtnText: { color: c.bg, fontWeight: '800', fontSize: 16 },
     reqCancelBtn: { paddingVertical: 12, alignItems: 'center' },
     reqCancelBtnText: { color: c.textSecondary, fontSize: 14 },
+
+    // Day + slot chips
+    dayScroll: { marginBottom: 4 },
+    dayChip: {
+      alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8,
+      borderRadius: 12, borderWidth: 1, borderColor: c.border,
+      backgroundColor: c.bg, marginRight: 8, minWidth: 44,
+    },
+    dayChipSel: { backgroundColor: c.accent + '18', borderColor: c.accent },
+    dayChipDay: { fontSize: 10, fontWeight: '700', color: c.textSecondary, letterSpacing: 0.5 },
+    dayChipDaySel: { color: c.accent },
+    dayChipDate: { fontSize: 16, fontWeight: '700', color: c.textPrimary, marginTop: 2 },
+    dayChipDateSel: { color: c.accent },
+    slotScroll: { marginBottom: 4 },
+    slotChip: {
+      paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10,
+      borderWidth: 1, borderColor: c.accent + '60',
+      backgroundColor: c.bg, marginRight: 8, alignItems: 'center',
+    },
+    slotChipSel: { backgroundColor: c.accent, borderColor: c.accent },
+    slotChipTaken: { borderColor: c.border, backgroundColor: c.surface, opacity: 0.55 },
+    slotChipTxt: { fontSize: 13, fontWeight: '600', color: c.textPrimary },
+    slotChipTxtSel: { color: c.bg },
+    slotChipTxtTaken: { color: c.textSecondary },
+    takenBadge: { fontSize: 9, fontWeight: '700', color: c.textSecondary, letterSpacing: 0.5, marginTop: 2 },
+    slotsNote: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic', marginBottom: 4 },
 
     // Cancel button (next session card)
     cancelBtn: {
@@ -1129,20 +1466,20 @@ function makeStyles(c: ColorScheme) {
       borderWidth: 1, borderColor: c.border,
     },
     upcomingLockedText: { color: c.textSecondary, fontSize: 12, fontWeight: '500' },
-    upcomingRescheduledTo: { fontSize: 12, color: '#FFA500', fontWeight: '600', marginTop: 2 },
+    upcomingRescheduledTo: { fontSize: 12, color: c.warning, fontWeight: '600', marginTop: 2 },
 
     // Reschedule pending
     rescheduleBadge: {
-      backgroundColor: '#FFA50018', borderRadius: 6, borderWidth: 1,
-      borderColor: '#FFA50050', paddingHorizontal: 7, paddingVertical: 3,
+      backgroundColor: c.warning + '18', borderRadius: 6, borderWidth: 1,
+      borderColor: c.warning + '50', paddingHorizontal: 7, paddingVertical: 3,
     },
-    rescheduleBadgeText: { fontSize: 10, fontWeight: '700', color: '#FFA500' },
+    rescheduleBadgeText: { fontSize: 10, fontWeight: '700', color: c.warning },
     reschedulePending: {
-      backgroundColor: '#FFA50010', borderRadius: 12, borderWidth: 1,
-      borderColor: '#FFA50040', padding: 12, marginTop: 8, gap: 4,
+      backgroundColor: c.warning + '10', borderRadius: 12, borderWidth: 1,
+      borderColor: c.warning + '40', padding: 12, marginTop: 8, gap: 4,
     },
     rescheduleHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
-    rescheduleHeaderText: { fontSize: 13, fontWeight: '700', color: '#FFA500' },
+    rescheduleHeaderText: { fontSize: 13, fontWeight: '700', color: c.warning },
     rescheduleFrom: { fontSize: 12, color: c.textSecondary },
     rescheduleTo: { fontSize: 13, fontWeight: '600', color: c.textPrimary },
     rescheduleReason: { fontSize: 12, color: c.textSecondary, fontStyle: 'italic', marginTop: 2 },
@@ -1154,10 +1491,10 @@ function makeStyles(c: ColorScheme) {
     rescheduleAcceptText: { color: c.bg, fontSize: 13, fontWeight: '700' },
     rescheduleDeclineBtn: {
       flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-      gap: 5, backgroundColor: '#FF4D4D18', borderRadius: 10, paddingVertical: 10,
-      borderWidth: 1, borderColor: '#FF4D4D40',
+      gap: 5, backgroundColor: c.danger + '18', borderRadius: 10, paddingVertical: 10,
+      borderWidth: 1, borderColor: c.danger + '40',
     },
-    rescheduleDeclineText: { color: '#FF4D4D', fontSize: 13, fontWeight: '700' },
+    rescheduleDeclineText: { color: c.danger, fontSize: 13, fontWeight: '700' },
 
     // Empty states
     emptyCard: {

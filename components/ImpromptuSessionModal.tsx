@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,12 +17,13 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useClients, ClientWithPackage } from '@/hooks/useClients';
 import { useActiveSessionContext } from '@/context/ActiveSessionContext';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 const DURATIONS = [30, 45, 60, 90] as const;
 const SESSION_TYPES = ['gym', 'home'] as const;
 
-// ── Clients list at module scope — avoids TextInput nesting issues ─────────────
+// ── Client row ────────────────────────────────────────────────────────────────
 
 function ClientRow({
   client,
@@ -33,6 +34,9 @@ function ClientRow({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+
   const initials = client.name
     .split(' ')
     .map((w) => w[0])
@@ -59,18 +63,16 @@ function ClientRow({
         style={[
           s.avatar,
           selected
-            ? { backgroundColor: Colors.accent + '20', borderColor: Colors.accent }
-            : { backgroundColor: Colors.surface, borderColor: Colors.border },
+            ? { backgroundColor: colors.accent + '20', borderColor: colors.accent }
+            : { backgroundColor: colors.surface, borderColor: colors.border },
         ]}
       >
-        <Text
-          style={[s.avatarText, selected && { color: Colors.accent }]}
-        >
+        <Text style={[s.avatarText, selected && { color: colors.accent }]}>
           {initials}
         </Text>
       </View>
       <View style={s.clientInfo}>
-        <Text style={[s.clientName, !hasSession && { color: Colors.textSecondary }]}>
+        <Text style={[s.clientName, !hasSession && { color: colors.textSecondary }]}>
           {client.name}
         </Text>
         <Text style={s.clientSub}>
@@ -79,7 +81,7 @@ function ClientRow({
             : 'No active package'}
         </Text>
       </View>
-      {selected && <Ionicons name="checkmark-circle" size={22} color={Colors.accent} />}
+      {selected && <Ionicons name="checkmark-circle" size={22} color={colors.accent} />}
     </Pressable>
   );
 }
@@ -93,6 +95,9 @@ export function ImpromptuSessionModal({
   visible: boolean;
   onClose: () => void;
 }) {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+
   const { profile } = useAuth();
   const { clients, loading: clientsLoading } = useClients();
   const { refetch: refetchSession } = useActiveSessionContext();
@@ -132,7 +137,6 @@ export function ImpromptuSessionModal({
       return;
     }
 
-    // Check if a session is already running
     const { data: existing } = await supabase
       .from('active_sessions')
       .select('id')
@@ -141,10 +145,7 @@ export function ImpromptuSessionModal({
       .maybeSingle();
 
     if (existing) {
-      Alert.alert(
-        'Session already active',
-        'End the current session before starting a new one.',
-      );
+      Alert.alert('Session already active', 'End the current session before starting a new one.');
       return;
     }
 
@@ -209,7 +210,7 @@ export function ImpromptuSessionModal({
         {/* Header */}
         <View style={s.header}>
           <Pressable onPress={handleClose} hitSlop={12} style={s.closeBtn}>
-            <Ionicons name="close" size={22} color={Colors.textSecondary} />
+            <Ionicons name="close" size={22} color={colors.textSecondary} />
           </Pressable>
           <Text style={s.headerTitle}>QUICK SESSION</Text>
           <View style={{ width: 36 }} />
@@ -223,10 +224,10 @@ export function ImpromptuSessionModal({
           {/* Client picker */}
           <Text style={s.label}>SELECT CLIENT</Text>
           {clientsLoading ? (
-            <ActivityIndicator color={Colors.accent} style={{ marginVertical: 20 }} />
+            <ActivityIndicator color={colors.accent} style={{ marginVertical: 20 }} />
           ) : activeClients.length === 0 ? (
             <View style={s.emptyClients}>
-              <Ionicons name="people-outline" size={32} color={Colors.border} />
+              <Ionicons name="people-outline" size={32} color={colors.border} />
               <Text style={s.emptyText}>No clients with active packages</Text>
             </View>
           ) : (
@@ -277,11 +278,11 @@ export function ImpromptuSessionModal({
           {/* Notes */}
           <Text style={[s.label, { marginTop: 20 }]}>NOTES (optional)</Text>
           <TextInput
-            style={s.notesInput}
+            style={[s.notesInput, { color: colors.textPrimary }]}
             value={notes}
             onChangeText={setNotes}
             placeholder="Focus areas, client goals…"
-            placeholderTextColor={Colors.textSecondary + '70'}
+            placeholderTextColor={colors.textSecondary + '70'}
             multiline
             numberOfLines={3}
             returnKeyType="done"
@@ -300,10 +301,10 @@ export function ImpromptuSessionModal({
             disabled={!selectedClientId || loading}
           >
             {loading ? (
-              <ActivityIndicator color={Colors.bg} />
+              <ActivityIndicator color={colors.bg} />
             ) : (
               <>
-                <Ionicons name="flash" size={18} color={Colors.bg} />
+                <Ionicons name="flash" size={18} color="#fff" />
                 <Text style={s.startBtnText}>START SESSION</Text>
               </>
             )}
@@ -314,121 +315,122 @@ export function ImpromptuSessionModal({
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// ── Style factory ─────────────────────────────────────────────────────────────
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.bg },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: c.bg },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  closeBtn: { padding: 4, width: 36 },
-  headerTitle: { ...Typography.label, color: Colors.textPrimary, fontSize: 14 },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 14,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    closeBtn: { padding: 4, width: 36 },
+    headerTitle: { ...Typography.label, color: c.textPrimary, fontSize: 14 },
 
-  scrollContent: { padding: 20, paddingBottom: 16 },
+    scrollContent: { padding: 20, paddingBottom: 16 },
 
-  label: {
-    ...Typography.label,
-    color: Colors.textSecondary,
-    marginBottom: 10,
-  },
+    label: {
+      ...Typography.label,
+      color: c.textSecondary,
+      marginBottom: 10,
+    },
 
-  clientList: { gap: 8 },
-  clientRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-  },
-  clientRowSelected: {
-    borderColor: Colors.accent,
-    backgroundColor: Colors.accent + '08',
-  },
-  clientRowDisabled: { opacity: 0.45 },
-  avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    borderWidth: 1.5,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: Colors.textSecondary,
-  },
-  clientInfo: { flex: 1 },
-  clientName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
-  clientSub: { ...Typography.caption, color: Colors.textSecondary },
+    clientList: { gap: 8 },
+    clientRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      padding: 12,
+      borderWidth: 1.5,
+      borderColor: c.border,
+    },
+    clientRowSelected: {
+      borderColor: c.accent,
+      backgroundColor: c.accent + '08',
+    },
+    clientRowDisabled: { opacity: 0.45 },
+    avatar: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      borderWidth: 1.5,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    avatarText: {
+      fontSize: 14,
+      fontWeight: '800',
+      color: c.textSecondary,
+    },
+    clientInfo: { flex: 1 },
+    clientName: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
+    clientSub: { ...Typography.caption, color: c.textSecondary },
 
-  emptyClients: {
-    alignItems: 'center',
-    paddingVertical: 28,
-    gap: 8,
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  emptyText: { ...Typography.body, color: Colors.textSecondary },
+    emptyClients: {
+      alignItems: 'center',
+      paddingVertical: 28,
+      gap: 8,
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    emptyText: { ...Typography.body, color: c.textSecondary },
 
-  chipRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  chip: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-  },
-  chipActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  chipText: { color: Colors.textSecondary, fontWeight: '700', fontSize: 13 },
-  chipTextActive: { color: Colors.bg },
+    chipRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+    chip: {
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      borderRadius: 20,
+      borderWidth: 1.5,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+    },
+    chipActive: { backgroundColor: c.accent, borderColor: c.accent },
+    chipText: { color: c.textSecondary, fontWeight: '700', fontSize: 13 },
+    chipTextActive: { color: '#fff' },
 
-  notesInput: {
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: Colors.textPrimary,
-    fontSize: 14,
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
+    notesInput: {
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      fontSize: 14,
+      minHeight: 80,
+      textAlignVertical: 'top',
+    },
 
-  footer: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
-  startBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: Colors.accent,
-    borderRadius: 14,
-    paddingVertical: 16,
-  },
-  startBtnDisabled: { opacity: 0.45 },
-  startBtnText: {
-    color: Colors.bg,
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-});
+    footer: {
+      padding: 16,
+      borderTopWidth: 1,
+      borderTopColor: c.border,
+    },
+    startBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      backgroundColor: c.accent,
+      borderRadius: 14,
+      paddingVertical: 16,
+    },
+    startBtnDisabled: { opacity: 0.45 },
+    startBtnText: {
+      color: '#fff',
+      fontSize: 15,
+      fontWeight: '800',
+      letterSpacing: 1,
+    },
+  });
+}

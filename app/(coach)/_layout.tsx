@@ -1,10 +1,22 @@
+import { useEffect } from 'react';
 import { Image, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 import { useTheme } from '@/context/ThemeContext';
 import { NotificationsProvider } from '@/context/NotificationsContext';
 
 export default function CoachRootLayout() {
   const { colors, isDark } = useTheme();
+
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as Record<string, any>;
+      if (data?.type === 'message' && data?.clientId) {
+        router.push({ pathname: '/(coach)/chat', params: { clientId: data.clientId, clientName: data.clientName ?? '' } } as any);
+      }
+    });
+    return () => sub.remove();
+  }, []);
   return (
     <NotificationsProvider>
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -13,6 +25,7 @@ export default function CoachRootLayout() {
         style={{ position: 'absolute', width: '100%', height: '100%', opacity: isDark ? 0.05 : 0.08 }}
         resizeMode="contain"
         tintColor={isDark ? undefined : '#000000'}
+        pointerEvents="none"
       />
       <Stack
         screenOptions={{
@@ -76,7 +89,7 @@ export default function CoachRootLayout() {
       />
       <Stack.Screen
         name="chat"
-        options={{ title: 'Messages' }}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="exercise-library"
@@ -86,13 +99,25 @@ export default function CoachRootLayout() {
         name="session-history"
         options={{ title: 'Session History' }}
       />
-      <Stack.Screen
-        name="form-checker"
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
+<Stack.Screen
         name="notifications"
         options={{ title: 'Notifications' }}
+      />
+      <Stack.Screen
+        name="equipment-requests"
+        options={{ title: 'Equipment Requests' }}
+      />
+      <Stack.Screen
+        name="client-sessions/[id]"
+        options={{ title: 'Session History' }}
+      />
+      <Stack.Screen
+        name="client-payments/[id]"
+        options={{ title: 'Payment History' }}
+      />
+      <Stack.Screen
+        name="messages"
+        options={{ title: 'Messages' }}
       />
     </Stack>
     </View>

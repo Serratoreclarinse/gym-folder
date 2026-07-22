@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { ExercisePickerModal } from '@/components/ExercisePickerModal';
 
 const TIME_SLOTS = [
   '5:00 AM', '5:30 AM', '6:00 AM', '6:30 AM', '7:00 AM', '7:30 AM',
@@ -73,6 +74,9 @@ export default function ScheduleSessionScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [quickExercises, setQuickExercises] = useState<{ name: string; sets: string; reps: string; kg: string }[]>([]);
+  const [showExPicker, setShowExPicker] = useState(false);
+  const [exPickerIdx, setExPickerIdx] = useState(0);
 
   const selectedClient = clients.find((c) => c.id === selectedClientId);
 
@@ -109,7 +113,7 @@ export default function ScheduleSessionScreen() {
 
     const scheduledAt = buildScheduledAt(sessionDate, sessionTime);
 
-    const { error } = await supabase.from('scheduled_sessions').insert({
+    const { data: sessionData, error } = await supabase.from('scheduled_sessions').insert({
       coach_id: profile.id,
       client_id: selectedClientId,
       package_id: pkgData?.id ?? null,
@@ -117,7 +121,7 @@ export default function ScheduleSessionScreen() {
       duration_minutes: duration,
       session_type: sessionType,
       notes: notes.trim() || null,
-    });
+    }).select('id').single();
 
     setSaving(false);
 
@@ -129,15 +133,56 @@ export default function ScheduleSessionScreen() {
     const formattedTime = new Date(scheduledAt).toLocaleTimeString('en-US', {
       hour: 'numeric', minute: '2-digit',
     });
-    await sendPushNotification(selectedClientId, {
-      title: '📅 Session Scheduled',
-      body: `Your coach scheduled a session on ${formattedDate} at ${formattedTime} (${duration} min${sessionType === 'home' ? ' · Home' : ''}).`,
-    });
+
+    const validExercises = quickExercises.filter((e) => e.name.trim());
+    const exercisesPayload = validExercises.map((e) => ({
+      name: e.name.trim(),
+      sets: parseInt(e.sets, 10) || 0,
+      reps: parseInt(e.reps, 10) || 0,
+      weight: e.kg.trim().toUpperCase() === 'BW' ? 'BW' : (parseFloat(e.kg) || 0),
+    }));
+
+    await Promise.all([
+      sendPushNotification(selectedClientId, {
+        title: '📅 Session Scheduled',
+        body: `Your coach scheduled a session on ${formattedDate} at ${formattedTime} (${duration} min${sessionType === 'home' ? ' · Home' : ''}).`,
+      }),
+      supabase.from('messages').insert({
+        sender_id: profile.id,
+        receiver_id: selectedClientId,
+        content: `Session scheduled for ${formattedDate} at ${formattedTime} (${duration} min${sessionType === 'home' ? ' · Home' : ''})`,
+        attachment_type: 'session_invite',
+        metadata: {
+          session_id: sessionData?.id ?? null,
+          scheduled_at: scheduledAt,
+          duration_minutes: duration,
+          session_type: sessionType,
+        },
+      }),
+      exercisesPayload.length > 0
+        ? supabase.from('workout_sessions').insert({
+            coach_id: profile.id,
+            client_id: selectedClientId,
+            package_id: pkgData?.id ?? null,
+            session_date: sessionDate,
+            duration_minutes: duration,
+            exercises: exercisesPayload,
+            notes: notes.trim() || null,
+            status: 'planned',
+          })
+        : Promise.resolve(),
+    ]);
 
     router.back();
   };
 
   return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={styles.closeRow}>
+        <Pressable onPress={() => router.back()} hitSlop={12}>
+          <Ionicons name="close" size={24} color={colors.textSecondary} />
+        </Pressable>
+      </View>
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
@@ -284,6 +329,80 @@ export default function ScheduleSessionScreen() {
         autoCorrect={false}
       />
 
+      {/* Exercises (optional) */}
+      <Text style={styles.label}>EXERCISES (OPTIONAL)</Text>
+      <Text style={[styles.labelHint]}>Pre-plan your session — exercises will be ready when session starts</Text>
+
+      {quickExercises.length > 0 && (
+        <>
+          <View style={styles.exTableHeader}>
+            <Text style={[styles.exColHead, { flex: 3 }]}>EXERCISE</Text>
+            <Text style={styles.exColHead}>SETS</Text>
+            <Text style={styles.exColHead}>REPS</Text>
+            <Text style={styles.exColHead}>KG</Text>
+            <View style={{ width: 28 }} />
+          </View>
+          {quickExercises.map((ex, i) => (
+            <View key={i} style={styles.exRow}>
+              <Pressable
+                style={[styles.exNameBtn, { flex: 3 }]}
+                onPress={() => { setExPickerIdx(i); setShowExPicker(true); }}
+              >
+                <Text style={[styles.exNameTxt, !ex.name && { color: colors.textSecondary + '60' }]} numberOfLines={1}>
+                  {ex.name || 'Pick exercise'}
+                </Text>
+                <Ionicons name="chevron-down" size={11} color={colors.textSecondary + '80'} />
+              </Pressable>
+              <TextInput
+                style={styles.exInput}
+                value={ex.sets}
+                onChangeText={(v) => { const n = [...quickExercises]; n[i] = { ...n[i], sets: v }; setQuickExercises(n); }}
+                placeholder="3"
+                placeholderTextColor={colors.textSecondary + '60'}
+                keyboardType="number-pad"
+                maxLength={2}
+              />
+              <TextInput
+                style={styles.exInput}
+                value={ex.reps}
+                onChangeText={(v) => { const n = [...quickExercises]; n[i] = { ...n[i], reps: v }; setQuickExercises(n); }}
+                placeholder="10"
+                placeholderTextColor={colors.textSecondary + '60'}
+                keyboardType="number-pad"
+                maxLength={3}
+              />
+              <TextInput
+                style={styles.exInput}
+                value={ex.kg}
+                onChangeText={(v) => { const n = [...quickExercises]; n[i] = { ...n[i], kg: v }; setQuickExercises(n); }}
+                placeholder="kg"
+                placeholderTextColor={colors.textSecondary + '60'}
+                keyboardType="decimal-pad"
+                maxLength={6}
+              />
+              <Pressable
+                onPress={() => {
+                  if (quickExercises.length === 1) setQuickExercises([]);
+                  else setQuickExercises(quickExercises.filter((_, idx) => idx !== i));
+                }}
+                hitSlop={8}
+                style={{ justifyContent: 'center' }}
+              >
+                <Ionicons name="close-circle" size={20} color={colors.textSecondary + '80'} />
+              </Pressable>
+            </View>
+          ))}
+        </>
+      )}
+
+      <Pressable
+        style={({ pressed }) => [styles.addExBtn, pressed && { opacity: 0.7 }]}
+        onPress={() => setQuickExercises([...quickExercises, { name: '', sets: '', reps: '', kg: '' }])}
+      >
+        <Ionicons name="add-circle-outline" size={16} color={colors.accent} />
+        <Text style={styles.addExBtnText}>ADD EXERCISE</Text>
+      </Pressable>
+
       <Pressable
         style={[styles.saveBtn, (!selectedClientId || saving) && { opacity: 0.4 }]}
         onPress={handleSave}
@@ -294,11 +413,24 @@ export default function ScheduleSessionScreen() {
       </Pressable>
       <View style={{ height: 48 }} />
     </ScrollView>
+
+    <ExercisePickerModal
+      visible={showExPicker}
+      onClose={() => setShowExPicker(false)}
+      onSelect={(name) => {
+        const next = [...quickExercises];
+        next[exPickerIdx] = { ...next[exPickerIdx], name };
+        setQuickExercises(next);
+        setShowExPicker(false);
+      }}
+    />
+    </View>
   );
 }
 
 function makeStyles(c: ColorScheme) {
   return StyleSheet.create({
+    closeRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border },
     scroll: { flex: 1, backgroundColor: c.bg },
     content: { padding: 20 },
     title: {
@@ -361,5 +493,28 @@ function makeStyles(c: ColorScheme) {
       backgroundColor: c.accent, borderRadius: 14, paddingVertical: 15, marginTop: 28,
     },
     saveBtnText: { color: c.bg, fontWeight: '800', fontSize: 16 },
+
+    labelHint: { fontSize: 12, color: c.textSecondary, marginBottom: 12, lineHeight: 16 },
+    exTableHeader: { flexDirection: 'row', gap: 6, marginBottom: 6, alignItems: 'center' },
+    exColHead: { flex: 1, color: c.textSecondary, fontSize: 10, fontWeight: '800', letterSpacing: 0.8, textAlign: 'center' },
+    exRow: { flexDirection: 'row', gap: 6, marginBottom: 6, alignItems: 'center' },
+    exNameBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border,
+      paddingHorizontal: 8, paddingVertical: 11,
+    },
+    exNameTxt: { fontSize: 12, color: c.textPrimary, flex: 1 },
+    exInput: {
+      flex: 1, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
+      borderRadius: 10, paddingHorizontal: 6, paddingVertical: 11,
+      color: c.textPrimary, fontSize: 13, textAlign: 'center',
+    },
+    addExBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      paddingVertical: 10, marginBottom: 4,
+      borderWidth: 1, borderColor: c.accent + '40', borderRadius: 10,
+      backgroundColor: c.accent + '08',
+    },
+    addExBtnText: { fontSize: 12, fontWeight: '700', color: c.accent, letterSpacing: 0.5 },
   });
 }

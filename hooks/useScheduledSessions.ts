@@ -7,6 +7,8 @@ export type ScheduledSession = {
   client_id: string;
   scheduled_at: string;
   notes: string | null;
+  status: string | null;
+  reschedule_proposed_at: string | null;
 };
 
 // Pass clientId to scope to one client, or omit to fetch all upcoming sessions for the coach.
@@ -20,9 +22,10 @@ export function useScheduledSessions(clientId?: string) {
     setLoading(true);
     let query = supabase
       .from('scheduled_sessions')
-      .select('id, client_id, scheduled_at, notes')
+      .select('id, client_id, scheduled_at, notes, status, reschedule_proposed_at')
       .eq('coach_id', profile.id)
       .gte('scheduled_at', new Date().toISOString())
+      .in('status', ['pending', 'client_confirmed', 'reschedule_pending'])
       .order('scheduled_at', { ascending: true });
     if (clientId) query = query.eq('client_id', clientId);
     const { data } = await query;
@@ -44,6 +47,7 @@ export function useScheduledSessions(clientId?: string) {
         client_id: clientId,
         scheduled_at: dt.toISOString(),
         notes: notes?.trim() || null,
+        status: 'pending',
       })
       .select()
       .single();
@@ -62,5 +66,19 @@ export function useScheduledSessions(clientId?: string) {
     setSessions((prev) => prev.filter((s) => s.id !== id));
   };
 
-  return { sessions, loading, scheduleSession, deleteSession, refetch: load };
+  const rescheduleSession = async (id: string, newDt: Date): Promise<{ error: string | null }> => {
+    const { error } = await supabase
+      .from('scheduled_sessions')
+      .update({ reschedule_proposed_at: newDt.toISOString(), status: 'reschedule_pending' })
+      .eq('id', id);
+    if (error) return { error: error.message };
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === id ? { ...s, reschedule_proposed_at: newDt.toISOString(), status: 'reschedule_pending' } : s,
+      ),
+    );
+    return { error: null };
+  };
+
+  return { sessions, loading, scheduleSession, deleteSession, rescheduleSession, refetch: load };
 }
