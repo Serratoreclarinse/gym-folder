@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, useWindowDimensions, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
-import { Colors, Typography } from '@/constants/theme';
+import { Typography, ColorScheme } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 type RankRow = {
   coachId: string;
@@ -29,6 +30,8 @@ function fmt(n: number) {
 }
 
 export default function AdminRankingsScreen() {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
 
@@ -87,16 +90,16 @@ export default function AdminRankingsScreen() {
       </View>
 
       {loading ? (
-        <View style={s.center}><ActivityIndicator size="large" color={Colors.accent} /></View>
+        <View style={s.center}><ActivityIndicator size="large" color={colors.accent} /></View>
       ) : (
         <ScrollView
           contentContainerStyle={[s.content, isDesktop && s.contentDesktop]}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load(period)} tintColor={Colors.accent} />}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load(period)} tintColor={colors.accent} />}
         >
           <View style={[s.inner, isDesktop && s.innerDesktop]}>
             {rows.length === 0 ? (
               <View style={s.empty}>
-                <Ionicons name="podium-outline" size={52} color={Colors.border} />
+                <Ionicons name="podium-outline" size={52} color={colors.border} />
                 <Text style={s.emptyTitle}>No sales data yet</Text>
                 <Text style={s.emptySub}>Rankings will appear once coaches record payments</Text>
               </View>
@@ -109,7 +112,7 @@ export default function AdminRankingsScreen() {
                       <View key={r.coachId} style={[s.podiumCard, r.rank === 1 && s.podiumFirst]}>
                         <Text style={s.podiumMedal}>{MEDAL[r.rank - 1]}</Text>
                         <Text style={s.podiumName} numberOfLines={1}>{r.name}</Text>
-                        <Text style={[s.podiumTotal, r.rank === 1 && { color: Colors.accent }]}>{fmt(r.total)}</Text>
+                        <Text style={[s.podiumTotal, r.rank === 1 && { color: colors.accent }]}>{fmt(r.total)}</Text>
                         <Text style={s.podiumCount}>{r.count} payment{r.count !== 1 ? 's' : ''}</Text>
                       </View>
                     ))}
@@ -152,73 +155,75 @@ export default function AdminRankingsScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.bg },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: c.bg },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  toolbar: { borderBottomWidth: 1, borderBottomColor: Colors.border, padding: 12 },
-  toolbarDesktop: { padding: 20, paddingBottom: 16 },
-  toolbarInner: { flexDirection: 'row' },
-  toolbarInnerDesktop: { maxWidth: 960, alignSelf: 'center', width: '100%' },
+    toolbar: { borderBottomWidth: 1, borderBottomColor: c.border, padding: 12 },
+    toolbarDesktop: { padding: 20, paddingBottom: 16 },
+    toolbarInner: { flexDirection: 'row' },
+    toolbarInnerDesktop: { maxWidth: 960, alignSelf: 'center', width: '100%' },
 
-  segmented: {
-    flexDirection: 'row', backgroundColor: Colors.surface,
-    borderRadius: 10, borderWidth: 1, borderColor: Colors.border, padding: 3, gap: 2,
-  },
-  seg: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 8 },
-  segActive: { backgroundColor: Colors.accent },
-  segText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
-  segTextActive: { color: Colors.bg },
+    segmented: {
+      flexDirection: 'row', backgroundColor: c.surface,
+      borderRadius: 10, borderWidth: 1, borderColor: c.border, padding: 3, gap: 2,
+    },
+    seg: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 8 },
+    segActive: { backgroundColor: c.accent },
+    segText: { fontSize: 13, fontWeight: '600', color: c.textSecondary },
+    segTextActive: { color: c.bg },
 
-  content: { padding: 16, paddingBottom: 48 },
-  contentDesktop: { padding: 32 },
-  inner: { gap: 16 },
-  innerDesktop: { maxWidth: 760, alignSelf: 'center', width: '100%' },
+    content: { padding: 16, paddingBottom: 48 },
+    contentDesktop: { padding: 32 },
+    inner: { gap: 16 },
+    innerDesktop: { maxWidth: 760, alignSelf: 'center', width: '100%' },
 
-  empty: { alignItems: 'center', paddingTop: 80, gap: 10 },
-  emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 12 },
-  emptySub: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center' },
+    empty: { alignItems: 'center', paddingTop: 80, gap: 10 },
+    emptyTitle: { ...Typography.subtitle, color: c.textPrimary, marginTop: 12 },
+    emptySub: { ...Typography.body, color: c.textSecondary, textAlign: 'center' },
 
-  podium: { flexDirection: 'row', gap: 10 },
-  podiumDesktop: { gap: 14 },
-  podiumCard: {
-    flex: 1, backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border,
-    padding: 14, alignItems: 'center', gap: 4,
-  },
-  podiumFirst: { borderColor: Colors.accent + '60', backgroundColor: Colors.accent + '08' },
-  podiumMedal: { fontSize: 24 },
-  podiumName: { fontSize: 13, fontWeight: '700', color: Colors.textPrimary, textAlign: 'center' },
-  podiumTotal: { fontSize: 13, fontWeight: '800', color: Colors.textSecondary },
-  podiumCount: { fontSize: 11, color: Colors.textSecondary },
+    podium: { flexDirection: 'row', gap: 10 },
+    podiumDesktop: { gap: 14 },
+    podiumCard: {
+      flex: 1, backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border,
+      padding: 14, alignItems: 'center', gap: 4,
+    },
+    podiumFirst: { borderColor: c.accent + '60', backgroundColor: c.accent + '08' },
+    podiumMedal: { fontSize: 24 },
+    podiumName: { fontSize: 13, fontWeight: '700', color: c.textPrimary, textAlign: 'center' },
+    podiumTotal: { fontSize: 13, fontWeight: '800', color: c.textSecondary },
+    podiumCount: { fontSize: 11, color: c.textSecondary },
 
-  card: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
-  },
-  tableHeader: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14,
-    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.border,
-    backgroundColor: Colors.bg,
-  },
-  th: { fontSize: 10, fontWeight: '800', color: Colors.textSecondary, letterSpacing: 0.8 },
+    card: {
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border, overflow: 'hidden',
+    },
+    tableHeader: {
+      flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14,
+      paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border,
+      backgroundColor: c.bg,
+    },
+    th: { fontSize: 10, fontWeight: '800', color: c.textSecondary, letterSpacing: 0.8 },
 
-  row: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14,
-    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.border + '80',
-  },
-  rowAlt: { backgroundColor: Colors.bg + '50' },
-  rankCell: { alignItems: 'center', justifyContent: 'center' },
-  rankMedal: { fontSize: 18 },
-  rankNum: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
-  nameCell: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 8 },
-  avatar: {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: Colors.accent + '18', borderWidth: 1, borderColor: Colors.accent + '40',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  avatarText: { fontSize: 10, fontWeight: '800', color: Colors.accent },
-  nameText: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
-  revenueText: { fontSize: 13, fontWeight: '700', color: Colors.accent },
-  countText: { fontSize: 13, color: Colors.textSecondary },
-});
+    row: {
+      flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14,
+      paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border + '80',
+    },
+    rowAlt: { backgroundColor: c.bg + '50' },
+    rankCell: { alignItems: 'center', justifyContent: 'center' },
+    rankMedal: { fontSize: 18 },
+    rankNum: { fontSize: 13, fontWeight: '700', color: c.textSecondary },
+    nameCell: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 8 },
+    avatar: {
+      width: 30, height: 30, borderRadius: 15,
+      backgroundColor: c.accent + '18', borderWidth: 1, borderColor: c.accent + '40',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    avatarText: { fontSize: 10, fontWeight: '800', color: c.accent },
+    nameText: { fontSize: 14, fontWeight: '600', color: c.textPrimary },
+    revenueText: { fontSize: 13, fontWeight: '700', color: c.accent },
+    countText: { fontSize: 13, color: c.textSecondary },
+  });
+}

@@ -1,7 +1,8 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+﻿import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ExercisePickerModal } from '@/components/ExercisePickerModal';
 import { QRScanModal } from '@/components/QRScanModal';
+import { PRSummaryModal, PRBeat } from '@/components/PRSummaryModal';
 import * as Notifications from 'expo-notifications';
 import {
   Alert,
@@ -23,16 +24,16 @@ import { useClients } from '@/hooks/useClients';
 import { useExerciseHistory, RecentExercise } from '@/hooks/useExerciseHistory';
 import { useClientLastWeights } from '@/hooks/useClientLastWeights';
 import { useTemplates } from '@/hooks/useTemplates';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 import { sendPushNotification } from '@/lib/pushNotifications';
+
+type SetData = { kg: string; reps: string; duration: string };
 
 type Exercise = {
   id: string;
   exercise_name: string;
-  sets: string;
-  reps: string;
-  weight: string;
-  duration: string;
+  sets_data: SetData[];
   notes: string;
   isSuperset: boolean;
 };
@@ -60,7 +61,8 @@ const TIME_SLOTS = [
 ] as const;
 const todayISO = () => new Date().toISOString().split('T')[0];
 const uid = () => Math.random().toString(36).slice(2);
-const blankExercise = (): Exercise => ({ id: uid(), exercise_name: '', sets: '', reps: '', weight: '', duration: '', notes: '', isSuperset: false });
+const blankSetData = (): SetData => ({ kg: '', reps: '', duration: '' });
+const blankExercise = (): Exercise => ({ id: uid(), exercise_name: '', sets_data: [blankSetData()], notes: '', isSuperset: false });
 
 function currentTimeStr(): string {
   const now = new Date();
@@ -113,6 +115,7 @@ async function scheduleSessionReminder(
   for (const { offsetMs, label } of slots) {
     const fireAt = new Date(sessionDT.getTime() - offsetMs);
     if (fireAt.getTime() <= now) continue;
+    if (Platform.OS === 'web') continue;
 
     await Notifications.scheduleNotificationAsync({
       content: {
@@ -138,6 +141,10 @@ function ExerciseCard({
   isLast,
   lastWeight,
   onChange,
+  onSetChange,
+  onAddSet,
+  onRemoveLastSet,
+  onBWToggle,
   onRemove,
   onToggleSuperset,
   onOpenPicker,
@@ -146,17 +153,25 @@ function ExerciseCard({
   lastWeight?: string;
   index: number;
   isLast: boolean;
-  onChange: (id: string, field: keyof Exercise, value: string) => void;
+  onChange: (id: string, field: 'exercise_name' | 'notes', value: string) => void;
+  onSetChange: (id: string, setIndex: number, field: keyof SetData, value: string) => void;
+  onAddSet: (id: string) => void;
+  onRemoveLastSet: (id: string) => void;
+  onBWToggle: (id: string) => void;
   onRemove: (id: string) => void;
   onToggleSuperset: (id: string) => void;
   onOpenPicker: (id: string) => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const allBW = exercise.sets_data.length > 0 && exercise.sets_data.every(s => s.kg === 'BW');
+
   return (
     <View style={styles.exCard}>
       <View style={styles.exCardHeader}>
         <Text style={styles.exCardTitle}>EXERCISE {index + 1}</Text>
         <Pressable onPress={() => onRemove(exercise.id)} hitSlop={8}>
-          <Ionicons name="trash-outline" size={18} color={Colors.danger} />
+          <Ionicons name="trash-outline" size={18} color={colors.danger} />
         </Pressable>
       </View>
 
@@ -165,78 +180,80 @@ function ExerciseCard({
         style={[styles.exInput, styles.exNameBtn]}
         onPress={() => onOpenPicker(exercise.id)}
       >
-        <Text style={[styles.exNameBtnText, !exercise.exercise_name && { color: Colors.textSecondary }]}
+        <Text style={[styles.exNameBtnText, !exercise.exercise_name && { color: colors.textSecondary }]}
           numberOfLines={1}>
           {exercise.exercise_name || 'Tap to select exercise…'}
         </Text>
-        <Ionicons name="search-outline" size={16} color={Colors.textSecondary} />
+        <Ionicons name="search-outline" size={16} color={colors.textSecondary} />
       </Pressable>
 
-      <View style={styles.exRow}>
-        <View style={styles.exSmallField}>
-          <Text style={styles.exLabel}>SETS</Text>
-          <TextInput
-            style={styles.exSmallInput}
-            placeholder="4"
-            placeholderTextColor={Colors.textSecondary}
-            keyboardType="number-pad"
-            value={exercise.sets}
-            onChangeText={(v) => onChange(exercise.id, 'sets', v)}
-          />
-        </View>
-        <View style={styles.exSmallField}>
-          <Text style={styles.exLabel}>REPS</Text>
-          <TextInput
-            style={styles.exSmallInput}
-            placeholder="10"
-            placeholderTextColor={Colors.textSecondary}
-            keyboardType="number-pad"
-            value={exercise.reps}
-            onChangeText={(v) => onChange(exercise.id, 'reps', v)}
-          />
-        </View>
-        <View style={styles.exSmallField}>
-          <Text style={styles.exLabel}>DURATION</Text>
-          <TextInput
-            style={styles.exSmallInput}
-            placeholder="30s"
-            placeholderTextColor={Colors.textSecondary}
-            value={exercise.duration}
-            onChangeText={(v) => onChange(exercise.id, 'duration', v)}
-          />
-        </View>
+      {lastWeight ? <Text style={styles.lastWeightHint}>last: {lastWeight}</Text> : null}
+
+      {/* Column headers */}
+      <View style={styles.setHeaderRow}>
+        <View style={styles.setColSet} />
+        <Text style={[styles.setColLabel, styles.setColKg]}>KG</Text>
+        <Text style={[styles.setColLabel, styles.setColReps]}>REPS</Text>
+        <Text style={[styles.setColLabel, styles.setColDur]}>DUR.</Text>
       </View>
 
-      {/* Weight row with BW quick-fill */}
-      <View style={styles.exRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.exLabel}>WEIGHT</Text>
+      {/* Per-set rows */}
+      {exercise.sets_data.map((setRow, i) => (
+        <View key={i} style={styles.setDataRow}>
+          <Text style={[styles.setLabel, styles.setColSet]}>Set {i + 1}</Text>
           <TextInput
-            style={styles.exSmallInput}
-            placeholder="80kg / Body Weight"
-            placeholderTextColor={Colors.textSecondary}
-            value={exercise.weight}
-            onChangeText={(v) => onChange(exercise.id, 'weight', v)}
+            style={[styles.setInput, styles.setColKg]}
+            placeholder="—"
+            placeholderTextColor={colors.border}
+            keyboardType="decimal-pad"
+            value={setRow.kg}
+            onChangeText={(v) => onSetChange(exercise.id, i, 'kg', v)}
           />
-          {lastWeight ? (
-            <Text style={styles.lastWeightHint}>last: {lastWeight}</Text>
-          ) : null}
+          <TextInput
+            style={[styles.setInput, styles.setColReps]}
+            placeholder="—"
+            placeholderTextColor={colors.border}
+            keyboardType="number-pad"
+            value={setRow.reps}
+            onChangeText={(v) => onSetChange(exercise.id, i, 'reps', v)}
+          />
+          <TextInput
+            style={[styles.setInput, styles.setColDur]}
+            placeholder="—"
+            placeholderTextColor={colors.border}
+            value={setRow.duration}
+            onChangeText={(v) => onSetChange(exercise.id, i, 'duration', v)}
+          />
         </View>
-        <View style={styles.bwBtnWrap}>
-          <Text style={styles.exLabel}> </Text>
-          <Pressable
-            style={[styles.bwBtn, exercise.weight === 'Body Weight' && styles.bwBtnActive]}
-            onPress={() => onChange(exercise.id, 'weight', exercise.weight === 'Body Weight' ? '' : 'Body Weight')}
-          >
-            <Text style={[styles.bwBtnText, exercise.weight === 'Body Weight' && styles.bwBtnTextActive]}>BW</Text>
-          </Pressable>
-        </View>
+      ))}
+
+      {/* Set controls: remove / count / add / BW */}
+      <View style={styles.setControlRow}>
+        <Pressable
+          style={[styles.setCtrlBtn, exercise.sets_data.length <= 1 && styles.setCtrlBtnDisabled]}
+          onPress={() => onRemoveLastSet(exercise.id)}
+          disabled={exercise.sets_data.length <= 1}
+        >
+          <Ionicons name="remove" size={16} color={exercise.sets_data.length <= 1 ? colors.border : colors.textSecondary} />
+        </Pressable>
+        <Text style={styles.setCountText}>
+          {exercise.sets_data.length} SET{exercise.sets_data.length !== 1 ? 'S' : ''}
+        </Text>
+        <Pressable style={styles.setCtrlBtn} onPress={() => onAddSet(exercise.id)}>
+          <Ionicons name="add" size={16} color={colors.textSecondary} />
+        </Pressable>
+        <Pressable
+          style={[styles.bwBtn, allBW && styles.bwBtnActive]}
+          onPress={() => onBWToggle(exercise.id)}
+        >
+          <Text style={[styles.bwBtnText, allBW && styles.bwBtnTextActive]}>BW</Text>
+        </Pressable>
       </View>
 
       <TextInput
         style={[styles.exInput, styles.exNotes]}
         placeholder="Notes (optional)"
-        placeholderTextColor={Colors.textSecondary}
+        placeholderTextColor={colors.textSecondary}
         value={exercise.notes}
         onChangeText={(v) => onChange(exercise.id, 'notes', v)}
         multiline
@@ -251,7 +268,7 @@ function ExerciseCard({
           <Ionicons
             name="swap-horizontal-outline"
             size={13}
-            color={exercise.isSuperset ? Colors.bg : Colors.textSecondary}
+            color={exercise.isSuperset ? colors.bg : colors.textSecondary}
           />
           <Text style={[styles.supersetToggleText, exercise.isSuperset && styles.supersetToggleTextActive]}>
             {exercise.isSuperset ? 'SUPERSET WITH NEXT ✓' : 'SUPERSET WITH NEXT'}
@@ -263,6 +280,8 @@ function ExerciseCard({
 }
 
 function CalendarPicker({ value, onChange }: { value: string; onChange: (iso: string) => void }) {
+  const { colors } = useTheme();
+  const calStyles = useMemo(() => makeCalStyles(colors), [colors]);
   const sel = new Date(value + 'T00:00:00');
   const [vy, setVy] = useState(sel.getFullYear());
   const [vm, setVm] = useState(sel.getMonth());
@@ -283,11 +302,11 @@ function CalendarPicker({ value, onChange }: { value: string; onChange: (iso: st
     <View style={calStyles.container}>
       <View style={calStyles.header}>
         <Pressable onPress={prevMonth} hitSlop={12} style={calStyles.navBtn}>
-          <Ionicons name="chevron-back" size={20} color={Colors.textPrimary} />
+          <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
         </Pressable>
         <Text style={calStyles.monthLabel}>{monthLabel}</Text>
         <Pressable onPress={nextMonth} hitSlop={12} style={calStyles.navBtn}>
-          <Ionicons name="chevron-forward" size={20} color={Colors.textPrimary} />
+          <Ionicons name="chevron-forward" size={20} color={colors.textPrimary} />
         </Pressable>
       </View>
       <View style={calStyles.dayNames}>
@@ -318,28 +337,32 @@ function CalendarPicker({ value, onChange }: { value: string; onChange: (iso: st
   );
 }
 
-const calStyles = StyleSheet.create({
+function makeCalStyles(colors: ColorScheme) {
+  return StyleSheet.create({
   container: {
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
     borderRadius: 14, padding: 12, marginTop: 8,
   },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   navBtn: { padding: 4 },
-  monthLabel: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700' },
+  monthLabel: { ...Typography.body, color: colors.textPrimary, fontWeight: '700' },
   dayNames: { flexDirection: 'row', marginBottom: 4 },
-  dayName: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '600', color: Colors.textSecondary },
+  dayName: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '600', color: colors.textSecondary },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: '14.285%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
-  cellSelected: { backgroundColor: Colors.accent, borderRadius: 100 },
-  cellToday: { borderWidth: 1, borderColor: Colors.accent, borderRadius: 100 },
-  cellText: { fontSize: 14, color: Colors.textPrimary },
-  cellTextSelected: { color: Colors.bg, fontWeight: '700' },
-  cellTextToday: { color: Colors.accent, fontWeight: '700' },
+  cellSelected: { backgroundColor: colors.accent, borderRadius: 100 },
+  cellToday: { borderWidth: 1, borderColor: colors.accent, borderRadius: 100 },
+  cellText: { fontSize: 14, color: colors.textPrimary },
+  cellTextSelected: { color: colors.bg, fontWeight: '700' },
+  cellTextToday: { color: colors.accent, fontWeight: '700' },
 });
+}
 
 export default function LogSessionScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { profile } = useAuth();
-  const params = useLocalSearchParams<{ clientId?: string; date?: string; mode?: string }>();
+  const params = useLocalSearchParams<{ clientId?: string; date?: string; mode?: string; exercises?: string; duration?: string; sessionType?: string }>();
   const { clients } = useClients();
   const { history: exerciseHistory } = useExerciseHistory();
   const { templates, markUsed } = useTemplates();
@@ -347,21 +370,62 @@ export default function LogSessionScreen() {
   const [selectedClientId, setSelectedClientId] = useState(params.clientId ?? '');
   const { getLastUsed } = useClientLastWeights(selectedClientId || null);
   const [sessionDate, setSessionDate] = useState(params.date ?? todayISO());
-  const [sessionType, setSessionType] = useState<'gym' | 'home'>('gym');
-  const [duration, setDuration] = useState('60');
-  const [exercises, setExercises] = useState<Exercise[]>([blankExercise()]);
+  const [sessionType, setSessionType] = useState<'gym' | 'home'>(params.sessionType === 'home' ? 'home' : 'gym');
+  const [duration, setDuration] = useState(params.duration ?? '60');
+  const [exercises, setExercises] = useState<Exercise[]>(() => {
+    const rawEx = Array.isArray(params.exercises) ? params.exercises[0] : params.exercises;
+    if (rawEx) {
+      try {
+        const parsed = JSON.parse(rawEx) as Array<Record<string, unknown>>;
+        if (parsed.length > 0) {
+          return parsed.map((ex, i) => {
+            if (Array.isArray(ex.sets_data)) {
+              return {
+                id: String(i),
+                exercise_name: String(ex.exercise_name ?? ''),
+                sets_data: (ex.sets_data as any[]).map((s: any) => ({
+                  kg: String(s.kg ?? ''),
+                  reps: String(s.reps ?? ''),
+                  duration: String(s.duration ?? ''),
+                })),
+                notes: String(ex.notes ?? ''),
+                isSuperset: false,
+              };
+            }
+            const numSets = Number(ex.sets) || 1;
+            return {
+              id: String(i),
+              exercise_name: String(ex.exercise_name ?? ''),
+              sets_data: Array.from({ length: numSets }, () => ({
+                kg: String(ex.weight ?? ''),
+                reps: String(ex.reps ?? ''),
+                duration: String(ex.duration ?? ''),
+              })),
+              notes: String(ex.notes ?? ''),
+              isSuperset: false,
+            };
+          });
+        }
+      } catch {
+        Alert.alert('Restore Warning', 'Could not restore exercises from the previous session.');
+      }
+    }
+    return [blankExercise()];
+  });
   const [sessionTime, setSessionTime] = useState(currentTimeStr());
   const [sessionNotes, setSessionNotes] = useState('');
   const [mode, setMode] = useState<'full' | 'quick'>(params.mode === 'quick' ? 'quick' : 'full');
   const [showQRGate, setShowQRGate] = useState(false);
   const [qrConfirmFn, setQrConfirmFn] = useState<(() => void) | null>(null);
   const [loading, setLoading] = useState(false);
+  const savingRef = useRef(false);
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [pickerTargetId, setPickerTargetId] = useState<string | null>(null);
+  const [prBeats, setPrBeats] = useState<PRBeat[]>([]);
   const pickerTargetRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -375,9 +439,20 @@ export default function LogSessionScreen() {
   const addExercise = () => setExercises((prev) => [...prev, blankExercise()]);
 
   const addFromHistory = (item: RecentExercise) => {
+    const numSets = Number(item.sets) || 1;
     setExercises((prev) => [
       ...prev,
-      { id: uid(), exercise_name: item.exercise_name, sets: item.sets, reps: item.reps, weight: item.weight, duration: item.duration, notes: '', isSuperset: false },
+      {
+        id: uid(),
+        exercise_name: item.exercise_name,
+        sets_data: Array.from({ length: numSets }, () => ({
+          kg: item.weight || '',
+          reps: item.reps || '',
+          duration: item.duration || '',
+        })),
+        notes: '',
+        isSuperset: false,
+      },
     ]);
     setShowHistoryModal(false);
   };
@@ -389,16 +464,27 @@ export default function LogSessionScreen() {
     const doApply = () => {
       setExercises(
         tpl.exercises.length > 0
-          ? tpl.exercises.map((e) => ({
-              id: uid(),
-              exercise_name: e.exercise_name,
-              sets: e.sets != null ? String(e.sets) : '',
-              reps: e.reps != null ? String(e.reps) : '',
-              weight: e.weight ?? '',
-              duration: '',
-              notes: e.notes ?? '',
-              isSuperset: false,
-            }))
+          ? tpl.exercises.map((e) => {
+              const setsData =
+                e.set_rows.length > 0
+                  ? e.set_rows.map((r) => ({
+                      kg: r.weight ?? '',
+                      reps: r.reps != null ? String(r.reps) : '',
+                      duration: '',
+                    }))
+                  : Array.from({ length: Number(e.sets) || 1 }, () => ({
+                      kg: e.weight ?? '',
+                      reps: e.reps != null ? String(e.reps) : '',
+                      duration: '',
+                    }));
+              return {
+                id: uid(),
+                exercise_name: e.exercise_name,
+                sets_data: setsData,
+                notes: e.notes ?? '',
+                isSuperset: false,
+              };
+            })
           : [blankExercise()]
       );
       markUsed(templateId);
@@ -420,8 +506,37 @@ export default function LogSessionScreen() {
     }
   };
 
-  const updateExercise = (id: string, field: keyof Exercise, value: string) => {
+  const updateExercise = (id: string, field: 'exercise_name' | 'notes', value: string) => {
     setExercises((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
+  };
+
+  const updateSetField = (id: string, setIndex: number, field: keyof SetData, value: string) => {
+    setExercises((prev) => prev.map((e) => {
+      if (e.id !== id) return e;
+      const newSetsData = [...e.sets_data];
+      newSetsData[setIndex] = { ...newSetsData[setIndex], [field]: value };
+      return { ...e, sets_data: newSetsData };
+    }));
+  };
+
+  const addSet = (id: string) => {
+    setExercises((prev) => prev.map((e) =>
+      e.id !== id ? e : { ...e, sets_data: [...e.sets_data, blankSetData()] }
+    ));
+  };
+
+  const removeLastSet = (id: string) => {
+    setExercises((prev) => prev.map((e) =>
+      e.id !== id || e.sets_data.length <= 1 ? e : { ...e, sets_data: e.sets_data.slice(0, -1) }
+    ));
+  };
+
+  const bwToggle = (id: string) => {
+    setExercises((prev) => prev.map((e) => {
+      if (e.id !== id) return e;
+      const allBW = e.sets_data.every(s => s.kg === 'BW');
+      return { ...e, sets_data: e.sets_data.map(s => ({ ...s, kg: allBW ? '' : 'BW' })) };
+    }));
   };
 
   const toggleSuperset = (id: string) => {
@@ -445,21 +560,149 @@ export default function LogSessionScreen() {
 
   const handleSave = async () => {
     if (!canSave || !profile?.id || !pkg) return;
+    if (savingRef.current) return;
+    savingRef.current = true;
+
+    // Block if client already has a session on this date
+    const { data: dup } = await supabase
+      .from('workout_sessions')
+      .select('id')
+      .eq('client_id', selectedClientId)
+      .eq('session_date', sessionDate)
+      .neq('status', 'absent')
+      .limit(1)
+      .maybeSingle();
+
+    if (dup) {
+      const { data: runningSession } = await supabase
+        .from('active_sessions')
+        .select('id')
+        .eq('session_id', dup.id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      savingRef.current = false;
+      Alert.alert(
+        runningSession ? 'Session In Progress' : 'Session Already Logged',
+        runningSession
+          ? `${selectedClient?.name ?? 'This client'} already has an active session running today. Check your Dashboard to manage it.`
+          : `${selectedClient?.name ?? 'This client'} already has a session on ${sessionDate}. Only 1 session per client per day is allowed.`,
+        runningSession
+          ? [{ text: 'OK' }, { text: 'Go to Dashboard', onPress: () => router.back() }]
+          : [{ text: 'OK' }],
+      );
+      return;
+    }
+
+    // Time conflict check — coach can't have overlapping sessions (any client)
+    if (sessionTime.trim() && Number(duration) > 0) {
+      const newStart = parseSessionDateTime(sessionDate, sessionTime.trim());
+      if (newStart) {
+        const newEndMs = newStart.getTime() + Number(duration) * 60 * 1000;
+
+        // Check logged sessions for other clients on same date
+        const { data: sameDaySessions } = await supabase
+          .from('workout_sessions')
+          .select('id, scheduled_time, duration_minutes, client_id')
+          .eq('coach_id', profile.id)
+          .eq('session_date', sessionDate)
+          .neq('client_id', selectedClientId)
+          .neq('status', 'absent');
+
+        for (const sess of sameDaySessions ?? []) {
+          if (!sess.scheduled_time) continue;
+          const existStart = parseSessionDateTime(sessionDate, sess.scheduled_time);
+          if (!existStart) continue;
+          const existEndMs = existStart.getTime() + (sess.duration_minutes || 60) * 60 * 1000;
+          if (newStart.getTime() < existEndMs && newEndMs > existStart.getTime()) {
+            const conflictName = clients.find(c => c.id === sess.client_id)?.name ?? 'another client';
+            savingRef.current = false;
+            Alert.alert(
+              '⚠️ Time Conflict',
+              `You already have a session with ${conflictName} at ${sess.scheduled_time}.\n\n${sessionTime.trim()} overlaps with that session. Please choose a different time.`,
+              [{ text: 'OK' }],
+            );
+            return;
+          }
+        }
+
+        // Check scheduled (future) sessions for other clients on same date
+        const { data: schedConflicts } = await supabase
+          .from('scheduled_sessions')
+          .select('id, scheduled_at, client_id')
+          .eq('coach_id', profile.id)
+          .neq('client_id', selectedClientId)
+          .gte('scheduled_at', sessionDate + 'T00:00:00.000Z')
+          .lte('scheduled_at', sessionDate + 'T23:59:59.999Z')
+          .in('status', ['pending', 'client_confirmed', 'reschedule_pending']);
+
+        for (const ss of schedConflicts ?? []) {
+          const existStart = new Date(ss.scheduled_at);
+          const existEndMs = existStart.getTime() + 60 * 60 * 1000;
+          if (newStart.getTime() < existEndMs && newEndMs > existStart.getTime()) {
+            const conflictName = clients.find(c => c.id === ss.client_id)?.name ?? 'another client';
+            const conflictTime = existStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            savingRef.current = false;
+            Alert.alert(
+              '⚠️ Time Conflict',
+              `You already have a session with ${conflictName} scheduled at ${conflictTime}.\n\n${sessionTime.trim()} overlaps with that session. Please choose a different time.`,
+              [{ text: 'OK' }],
+            );
+            return;
+          }
+        }
+      }
+    }
 
     const validExercises = exercises
       .filter((e) => e.exercise_name.trim())
-      .map(({ id: _id, ...e }) => ({
-        exercise_name: e.exercise_name.trim(),
-        sets: e.sets ? Number(e.sets) : null,
-        reps: e.reps ? Number(e.reps) : null,
-        weight: e.weight.trim() || null,
-        duration: e.duration.trim() || null,
-        notes: e.notes.trim() || null,
-        isSuperset: e.isSuperset,
-      }));
+      .map(({ id: _id, sets_data, ...e }) => {
+        const maxKg = sets_data.reduce((mx, s) => { const n = parseFloat(s.kg || '0') || 0; return n > mx ? n : mx; }, 0);
+        const firstReps = sets_data.find(s => s.reps)?.reps ?? null;
+        const firstDur = sets_data.find(s => s.duration)?.duration ?? null;
+        return {
+          exercise_name: e.exercise_name.trim(),
+          sets: sets_data.length,
+          reps: firstReps ? Number(firstReps) : null,
+          weight: maxKg > 0 ? String(maxKg) : (sets_data.some(s => s.kg === 'BW') ? 'BW' : null),
+          duration: firstDur || null,
+          notes: e.notes.trim() || null,
+          isSuperset: e.isSuperset,
+          sets_data: sets_data.map((s, i) => ({
+            set: i + 1,
+            kg: s.kg || null,
+            reps: s.reps ? Number(s.reps) : null,
+            duration: s.duration || null,
+          })),
+        };
+      });
 
     setLoading(true);
     try {
+      // Future session: schedule only — no workout record, no session deduction
+      const _todayIso = new Date().toISOString().slice(0, 10);
+      if (sessionDate > _todayIso) {
+        const scheduledDt = parseSessionDateTime(sessionDate, sessionTime.trim() || '09:00');
+        if (scheduledDt && profile?.id) {
+          const { error: schedErr } = await supabase.from('scheduled_sessions').insert({
+            coach_id: profile.id,
+            client_id: selectedClientId,
+            scheduled_at: scheduledDt.toISOString(),
+            notes: sessionNotes.trim() || null,
+            status: 'pending',
+          });
+          if (schedErr) { Alert.alert('Error', schedErr.message); return; }
+        }
+        const dateLabel = new Date(sessionDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        Alert.alert(
+          'Session Scheduled!',
+          `${selectedClient?.name ?? 'Client'}'s session on ${dateLabel}${sessionTime.trim() ? ' at ' + sessionTime.trim() : ''} has been scheduled. The client will see a countdown on their dashboard.`,
+          [{ text: 'OK', onPress: () => router.back() }],
+        );
+        return;
+      }
+
+      // Past/today: create workout record and deduct session
       const { data: sessionData, error } = await supabase.from('workout_sessions').insert({
         package_id: pkg.id,
         client_id: selectedClientId,
@@ -470,6 +713,7 @@ export default function LogSessionScreen() {
         exercises: validExercises,
         notes: sessionNotes.trim() || null,
         session_type: sessionType,
+        status: 'completed',
       }).select('id').single();
 
       if (error) {
@@ -477,32 +721,161 @@ export default function LogSessionScreen() {
         return;
       }
 
+      // Mark any scheduled_sessions on this day as completed
+      await supabase
+        .from('scheduled_sessions')
+        .update({ status: 'completed' })
+        .eq('client_id', selectedClientId)
+        .gte('scheduled_at', sessionDate + 'T00:00:00.000Z')
+        .lte('scheduled_at', sessionDate + 'T23:59:59.999Z')
+        .in('status', ['pending', 'client_confirmed', 'reschedule_pending']);
+
       if (sessionTime.trim()) {
         await scheduleSessionReminder(selectedClient?.name ?? 'Client', sessionDate, sessionTime.trim(), selectedClientId);
       }
 
+      // ── PR Detection + exercise_records save ────────────────────────────────
+      const newPRBeats: PRBeat[] = [];
+      try {
+        // Fetch previous best per exercise for this client
+        const { data: prevRecords } = await supabase
+          .from('exercise_records')
+          .select('exercise_name, best_kg, best_reps, best_duration')
+          .eq('client_id', selectedClientId);
+
+        // Build map: exercise key → all-time best values so far
+        type BestMap = { kg: number | null; reps: number | null; dur: number | null };
+        const bestMap = new Map<string, BestMap>();
+        for (const r of (prevRecords ?? [])) {
+          const key = r.exercise_name.toLowerCase().trim();
+          const cur = bestMap.get(key) ?? { kg: null, reps: null, dur: null };
+          bestMap.set(key, {
+            kg:   Math.max(cur.kg ?? 0,   r.best_kg       ?? 0) || null,
+            reps: Math.max(cur.reps ?? 0, r.best_reps     ?? 0) || null,
+            dur:  Math.max(cur.dur ?? 0,  r.best_duration ?? 0) || null,
+          });
+        }
+
+        // Compute this session's best per exercise + detect PRs
+        const recordsToInsert = validExercises.map((ex) => {
+          const sets = ex.sets_data as Array<{ kg: string | null; reps: number | null; duration: string | null }>;
+          const maxKgVal  = sets.reduce((mx, s) => { const n = s.kg && s.kg !== 'BW' ? parseFloat(String(s.kg)) || 0 : 0; return n > mx ? n : mx; }, 0);
+          const maxRepsVal = sets.reduce((mx, s) => Math.max(mx, s.reps ?? 0), 0);
+          const maxDurVal  = sets.reduce((mx, s) => { const n = s.duration ? parseInt(String(s.duration)) || 0 : 0; return n > mx ? n : mx; }, 0);
+
+          const key  = ex.exercise_name.toLowerCase().trim();
+          const prev = bestMap.get(key) ?? { kg: null, reps: null, dur: null };
+
+          if (maxKgVal > 0 && (prev.kg === null || maxKgVal > prev.kg)) {
+            newPRBeats.push({ exercise: ex.exercise_name, metric: 'kg',       prev: prev.kg,   next: maxKgVal });
+          } else if (maxRepsVal > 0 && (prev.reps === null || maxRepsVal > prev.reps)) {
+            newPRBeats.push({ exercise: ex.exercise_name, metric: 'reps',     prev: prev.reps, next: maxRepsVal });
+          } else if (maxDurVal > 0 && (prev.dur === null || maxDurVal > prev.dur)) {
+            newPRBeats.push({ exercise: ex.exercise_name, metric: 'duration', prev: prev.dur,  next: maxDurVal });
+          }
+
+          return {
+            client_id:     selectedClientId,
+            session_id:    sessionData!.id,
+            exercise_name: ex.exercise_name,
+            best_kg:       maxKgVal  > 0 ? maxKgVal  : null,
+            best_reps:     maxRepsVal > 0 ? maxRepsVal : null,
+            best_duration: maxDurVal  > 0 ? maxDurVal  : null,
+          };
+        });
+
+        // Save this session's exercise records
+        if (recordsToInsert.length > 0) {
+          await supabase.from('exercise_records').insert(recordsToInsert);
+        }
+      } catch {}
+      // ─────────────────────────────────────────────────────────────────────────
+
       const sessionsLeft = pkg.sessions_remaining - 1;
+
+      // Fetch admin once — used for low-session + session-logged notifications
+      const { data: adminForSession } = await supabase.from('profiles').select('id').eq('role', 'admin').limit(1);
+      const adminId = adminForSession?.[0]?.id ?? null;
+
       if (sessionsLeft > 0 && sessionsLeft <= 3) {
         await sendPushNotification(selectedClientId, {
           title: '⚠️ Package Almost Empty',
           body: `Only ${sessionsLeft} session${sessionsLeft !== 1 ? 's' : ''} left in your package. Contact your coach to renew soon!`,
         });
+        await sendPushNotification(profile.id, {
+          title: '⚠️ Client Running Low',
+          body: `${selectedClient?.name ?? 'A client'} has ${sessionsLeft} session${sessionsLeft !== 1 ? 's' : ''} left. Time to offer a renewal!`,
+          data: { type: 'low_sessions', client_id: selectedClientId },
+        });
+        if (adminId) {
+          await sendPushNotification(adminId, {
+            title: '⚠️ Client Running Low',
+            body: `${selectedClient?.name ?? 'A client'} (coach: ${profile?.name ?? '?'}) has ${sessionsLeft} session${sessionsLeft !== 1 ? 's' : ''} left.`,
+            data: { type: 'low_sessions', client_id: selectedClientId },
+          });
+        }
+      }
+      if (sessionsLeft === 0) {
+        await sendPushNotification(selectedClientId, {
+          title: '🔴 Last Session Used',
+          body: 'You have no sessions left. Contact your coach to renew your package.',
+        });
+        await sendPushNotification(profile.id, {
+          title: '🔴 Client Out of Sessions',
+          body: `${selectedClient?.name ?? 'A client'} just used their last session. Follow up for renewal!`,
+          data: { type: 'no_sessions', client_id: selectedClientId },
+        });
+        if (adminId) {
+          await sendPushNotification(adminId, {
+            title: '🔴 Client Out of Sessions',
+            body: `${selectedClient?.name ?? 'A client'} (coach: ${profile?.name ?? '?'}) has no sessions left.`,
+            data: { type: 'no_sessions', client_id: selectedClientId },
+          });
+        }
+      }
+      if (adminId) {
+        await sendPushNotification(adminId, {
+          title: '📋 Session Logged',
+          body: `${profile?.name ?? 'A coach'} logged a session for ${selectedClient?.name ?? 'a client'}. ${sessionsLeft} session${sessionsLeft !== 1 ? 's' : ''} remaining.`,
+          data: { type: 'session_logged' },
+        });
       }
 
-      // Try to start the session timer
-      const { data: existingActive } = await supabase
+      // Start the timer only if we're within 3 hours of the session time
+      const sessionDateOnly = sessionDate.trim() || new Date().toISOString().slice(0, 10);
+      const todayOnly = new Date().toISOString().slice(0, 10);
+      const isPastDate = sessionDateOnly < todayOnly;
+      let isWithinStartWindow = isPastDate; // past sessions always ok
+      if (sessionDateOnly === todayOnly) {
+        if (sessionTime.trim()) {
+          const sessionDt = parseSessionDateTime(sessionDate, sessionTime.trim());
+          if (sessionDt) {
+            const hoursUntil = (sessionDt.getTime() - Date.now()) / (60 * 60 * 1000);
+            isWithinStartWindow = hoursUntil <= 3; // within 3 hours of session time
+          } else {
+            isWithinStartWindow = true;
+          }
+        } else {
+          isWithinStartWindow = true; // no time set (quick session) — allow immediately
+        }
+      }
+
+      const { data: existingActive } = !isWithinStartWindow ? { data: null } : await supabase
         .from('active_sessions')
         .select('id')
         .eq('coach_id', profile.id)
         .eq('is_active', true)
         .maybeSingle();
 
-      if (!existingActive && sessionData?.id) {
+      if (isWithinStartWindow && !existingActive && sessionData?.id) {
+        const sessionStart = sessionTime.trim()
+          ? (parseSessionDateTime(sessionDate, sessionTime.trim()) ?? new Date())
+          : new Date();
         await supabase.from('active_sessions').insert({
           coach_id: profile.id,
           client_id: selectedClientId,
           session_id: sessionData.id,
-          start_time: new Date().toISOString(),
+          start_time: sessionStart.toISOString(),
           original_duration: Number(duration),
           current_duration: Number(duration),
           is_active: true,
@@ -517,7 +890,9 @@ export default function LogSessionScreen() {
             [
               {
                 text: 'Back to Dashboard',
-                onPress: () => router.back(),
+                onPress: () => {
+                  if (newPRBeats.length > 0) { setPrBeats(newPRBeats); } else { router.back(); }
+                },
               },
               {
                 text: 'Start Exercises',
@@ -544,19 +919,23 @@ export default function LogSessionScreen() {
           Alert.alert(
             'Session Started!',
             `Timer started for ${selectedClient?.name} (${duration} min). Check your Dashboard.`,
-            [{ text: 'OK', onPress: () => router.back() }]
+            [{ text: 'OK', onPress: () => { if (newPRBeats.length > 0) { setPrBeats(newPRBeats); } else { router.back(); } } }]
           );
         }
       } else {
+        const futureNote = !isPastDate && sessionDateOnly === todayOnly && !isWithinStartWindow
+          ? '\n\nTimer will be available within 3 hours of the session time.'
+          : existingActive ? '\n\nNote: Timer not started — a session is already active.' : '';
         Alert.alert(
           'Session logged!',
-          `${selectedClient?.name}'s session recorded. Sessions remaining: ${pkg.sessions_remaining - 1}${existingActive ? '\n\nNote: Timer not started — a session is already active.' : ''}`,
-          [{ text: 'OK', onPress: () => router.back() }]
+          `${selectedClient?.name}'s session recorded. Sessions remaining: ${pkg.sessions_remaining - 1}${futureNote}`,
+          [{ text: 'OK', onPress: () => { if (newPRBeats.length > 0) { setPrBeats(newPRBeats); } else { router.back(); } } }]
         );
       }
     } catch (err: unknown) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to save session');
     } finally {
+      savingRef.current = false;
       setLoading(false);
     }
   };
@@ -565,15 +944,26 @@ export default function LogSessionScreen() {
     if (!canSave || !profile?.id || !pkg) return;
     const validExercises = exercises
       .filter((e) => e.exercise_name.trim())
-      .map(({ id: _id, ...e }) => ({
-        exercise_name: e.exercise_name.trim(),
-        sets: e.sets ? Number(e.sets) : 1,
-        reps: e.reps ? Number(e.reps) : null,
-        weight: e.weight.trim() || null,
-        duration: e.duration.trim() || null,
-        notes: e.notes.trim() || null,
-        isSuperset: e.isSuperset,
-      }));
+      .map(({ id: _id, sets_data, ...e }) => {
+        const maxKg = sets_data.reduce((mx, s) => { const n = parseFloat(s.kg || '0') || 0; return n > mx ? n : mx; }, 0);
+        const firstReps = sets_data.find(s => s.reps)?.reps ?? null;
+        const firstDur = sets_data.find(s => s.duration)?.duration ?? null;
+        return {
+          exercise_name: e.exercise_name.trim(),
+          sets: sets_data.length || 1,
+          reps: firstReps ? Number(firstReps) : null,
+          weight: maxKg > 0 ? String(maxKg) : (sets_data.some(s => s.kg === 'BW') ? 'BW' : null),
+          duration: firstDur || null,
+          notes: e.notes.trim() || null,
+          isSuperset: e.isSuperset,
+          sets_data: sets_data.map((s, i) => ({
+            set: i + 1,
+            kg: s.kg || null,
+            reps: s.reps ? Number(s.reps) : null,
+            duration: s.duration || null,
+          })),
+        };
+      });
     router.push({
       pathname: '/(coach)/guided-workout',
       params: {
@@ -590,6 +980,12 @@ export default function LogSessionScreen() {
   };
 
   return (
+    <View style={styles.root}>
+      <View style={styles.closeRow}>
+        <Pressable onPress={() => router.back()} hitSlop={12}>
+          <Ionicons name="close" size={24} color={colors.textSecondary} />
+        </Pressable>
+      </View>
     <KeyboardAvoidingView style={styles.kav} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
@@ -599,14 +995,14 @@ export default function LogSessionScreen() {
             style={[styles.modeBtn, mode === 'full' && styles.modeBtnActive]}
             onPress={() => setMode('full')}
           >
-            <Ionicons name="list-outline" size={15} color={mode === 'full' ? Colors.bg : Colors.textSecondary} />
+            <Ionicons name="list-outline" size={15} color={mode === 'full' ? colors.bg : colors.textSecondary} />
             <Text style={[styles.modeBtnText, mode === 'full' && styles.modeBtnTextActive]}>FULL LOG</Text>
           </Pressable>
           <Pressable
             style={[styles.modeBtn, mode === 'quick' && styles.modeBtnActive]}
             onPress={() => setMode('quick')}
           >
-            <Ionicons name="flash" size={15} color={mode === 'quick' ? Colors.bg : Colors.textSecondary} />
+            <Ionicons name="flash" size={15} color={mode === 'quick' ? colors.bg : colors.textSecondary} />
             <Text style={[styles.modeBtnText, mode === 'quick' && styles.modeBtnTextActive]}>QUICK</Text>
           </Pressable>
         </View>
@@ -614,13 +1010,13 @@ export default function LogSessionScreen() {
         {/* Client picker */}
         <Text style={styles.sectionTitle}>CLIENT</Text>
         <Pressable style={styles.pickerBtn} onPress={() => setShowClientPicker((v) => !v)}>
-          <Text style={[styles.pickerBtnText, !selectedClient && { color: Colors.textSecondary }]}>
+          <Text style={[styles.pickerBtnText, !selectedClient && { color: colors.textSecondary }]}>
             {selectedClient ? selectedClient.name : 'Select a client…'}
           </Text>
           <Ionicons
             name={showClientPicker ? 'chevron-up' : 'chevron-down'}
             size={18}
-            color={Colors.textSecondary}
+            color={colors.textSecondary}
           />
         </Pressable>
 
@@ -635,7 +1031,7 @@ export default function LogSessionScreen() {
                   style={[styles.dropdownItem, c.id === selectedClientId && styles.dropdownItemActive]}
                   onPress={() => { setSelectedClientId(c.id); setShowClientPicker(false); }}
                 >
-                  <Text style={[styles.dropdownItemText, c.id === selectedClientId && { color: Colors.accent }]}>
+                  <Text style={[styles.dropdownItemText, c.id === selectedClientId && { color: colors.accent }]}>
                     {c.name}
                   </Text>
                   <Text style={styles.dropdownItemSub}>
@@ -650,7 +1046,7 @@ export default function LogSessionScreen() {
         {/* Package warning */}
         {selectedClient && pkg && pkg.sessions_remaining <= 3 && pkg.sessions_remaining > 0 && (
           <View style={styles.warningBanner}>
-            <Ionicons name="warning-outline" size={16} color="#FFA500" />
+            <Ionicons name="warning-outline" size={16} color={colors.warning} />
             <Text style={styles.warningText}>
               Only {pkg.sessions_remaining} session{pkg.sessions_remaining !== 1 ? 's' : ''} remaining in this package
             </Text>
@@ -658,8 +1054,8 @@ export default function LogSessionScreen() {
         )}
         {selectedClient && pkg && pkg.sessions_remaining === 0 && (
           <View style={[styles.warningBanner, styles.errorBanner]}>
-            <Ionicons name="close-circle-outline" size={16} color={Colors.danger} />
-            <Text style={[styles.warningText, { color: Colors.danger }]}>
+            <Ionicons name="close-circle-outline" size={16} color={colors.danger} />
+            <Text style={[styles.warningText, { color: colors.danger }]}>
               This client has no sessions remaining
             </Text>
           </View>
@@ -696,9 +1092,9 @@ export default function LogSessionScreen() {
                     onPress={() => setSessionType(t)}
                   >
                     <Ionicons
-                      name={t === 'gym' ? 'barbell-outline' : 'home-outline'}
+                      name={t === 'gym' ? 'fitness-outline' : 'home-outline'}
                       size={16}
-                      color={sessionType === t ? Colors.bg : Colors.textSecondary}
+                      color={sessionType === t ? colors.bg : colors.textSecondary}
                     />
                     <Text style={[styles.typeBtnText, sessionType === t && styles.typeBtnTextActive]}>
                       {t === 'gym' ? 'Gym' : 'Home'}
@@ -713,11 +1109,11 @@ export default function LogSessionScreen() {
             <View style={styles.field}>
               <Text style={styles.label}>DATE</Text>
               <Pressable style={styles.dateTrigger} onPress={() => setShowCalendar(v => !v)}>
-                <Ionicons name="calendar-outline" size={16} color={Colors.accent} />
+                <Ionicons name="calendar-outline" size={16} color={colors.accent} />
                 <Text style={styles.dateTriggerText}>
                   {new Date(sessionDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
                 </Text>
-                <Ionicons name={showCalendar ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.textSecondary} />
+                <Ionicons name={showCalendar ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSecondary} />
               </Pressable>
               {showCalendar && (
                 <CalendarPicker
@@ -734,7 +1130,7 @@ export default function LogSessionScreen() {
                 onChangeText={(v) => setDuration(v.replace(/[^0-9]/g, ''))}
                 keyboardType="number-pad"
                 placeholder="60"
-                placeholderTextColor={Colors.textSecondary}
+                placeholderTextColor={colors.textSecondary}
               />
             </View>
             <View style={styles.field}>
@@ -747,9 +1143,9 @@ export default function LogSessionScreen() {
                     onPress={() => setSessionType(t)}
                   >
                     <Ionicons
-                      name={t === 'gym' ? 'barbell-outline' : 'home-outline'}
+                      name={t === 'gym' ? 'fitness-outline' : 'home-outline'}
                       size={16}
-                      color={sessionType === t ? Colors.bg : Colors.textSecondary}
+                      color={sessionType === t ? colors.bg : colors.textSecondary}
                     />
                     <Text style={[styles.typeBtnText, sessionType === t && styles.typeBtnTextActive]}>
                       {t === 'gym' ? 'Gym' : 'Home'}
@@ -760,19 +1156,23 @@ export default function LogSessionScreen() {
             </View>
             <View style={styles.field}>
               <Text style={styles.label}>START TIME</Text>
-              <Pressable
-                style={styles.pickerBtn}
-                onPress={() => setShowTimePicker((v) => !v)}
-              >
-                <Text style={[styles.pickerBtnText, !sessionTime && { color: Colors.textSecondary }]}>
-                  {sessionTime || '9:00 AM'}
-                </Text>
-                <Ionicons
-                  name={showTimePicker ? 'chevron-up' : 'chevron-down'}
-                  size={18}
-                  color={Colors.textSecondary}
+              <View style={styles.pickerBtn}>
+                <TextInput
+                  style={[styles.pickerBtnText, { flex: 1 }]}
+                  value={sessionTime}
+                  onChangeText={(v) => { setSessionTime(v); setShowTimePicker(false); }}
+                  placeholder="e.g. 9:00 AM"
+                  placeholderTextColor={colors.textSecondary}
+                  returnKeyType="done"
                 />
-              </Pressable>
+                <Pressable onPress={() => setShowTimePicker((v) => !v)} hitSlop={8}>
+                  <Ionicons
+                    name={showTimePicker ? 'chevron-up' : 'chevron-down'}
+                    size={18}
+                    color={colors.textSecondary}
+                  />
+                </Pressable>
+              </View>
               {showTimePicker && (
                 <View style={[styles.dropdown, { maxHeight: 220 }]}>
                   <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
@@ -784,7 +1184,7 @@ export default function LogSessionScreen() {
                           style={[styles.dropdownItem, active && styles.dropdownItemActive]}
                           onPress={() => { setSessionTime(slot); setShowTimePicker(false); }}
                         >
-                          <Text style={[styles.dropdownItemText, active && { color: Colors.accent }]}>
+                          <Text style={[styles.dropdownItemText, active && { color: colors.accent }]}>
                             {slot}
                           </Text>
                         </Pressable>
@@ -793,15 +1193,6 @@ export default function LogSessionScreen() {
                   </ScrollView>
                 </View>
               )}
-              <TextInput
-                style={[styles.input, { marginTop: 6 }]}
-                value={sessionTime}
-                onChangeText={(v) => { setSessionTime(v); setShowTimePicker(false); }}
-                placeholder="9:00 AM"
-                placeholderTextColor={Colors.textSecondary}
-                returnKeyType="done"
-              />
-              <Text style={styles.timeFormatHint}>Type manually: 9:00 AM  or  14:30</Text>
             </View>
           </>
         )}
@@ -812,18 +1203,22 @@ export default function LogSessionScreen() {
           <View style={styles.exHeaderBtns}>
             {templates.length > 0 && (
               <Pressable style={styles.historyBtn} onPress={() => setShowTemplateModal(true)}>
-                <Ionicons name="copy-outline" size={14} color={Colors.accent} />
+                <Ionicons name="copy-outline" size={14} color={colors.accent} />
                 <Text style={styles.historyBtnText}>TEMPLATE</Text>
               </Pressable>
             )}
             {exerciseHistory.length > 0 && (
               <Pressable style={styles.historyBtn} onPress={() => setShowHistoryModal(true)}>
-                <Ionicons name="time-outline" size={14} color={Colors.accent} />
+                <Ionicons name="time-outline" size={14} color={colors.accent} />
                 <Text style={styles.historyBtnText}>HISTORY</Text>
               </Pressable>
             )}
+            <Pressable style={styles.historyBtn} onPress={() => router.push('/(coach)/exercise-library' as any)}>
+              <Ionicons name="library-outline" size={14} color={colors.accent} />
+              <Text style={styles.historyBtnText}>LIBRARY</Text>
+            </Pressable>
             <Pressable style={styles.addExBtn} onPress={addExercise}>
-              <Ionicons name="add" size={16} color={Colors.bg} />
+              <Ionicons name="add" size={16} color={colors.bg} />
               <Text style={styles.addExBtnText}>ADD</Text>
             </Pressable>
           </View>
@@ -837,6 +1232,10 @@ export default function LogSessionScreen() {
             isLast={i === exercises.length - 1}
             lastWeight={ex.exercise_name ? (getLastUsed(ex.exercise_name)?.weight ?? undefined) : undefined}
             onChange={updateExercise}
+            onSetChange={updateSetField}
+            onAddSet={addSet}
+            onRemoveLastSet={removeLastSet}
+            onBWToggle={bwToggle}
             onRemove={removeExercise}
             onToggleSuperset={toggleSuperset}
             onOpenPicker={(id) => { pickerTargetRef.current = id; setPickerTargetId(id); }}
@@ -848,7 +1247,7 @@ export default function LogSessionScreen() {
         <TextInput
           style={[styles.input, styles.notesInput]}
           placeholder="Overall notes for this session…"
-          placeholderTextColor={Colors.textSecondary}
+          placeholderTextColor={colors.textSecondary}
           multiline
           numberOfLines={3}
           value={sessionNotes}
@@ -866,23 +1265,6 @@ export default function LogSessionScreen() {
           </Text>
         </Pressable>
 
-        {/* Start Workout — full mode only */}
-        {mode === 'full' && (
-          <>
-            <Pressable
-              style={[styles.startWorkoutBtn, !canSave && styles.saveBtnDisabled]}
-              onPress={() => {
-                if (!canSave) return;
-                setQrConfirmFn(() => handleStartWorkout);
-                setShowQRGate(true);
-              }}
-              disabled={!canSave || loading}
-            >
-              <Ionicons name="play-circle-outline" size={20} color={Colors.accent} />
-              <Text style={styles.startWorkoutBtnText}>START WORKOUT</Text>
-            </Pressable>
-          </>
-        )}
       </ScrollView>
 
       {/* Template Picker Modal */}
@@ -898,7 +1280,7 @@ export default function LogSessionScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>LOAD TEMPLATE</Text>
               <Pressable onPress={() => setShowTemplateModal(false)} hitSlop={12}>
-                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
               </Pressable>
             </View>
             <Text style={styles.modalSub}>Select a template to auto-fill exercises</Text>
@@ -942,14 +1324,14 @@ export default function LogSessionScreen() {
           const targetId = pickerTargetRef.current;
           if (targetId) {
             updateExercise(targetId, 'exercise_name', name);
-            // Auto-fill weight if field is currently empty
+            // Auto-fill kg into empty set rows from last usage
             const last = getLastUsed(name);
-            if (last) {
+            if (last?.weight) {
               setExercises((prev) => prev.map((e) => {
                 if (e.id !== targetId) return e;
                 return {
                   ...e,
-                  weight: e.weight.trim() ? e.weight : last.weight,
+                  sets_data: e.sets_data.map(s => ({ ...s, kg: s.kg.trim() ? s.kg : last.weight })),
                 };
               }));
             }
@@ -972,7 +1354,7 @@ export default function LogSessionScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>PAST EXERCISES</Text>
               <Pressable onPress={() => setShowHistoryModal(false)} hitSlop={12}>
-                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
               </Pressable>
             </View>
             <Text style={styles.modalSub}>Tap to add pre-filled to your session</Text>
@@ -1016,117 +1398,126 @@ export default function LogSessionScreen() {
         onConfirm={() => { setShowQRGate(false); qrConfirmFn?.(); }}
         onCancel={() => { setShowQRGate(false); setQrConfirmFn(null); }}
       />
+      <PRSummaryModal
+        beats={prBeats}
+        clientName={selectedClient?.name ?? 'Client'}
+        onClose={() => { setPrBeats([]); router.back(); }}
+      />
     </KeyboardAvoidingView>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  kav: { flex: 1, backgroundColor: Colors.bg },
-  scroll: { flex: 1 },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+  root: { flex: 1, backgroundColor: c.bg },
+  closeRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border },
+  kav: { flex: 1, backgroundColor: c.bg },
+  scroll: { flex: 1, backgroundColor: c.bg },
   content: { padding: 20, paddingBottom: 60 },
-  modeToggle: { flexDirection: 'row', backgroundColor: Colors.surface, borderRadius: 12, padding: 4, marginBottom: 24, borderWidth: 1, borderColor: Colors.border },
+  modeToggle: { flexDirection: 'row', backgroundColor: c.surface, borderRadius: 12, padding: 4, marginBottom: 24, borderWidth: 1, borderColor: c.border },
   modeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 9 },
-  modeBtnActive: { backgroundColor: Colors.accent },
-  modeBtnText: { color: Colors.textSecondary, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
-  modeBtnTextActive: { color: Colors.bg },
-  sectionTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 12 },
+  modeBtnActive: { backgroundColor: c.accent },
+  modeBtnText: { color: c.textSecondary, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
+  modeBtnTextActive: { color: c.bg },
+  sectionTitle: { ...Typography.label, color: c.textSecondary, marginBottom: 12 },
   pickerBtn: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     marginBottom: 4,
   },
-  pickerBtnText: { ...Typography.body, color: Colors.textPrimary },
+  pickerBtnText: { ...Typography.body, color: c.textPrimary },
   dropdown: {
-    backgroundColor: Colors.surfaceRaised,
+    backgroundColor: c.surfaceRaised,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     overflow: 'hidden',
     marginBottom: 4,
   },
-  dropdownEmpty: { ...Typography.body, color: Colors.textSecondary, padding: 16, textAlign: 'center' },
-  dropdownItem: { padding: 14, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  dropdownItemActive: { backgroundColor: Colors.accent + '12' },
-  dropdownItemText: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
-  dropdownItemSub: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
+  dropdownEmpty: { ...Typography.body, color: c.textSecondary, padding: 16, textAlign: 'center' },
+  dropdownItem: { padding: 14, borderBottomWidth: 1, borderBottomColor: c.border },
+  dropdownItemActive: { backgroundColor: c.accent + '12' },
+  dropdownItemText: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+  dropdownItemSub: { ...Typography.caption, color: c.textSecondary, marginTop: 2 },
   warningBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#FFA50015',
+    backgroundColor: c.warning + '15',
     borderRadius: 10,
     padding: 12,
     marginTop: 8,
     borderWidth: 1,
-    borderColor: '#FFA50040',
+    borderColor: c.warning + '40',
   },
-  errorBanner: { backgroundColor: Colors.danger + '15', borderColor: Colors.danger + '40' },
-  warningText: { ...Typography.caption, color: '#FFA500', flex: 1 },
+  errorBanner: { backgroundColor: c.danger + '15', borderColor: c.danger + '40' },
+  warningText: { ...Typography.caption, color: c.warning, flex: 1 },
   row: { flexDirection: 'row', gap: 12 },
   field: { marginBottom: 16 },
-  label: { ...Typography.label, color: Colors.textSecondary, marginBottom: 8 },
+  label: { ...Typography.label, color: c.textSecondary, marginBottom: 8 },
   typeRow: { flexDirection: 'row', gap: 10 },
   typeBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
     paddingVertical: 12, borderRadius: 12, borderWidth: 1.5,
-    borderColor: Colors.border, backgroundColor: Colors.surface,
+    borderColor: c.border, backgroundColor: c.surface,
   },
-  typeBtnActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  typeBtnText: { fontSize: 14, fontWeight: '700', color: Colors.textSecondary },
-  typeBtnTextActive: { color: Colors.bg },
+  typeBtnActive: { backgroundColor: c.accent, borderColor: c.accent },
+  typeBtnText: { fontSize: 14, fontWeight: '700', color: c.textSecondary },
+  typeBtnTextActive: { color: c.bg },
   input: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 13,
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     fontSize: 15,
   },
   dateTrigger: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
     borderRadius: 12, paddingVertical: 13, paddingHorizontal: 14,
   },
-  dateTriggerText: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', flex: 1 },
+  dateTriggerText: { ...Typography.body, color: c.textPrimary, fontWeight: '600', flex: 1 },
   notesInput: { minHeight: 80, textAlignVertical: 'top', paddingTop: 12 },
-  exHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  exHeaderBtns: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  exHeader: { marginBottom: 12, gap: 8 },
+  exHeaderBtns: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   historyBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     borderWidth: 1,
-    borderColor: Colors.accent,
+    borderColor: c.accent,
     borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
   },
-  historyBtnText: { color: Colors.accent, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
+  historyBtnText: { color: c.accent, fontSize: 11, fontWeight: '800', letterSpacing: 0.4 },
   addExBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: Colors.accent,
+    backgroundColor: c.accent,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
-  addExBtnText: { color: Colors.bg, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
+  addExBtnText: { color: c.bg, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: c.overlay,
     justifyContent: 'flex-end',
   },
   modalSheet: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 20,
@@ -1137,7 +1528,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: Colors.border,
+    backgroundColor: c.border,
     alignSelf: 'center',
     marginTop: 12,
     marginBottom: 16,
@@ -1148,8 +1539,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
   },
-  modalTitle: { ...Typography.label, color: Colors.textPrimary, fontSize: 14 },
-  modalSub: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 16 },
+  modalTitle: { ...Typography.label, color: c.textPrimary, fontSize: 14 },
+  modalSub: { ...Typography.caption, color: c.textSecondary, marginBottom: 16 },
   historyList: { flexGrow: 0 },
   historyItem: {
     flexDirection: 'row',
@@ -1157,38 +1548,38 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: c.border,
   },
   historyItemLeft: { flex: 1, marginRight: 12 },
-  historyItemName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700' },
-  historyItemSub: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
+  historyItemName: { ...Typography.body, color: c.textPrimary, fontWeight: '700' },
+  historyItemSub: { ...Typography.caption, color: c.textSecondary, marginTop: 2 },
   historyCountBadge: {
-    backgroundColor: Colors.accent + '20',
+    backgroundColor: c.accent + '20',
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderWidth: 1,
-    borderColor: Colors.accent + '50',
+    borderColor: c.accent + '50',
   },
-  historyCountText: { color: Colors.accent, fontSize: 11, fontWeight: '800' },
+  historyCountText: { color: c.accent, fontSize: 11, fontWeight: '800' },
   exCard: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
   },
   exCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  exCardTitle: { ...Typography.label, color: Colors.textSecondary, fontSize: 11 },
+  exCardTitle: { ...Typography.label, color: c.textSecondary, fontSize: 11 },
   exInput: {
-    backgroundColor: Colors.bg,
+    backgroundColor: c.bg,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     fontSize: 14,
     marginBottom: 8,
   },
@@ -1197,62 +1588,69 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: 12,
   },
-  exNameBtnText: { color: Colors.textPrimary, fontSize: 14, flex: 1, marginRight: 8 },
-  exRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  exSmallField: { flex: 1 },
-  bwBtnWrap: { justifyContent: 'flex-end', paddingBottom: 0 },
-  bwBtn: {
-    height: 40,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.bg,
-    justifyContent: 'center',
-    alignItems: 'center',
+  exNameBtnText: { color: c.textPrimary, fontSize: 14, flex: 1, marginRight: 8 },
+  // Per-set table styles
+  setHeaderRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, marginBottom: 4 },
+  setDataRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 5 },
+  setColSet: { width: 46 },
+  setColKg: { flex: 1 },
+  setColReps: { flex: 1 },
+  setColDur: { flex: 1 },
+  setColLabel: {
+    fontSize: 10, fontWeight: '800', color: c.textSecondary, letterSpacing: 0.5, textAlign: 'center',
   },
-  bwBtnActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  bwBtnText: { fontSize: 12, fontWeight: '800', color: Colors.textSecondary },
-  bwBtnTextActive: { color: Colors.bg },
-  exLabel: { ...Typography.label, color: Colors.textSecondary, fontSize: 10, marginBottom: 6 },
+  setLabel: { fontSize: 11, color: c.textSecondary, fontWeight: '700' },
+  setInput: {
+    backgroundColor: c.bg,
+    borderWidth: 1,
+    borderColor: c.border,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+    color: c.textPrimary,
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  setControlRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10, marginTop: 8, marginBottom: 10,
+  },
+  setCtrlBtn: {
+    width: 30, height: 30, borderRadius: 15,
+    borderWidth: 1, borderColor: c.border, backgroundColor: c.bg,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  setCtrlBtnDisabled: { opacity: 0.3 },
+  setCountText: { fontSize: 12, fontWeight: '800', color: c.textPrimary, minWidth: 60, textAlign: 'center' },
+  bwBtn: {
+    paddingHorizontal: 12, height: 30, borderRadius: 15,
+    borderWidth: 1, borderColor: c.border, backgroundColor: c.bg,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  bwBtnActive: { backgroundColor: c.accent, borderColor: c.accent },
+  bwBtnText: { fontSize: 11, fontWeight: '800', color: c.textSecondary },
+  bwBtnTextActive: { color: c.bg },
   supersetToggle: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
     marginTop: 10, paddingVertical: 8, borderRadius: 8,
-    borderWidth: 1, borderColor: Colors.border,
-    backgroundColor: Colors.bg,
+    borderWidth: 1, borderColor: c.border,
+    backgroundColor: c.bg,
   },
-  supersetToggleActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  supersetToggleText: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
-  supersetToggleTextActive: { color: Colors.bg },
-  exSmallInput: {
-    backgroundColor: Colors.bg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    color: Colors.textPrimary,
-    fontSize: 14,
-    textAlign: 'center',
-  },
+  supersetToggleActive: { backgroundColor: c.accent, borderColor: c.accent },
+  supersetToggleText: { color: c.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  supersetToggleTextActive: { color: c.bg },
   saveBtn: {
-    backgroundColor: Colors.accent,
+    backgroundColor: c.accent,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 8,
   },
   saveBtnDisabled: { opacity: 0.35 },
-  saveBtnText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
-  timeFormatHint: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    marginTop: 5,
-    letterSpacing: 0.2,
-  },
+  saveBtnText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
   lastWeightHint: {
     fontSize: 11,
-    color: Colors.accent,
+    color: c.accent,
     fontWeight: '600',
     marginTop: 4,
     letterSpacing: 0.2,
@@ -1263,10 +1661,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     borderWidth: 2,
-    borderColor: Colors.accent,
+    borderColor: c.accent,
     borderRadius: 14,
     paddingVertical: 15,
     marginTop: 10,
   },
-  startWorkoutBtnText: { color: Colors.accent, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
+  startWorkoutBtnText: { color: c.accent, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
 });
+}

@@ -1,9 +1,9 @@
-import { useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
   Dimensions,
-  FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -15,10 +15,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { useClientFiles, ClientFile, FileCategory } from '@/hooks/useClientFiles';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -48,26 +51,33 @@ function fmtDate(iso: string): string {
 
 const todayISO = () => new Date().toISOString().split('T')[0];
 
-// ── Upload Form — defined at module scope to prevent keyboard flicker ──────────
+// ── Upload Form ────────────────────────────────────────────────────────────────
 
 function UploadForm({
-  imageUri,
+  fileUri,
   uploading,
   onPickGallery,
   onPickCamera,
+  onPickDocument,
   onSave,
   onCancel,
 }: {
-  imageUri: string | null;
+  fileUri: string | null;
   uploading: boolean;
   onPickGallery: () => void;
   onPickCamera: () => void;
+  onPickDocument: () => void;
   onSave: (cat: FileCategory, label: string, date: string) => void;
   onCancel: () => void;
 }) {
+  const { colors } = useTheme();
+  const uf = useMemo(() => makeUfStyles(colors), [colors]);
   const [cat, setCat] = useState<FileCategory>('inbody');
   const [label, setLabel] = useState('');
   const [date, setDate] = useState(todayISO());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const isDocument = cat === 'document';
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -75,7 +85,7 @@ function UploadForm({
       <View style={uf.header}>
         <Text style={uf.title}>UPLOAD FILE</Text>
         <Pressable onPress={onCancel} hitSlop={12}>
-          <Ionicons name="close" size={22} color={Colors.textSecondary} />
+          <Ionicons name="close" size={22} color={colors.textSecondary} />
         </Pressable>
       </View>
 
@@ -101,8 +111,8 @@ function UploadForm({
                 ]}
                 onPress={() => setCat(c)}
               >
-                <Ionicons name={cfg.icon as any} size={14} color={active ? cfg.color : Colors.textSecondary} />
-                <Text style={[uf.catBtnText, { color: active ? cfg.color : Colors.textSecondary }]}>
+                <Ionicons name={cfg.icon as any} size={14} color={active ? cfg.color : colors.textSecondary} />
+                <Text style={[uf.catBtnText, { color: active ? cfg.color : colors.textSecondary }]}>
                   {cfg.label}
                 </Text>
               </Pressable>
@@ -110,23 +120,38 @@ function UploadForm({
           })}
         </View>
 
-        {/* Photo source / preview */}
-        <Text style={[uf.lbl, { marginTop: 18 }]}>PHOTO</Text>
-        {imageUri ? (
-          <View style={uf.previewWrap}>
-            <Image source={{ uri: imageUri }} style={uf.preview} resizeMode="cover" />
-            <Pressable style={uf.changeBtn} onPress={onPickGallery}>
-              <Text style={uf.changeBtnText}>Change</Text>
-            </Pressable>
-          </View>
+        {/* File / photo source */}
+        <Text style={[uf.lbl, { marginTop: 18 }]}>{isDocument ? 'FILE' : 'PHOTO'}</Text>
+        {fileUri ? (
+          isDocument ? (
+            <View style={uf.docPreview}>
+              <Ionicons name="document-text-outline" size={36} color="#FF9800" />
+              <Text style={uf.docPreviewText}>Document selected</Text>
+              <Pressable onPress={onPickDocument} style={uf.changeDocBtn}>
+                <Text style={uf.changeDocBtnText}>Change File</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={uf.previewWrap}>
+              <Image source={{ uri: fileUri }} style={uf.preview} resizeMode="cover" />
+              <Pressable style={uf.changeBtn} onPress={onPickGallery}>
+                <Text style={uf.changeBtnText}>Change</Text>
+              </Pressable>
+            </View>
+          )
+        ) : isDocument ? (
+          <Pressable style={uf.docPickBtn} onPress={onPickDocument}>
+            <Ionicons name="folder-open-outline" size={24} color={colors.accent} />
+            <Text style={uf.srcBtnText}>Pick File (PDF, Doc…)</Text>
+          </Pressable>
         ) : (
           <View style={uf.srcRow}>
             <Pressable style={uf.srcBtn} onPress={onPickCamera}>
-              <Ionicons name="camera-outline" size={22} color={Colors.accent} />
+              <Ionicons name="camera-outline" size={22} color={colors.accent} />
               <Text style={uf.srcBtnText}>Camera</Text>
             </Pressable>
             <Pressable style={uf.srcBtn} onPress={onPickGallery}>
-              <Ionicons name="image-outline" size={22} color={Colors.accent} />
+              <Ionicons name="image-outline" size={22} color={colors.accent} />
               <Text style={uf.srcBtnText}>Gallery</Text>
             </Pressable>
           </View>
@@ -134,34 +159,54 @@ function UploadForm({
 
         {/* Label */}
         <Text style={[uf.lbl, { marginTop: 18 }]}>LABEL (optional)</Text>
-        <TextInput
-          style={uf.input}
-          value={label}
-          onChangeText={setLabel}
-          placeholder="e.g. Week 4, Pre-cut, Baseline…"
-          placeholderTextColor={Colors.textSecondary + '80'}
-          autoCapitalize="sentences"
-          returnKeyType="next"
-        />
+        <View style={uf.inputRow}>
+          <Ionicons name="tag-outline" size={15} color={colors.textSecondary} />
+          <TextInput
+            style={[uf.input, { color: colors.textPrimary }]}
+            value={label}
+            onChangeText={setLabel}
+            placeholder="e.g. Week 4, Pre-cut, Baseline…"
+            placeholderTextColor={colors.textSecondary + '80'}
+          />
+        </View>
 
         {/* Date */}
         <Text style={[uf.lbl, { marginTop: 14 }]}>DATE</Text>
-        <TextInput
-          style={uf.input}
-          value={date}
-          onChangeText={setDate}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor={Colors.textSecondary + '80'}
-          keyboardType="numbers-and-punctuation"
-          maxLength={10}
-          returnKeyType="done"
-        />
+        {Platform.OS === 'ios' ? (
+          <DateTimePicker
+            value={new Date(date + 'T00:00:00')}
+            mode="date"
+            display="compact"
+            onChange={(_, selected) => {
+              if (selected) setDate(selected.toISOString().split('T')[0]);
+            }}
+            style={{ alignSelf: 'flex-start', marginLeft: -8 }}
+          />
+        ) : (
+          <>
+            <Pressable style={uf.datePressable} onPress={() => setShowDatePicker(true)}>
+              <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+              <Text style={uf.datePressableText}>{fmtDate(date)}</Text>
+            </Pressable>
+            {showDatePicker && (
+              <DateTimePicker
+                value={new Date(date + 'T00:00:00')}
+                mode="date"
+                display="default"
+                onChange={(_, selected) => {
+                  setShowDatePicker(false);
+                  if (selected) setDate(selected.toISOString().split('T')[0]);
+                }}
+              />
+            )}
+          </>
+        )}
 
         {/* Upload button */}
         <Pressable
-          style={[uf.saveBtn, (!imageUri || uploading) && uf.saveBtnDisabled]}
-          onPress={() => imageUri && !uploading && onSave(cat, label, date)}
-          disabled={!imageUri || uploading}
+          style={[uf.saveBtn, (!fileUri || uploading) && uf.saveBtnDisabled]}
+          onPress={() => fileUri && !uploading && onSave(cat, label, date)}
+          disabled={!fileUri || uploading}
         >
           <Text style={uf.saveBtnText}>{uploading ? 'UPLOADING…' : 'UPLOAD FILE'}</Text>
         </Pressable>
@@ -170,529 +215,551 @@ function UploadForm({
   );
 }
 
-// ── Photo grid item — at module scope to preserve error state across renders ───
+// ── Photo Grid Item ────────────────────────────────────────────────────────────
 
 function PhotoGridItem({ file, onPress }: { file: ClientFile; onPress: () => void }) {
-  const [error, setError] = useState(false);
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+  const cfg = CAT_CONFIG[file.category];
   return (
-    <Pressable
-      style={({ pressed }) => [s.gridItem, pressed && { opacity: 0.75 }]}
-      onPress={onPress}
-    >
-      {error ? (
-        <View style={s.gridError}>
-          <Ionicons name="image-outline" size={20} color={Colors.textSecondary} />
+    <Pressable style={s.gridItem} onPress={onPress}>
+      <Image source={{ uri: file.file_url }} style={s.gridImg} resizeMode="cover" />
+      {file.label && (
+        <View style={s.gridLabelWrap}>
+          <Text style={s.gridLabel} numberOfLines={1}>{file.label}</Text>
         </View>
-      ) : (
-        <Image
-          source={{ uri: file.file_url }}
-          style={s.gridThumb}
-          resizeMode="cover"
-          onError={() => setError(true)}
-        />
       )}
-      {file.label ? (
-        <View style={s.gridLabelBar}>
-          <Text style={s.gridLabelText} numberOfLines={1}>{file.label}</Text>
-        </View>
-      ) : null}
+      <View style={[s.gridCatDot, { backgroundColor: cfg.color }]} />
     </Pressable>
   );
 }
 
-// ── Document list row — at module scope ───────────────────────────────────────
+// ── Document Row ───────────────────────────────────────────────────────────────
 
-function DocumentRow({ file, onPress }: { file: ClientFile; onPress: () => void }) {
-  const [error, setError] = useState(false);
+function DocumentRow({ file, onDelete }: { file: ClientFile; onDelete: () => void }) {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+  const isPdf = file.file_type === 'pdf';
+
+  const handleOpen = async () => {
+    if (isPdf || file.file_type === 'link') {
+      try { await Linking.openURL(file.file_url); } catch { /* noop */ }
+    }
+  };
+
   return (
-    <Pressable
-      style={({ pressed }) => [s.docRow, pressed && { opacity: 0.75 }]}
-      onPress={onPress}
-    >
-      {error ? (
-        <View style={s.docThumbError}>
-          <Ionicons name="image-outline" size={18} color={Colors.textSecondary} />
-        </View>
-      ) : (
-        <Image
-          source={{ uri: file.file_url }}
-          style={s.docThumb}
-          resizeMode="cover"
-          onError={() => setError(true)}
-        />
-      )}
-      <View style={s.docInfo}>
-        <Text style={s.docLabel} numberOfLines={1}>{file.label ?? 'Document'}</Text>
+    <Pressable style={s.docRow} onPress={handleOpen} onLongPress={onDelete}>
+      <View style={[s.docIconWrap, { backgroundColor: '#FF980020' }]}>
+        {isPdf ? (
+          <Ionicons name="document-text" size={24} color="#FF9800" />
+        ) : (
+          <Ionicons name="attach-outline" size={24} color="#FF9800" />
+        )}
+      </View>
+      <View style={s.docMeta}>
+        <Text style={s.docLabel} numberOfLines={1}>{file.label || 'Untitled'}</Text>
         <Text style={s.docDate}>{fmtDate(file.date)}</Text>
       </View>
-      <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
+      <Ionicons name="open-outline" size={16} color={colors.textSecondary} />
     </Pressable>
   );
 }
 
-// ── Link row — at module scope ────────────────────────────────────────────────
+// ── Link Row ───────────────────────────────────────────────────────────────────
 
-function LinkRow({ file, onDelete }: { file: ClientFile; onDelete: (file: ClientFile) => void }) {
-  const handleOpen = () => {
-    Linking.openURL(file.file_url).catch(() => Alert.alert('Error', 'Could not open link.'));
-  };
+function LinkRow({ file, onDelete }: { file: ClientFile; onDelete: () => void }) {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
-  const handleLongPress = () => {
-    Alert.alert('Remove Link', 'Remove this saved link?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => onDelete(file) },
-    ]);
+  const handleOpen = async () => {
+    try { await Linking.openURL(file.file_url); } catch { /* noop */ }
   };
 
   return (
-    <Pressable
-      style={({ pressed }) => [s.linkRow, pressed && { opacity: 0.75 }]}
-      onPress={handleOpen}
-      onLongPress={handleLongPress}
-    >
-      <View style={s.linkIcon}>
-        <Ionicons name="open-outline" size={18} color="#4CAF50" />
+    <Pressable style={s.docRow} onPress={handleOpen} onLongPress={onDelete}>
+      <View style={[s.docIconWrap, { backgroundColor: '#4CAF5020' }]}>
+        <Ionicons name="link-outline" size={22} color="#4CAF50" />
       </View>
-      <View style={s.linkInfo}>
-        <Text style={s.linkLabel} numberOfLines={1}>{file.label ?? 'InBody Result'}</Text>
-        <Text style={s.linkDate}>{fmtDate(file.date)}</Text>
+      <View style={s.docMeta}>
+        <Text style={s.docLabel} numberOfLines={1}>{file.label || 'InBody Link'}</Text>
+        <Text style={s.docDate}>{fmtDate(file.date)}</Text>
       </View>
-      <View style={s.linkOpenBtn}>
-        <Text style={s.linkOpenText}>OPEN</Text>
-      </View>
+      <Ionicons name="open-outline" size={16} color={colors.textSecondary} />
     </Pressable>
   );
 }
 
-// ── Full-screen image viewer — at module scope ────────────────────────────────
+// ── Image Viewer ───────────────────────────────────────────────────────────────
 
 function ImageViewer({
-  files,
-  startIndex,
+  file,
+  visible,
   onClose,
   onDelete,
 }: {
-  files: ClientFile[];
-  startIndex: number;
+  file: ClientFile | null;
+  visible: boolean;
   onClose: () => void;
   onDelete: (file: ClientFile) => void;
 }) {
-  const [currentIndex, setCurrentIndex] = useState(startIndex);
-  const [imgErrors, setImgErrors] = useState<Record<string, boolean>>({});
-  const listRef = useRef<FlatList>(null);
-  const current = files[currentIndex];
+  const { colors } = useTheme();
+  const vw = useMemo(() => makeVwStyles(colors), [colors]);
+
+  if (!file) return null;
 
   const handleDelete = () => {
-    if (!current) return;
-    Alert.alert('Delete File', 'Remove this file permanently?', [
+    Alert.alert('Delete file?', 'This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => { onDelete(current); onClose(); },
-      },
+      { text: 'Delete', style: 'destructive', onPress: () => onDelete(file) },
     ]);
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#000' }}>
-      {/* Header */}
-      <View style={vw.header}>
-        <Pressable onPress={onClose} hitSlop={14}>
-          <Ionicons name="close" size={26} color="#fff" />
-        </Pressable>
-        <Text style={vw.counter}>
-          {files.length > 1 ? `${currentIndex + 1} / ${files.length}` : ''}
-        </Text>
-        <Pressable onPress={handleDelete} hitSlop={14}>
-          <Ionicons name="trash-outline" size={22} color={Colors.danger} />
-        </Pressable>
-      </View>
-
-      {/* Paged image list */}
-      <FlatList
-        ref={listRef}
-        data={files}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        keyExtractor={(f) => f.id}
-        initialScrollIndex={startIndex}
-        getItemLayout={(_, index) => ({
-          length: SCREEN_W,
-          offset: SCREEN_W * index,
-          index,
-        })}
-        onMomentumScrollEnd={(e) => {
-          const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
-          setCurrentIndex(idx);
-        }}
-        renderItem={({ item }) => (
-          <View style={vw.slide}>
-            {imgErrors[item.id] ? (
-              <View style={vw.errorWrap}>
-                <Ionicons name="image-outline" size={52} color={Colors.border} />
-                <Text style={vw.errorText}>File not found</Text>
-              </View>
-            ) : (
-              <Image
-                source={{ uri: item.file_url }}
-                style={vw.image}
-                resizeMode="contain"
-                onError={() => setImgErrors((prev) => ({ ...prev, [item.id]: true }))}
-              />
-            )}
+    <Modal visible={visible} animationType="fade" presentationStyle="fullScreen" onRequestClose={onClose}>
+      <View style={vw.container}>
+        {/* Header */}
+        <View style={vw.header}>
+          <Pressable onPress={onClose} style={vw.closeBtn} hitSlop={12}>
+            <Ionicons name="chevron-down" size={28} color="#fff" />
+          </Pressable>
+          <View style={vw.headerMeta}>
+            <Text style={vw.headerLabel} numberOfLines={1}>{file.label || 'File'}</Text>
+            <Text style={vw.headerDate}>{fmtDate(file.date)}</Text>
           </View>
-        )}
-      />
-
-      {/* Caption */}
-      {current && (
-        <View style={vw.caption}>
-          <Text style={vw.captionDate}>{fmtDate(current.date)}</Text>
-          {current.label ? <Text style={vw.captionLabel}>{current.label}</Text> : null}
-          {files.length > 1 && (
-            <Text style={vw.swipeHint}>Swipe to compare</Text>
-          )}
+          <Pressable onPress={handleDelete} style={vw.deleteBtn} hitSlop={12}>
+            <Ionicons name="trash-outline" size={22} color="#EF4444" />
+          </Pressable>
         </View>
-      )}
-    </View>
+
+        {/* Image */}
+        <Image
+          source={{ uri: file.file_url }}
+          style={vw.img}
+          resizeMode="contain"
+        />
+
+        {/* Category chip */}
+        <View style={vw.footer}>
+          <View style={[vw.catChip, { backgroundColor: CAT_CONFIG[file.category].color + '22' }]}>
+            <Ionicons
+              name={CAT_CONFIG[file.category].icon as any}
+              size={13}
+              color={CAT_CONFIG[file.category].color}
+            />
+            <Text style={[vw.catChipText, { color: CAT_CONFIG[file.category].color }]}>
+              {CAT_CONFIG[file.category].label}
+            </Text>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
-// ── Main Tab ───────────────────────────────────────────────────────────────────
+// ── Main Component ─────────────────────────────────────────────────────────────
 
-export function ClientFilesTab({ clientId }: { clientId: string }) {
+export default function ClientFilesTab({ clientId }: { clientId: string }) {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+
   const { files, loading, uploadFile, deleteFile } = useClientFiles(clientId);
 
-  const [filterCat, setFilterCat] = useState<FileCategory>('inbody');
+  const [filterCat, setFilterCat] = useState<FileCategory | 'all'>('all');
   const [showUpload, setShowUpload] = useState(false);
-  const [formKey, setFormKey] = useState(0);
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [fileUri, setFileUri] = useState<string | null>(null);
+  const [fileMimeType, setFileMimeType] = useState<string>('image/jpeg');
   const [uploading, setUploading] = useState(false);
+  const [viewerFile, setViewerFile] = useState<ClientFile | null>(null);
   const [viewerVisible, setViewerVisible] = useState(false);
-  const [viewerStartIdx, setViewerStartIdx] = useState(0);
 
-  const filtered = files.filter((f) => f.category === filterCat);
-  const filteredLinks = filtered.filter((f) => f.file_type === 'link');
-  const filteredPhotos = filtered.filter((f) => f.file_type !== 'link');
-
-  const openUpload = () => {
-    setImageUri(null);
-    setFormKey((k) => k + 1);
-    setShowUpload(true);
-  };
+  // ── Media pickers ──────────────────────────────────────────────────────────
 
   const pickGallery = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Allow access to your photos to upload files.');
-      return;
-    }
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return Alert.alert('Permission needed', 'Allow photo library access in Settings.');
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: 'images',
-      allowsEditing: false,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.85,
     });
-    if (!result.canceled) setImageUri(result.assets[0].uri);
+    if (!result.canceled) {
+      setFileUri(result.assets[0].uri);
+      setFileMimeType('image/jpeg');
+    }
   };
 
   const pickCamera = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Allow camera access to take photos.');
-      return;
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) return Alert.alert('Permission needed', 'Allow camera access in Settings.');
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.85 });
+    if (!result.canceled) {
+      setFileUri(result.assets[0].uri);
+      setFileMimeType('image/jpeg');
     }
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: false,
-      quality: 0.85,
+  };
+
+  const pickDocument = async () => {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ['application/pdf', 'application/msword',
+             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+             '*/*'],
+      copyToCacheDirectory: true,
     });
-    if (!result.canceled) setImageUri(result.assets[0].uri);
+    if (!result.canceled && result.assets.length > 0) {
+      const asset = result.assets[0];
+      setFileUri(asset.uri);
+      setFileMimeType(asset.mimeType ?? 'application/octet-stream');
+    }
+  };
+
+  // ── Upload / delete ────────────────────────────────────────────────────────
+
+  const openUpload = () => {
+    setFileUri(null);
+    setFileMimeType('image/jpeg');
+    setShowUpload(true);
+  };
+
+  const closeUpload = () => {
+    Keyboard.dismiss();
+    setShowUpload(false);
   };
 
   const handleSave = async (cat: FileCategory, label: string, date: string) => {
-    if (!imageUri) return;
+    if (!fileUri) return;
     setUploading(true);
-    const { error } = await uploadFile(imageUri, cat, label, '', date);
+    const { error } = await uploadFile(fileUri, cat, label, '', date, fileMimeType);
     setUploading(false);
     if (error) {
       Alert.alert('Upload failed', error);
     } else {
-      setShowUpload(false);
+      closeUpload();
       setFilterCat(cat);
     }
   };
 
   const handleDelete = async (file: ClientFile) => {
     const { error } = await deleteFile(file);
-    if (error) Alert.alert('Error', error);
+    if (error) Alert.alert('Delete failed', error);
+    if (viewerVisible) setViewerVisible(false);
   };
 
-  const openViewer = (index: number) => {
-    setViewerStartIdx(index);
-    setViewerVisible(true);
-  };
+  // ── Filtered lists ─────────────────────────────────────────────────────────
+
+  const filteredPhotos = files.filter(
+    (f) => f.file_type === 'image' && (filterCat === 'all' || f.category === filterCat),
+  );
+  const filteredDocs = files.filter(
+    (f) => f.file_type === 'pdf' && (filterCat === 'all' || f.category === filterCat),
+  );
+  const filteredLinks = files.filter(
+    (f) => f.file_type === 'link' && (filterCat === 'all' || f.category === filterCat),
+  );
+
+  const totalCount = files.filter((f) => filterCat === 'all' || f.category === filterCat).length;
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <>
-      {/* Category filter */}
-      <View style={s.filterRow}>
+    <View style={s.container}>
+      {/* Filter bar */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={s.filterBar}
+      >
+        <Pressable
+          style={[s.filterBtn, filterCat === 'all' && s.filterBtnActive]}
+          onPress={() => setFilterCat('all')}
+        >
+          <Text style={[s.filterBtnText, filterCat === 'all' && s.filterBtnTextActive]}>
+            All ({files.length})
+          </Text>
+        </Pressable>
         {CATS.map((c) => {
           const cfg = CAT_CONFIG[c];
-          const active = filterCat === c;
           const count = files.filter((f) => f.category === c).length;
+          const active = filterCat === c;
           return (
             <Pressable
               key={c}
               style={[
                 s.filterBtn,
-                active && { backgroundColor: cfg.color + '18', borderColor: cfg.color },
+                { borderColor: cfg.color + '50' },
+                active && { backgroundColor: cfg.color + '22', borderColor: cfg.color },
               ]}
               onPress={() => setFilterCat(c)}
             >
-              <Text style={[s.filterBtnText, { color: active ? cfg.color : Colors.textSecondary }]}>
-                {cfg.label}{count > 0 ? ` (${count})` : ''}
+              <Ionicons name={cfg.icon as any} size={12} color={active ? cfg.color : colors.textSecondary} />
+              <Text style={[s.filterBtnText, active && { color: cfg.color }]}>
+                {cfg.label} ({count})
               </Text>
             </Pressable>
           );
         })}
-      </View>
+      </ScrollView>
 
-      {/* Add file button */}
-      <Pressable style={s.addBtn} onPress={openUpload}>
-        <Ionicons name="add-circle-outline" size={18} color={Colors.accent} />
-        <Text style={s.addBtnText}>ADD FILE</Text>
-      </Pressable>
-
-      {/* Content */}
-      {loading ? (
-        <Text style={s.loadingText}>Loading…</Text>
-      ) : filtered.length === 0 ? (
-        <View style={s.emptyWrap}>
-          <Ionicons name={CAT_CONFIG[filterCat].icon as any} size={52} color={Colors.border} />
-          <Text style={s.emptyTitle}>No {CAT_CONFIG[filterCat].label} files yet</Text>
-          <Text style={s.emptySub}>Tap ADD FILE to upload</Text>
-        </View>
-      ) : filterCat === 'document' ? (
-        <View>
-          {filteredPhotos.map((f) => (
-            <DocumentRow
-              key={f.id}
-              file={f}
-              onPress={() => openViewer(filteredPhotos.indexOf(f))}
-            />
-          ))}
-        </View>
-      ) : (
-        <View>
-          {filteredLinks.length > 0 && (
-            <View style={{ marginBottom: filteredPhotos.length > 0 ? 12 : 0 }}>
-              {filteredLinks.map((f) => (
-                <LinkRow key={f.id} file={f} onDelete={handleDelete} />
-              ))}
-            </View>
-          )}
-          {filteredPhotos.length > 0 && (
+      <ScrollView contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Photo grid */}
+        {filteredPhotos.length > 0 && (
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>PHOTOS</Text>
             <View style={s.grid}>
-              {filteredPhotos.map((f, idx) => (
+              {filteredPhotos.map((f) => (
                 <PhotoGridItem
                   key={f.id}
                   file={f}
-                  onPress={() => openViewer(idx)}
+                  onPress={() => { setViewerFile(f); setViewerVisible(true); }}
                 />
               ))}
             </View>
-          )}
-        </View>
-      )}
+          </View>
+        )}
 
-      {/* Upload modal */}
+        {/* Documents */}
+        {filteredDocs.length > 0 && (
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>DOCUMENTS</Text>
+            {filteredDocs.map((f) => (
+              <DocumentRow
+                key={f.id}
+                file={f}
+                onDelete={() => Alert.alert('Delete file?', 'This cannot be undone.', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Delete', style: 'destructive', onPress: () => handleDelete(f) },
+                ])}
+              />
+            ))}
+          </View>
+        )}
+
+        {/* Links */}
+        {filteredLinks.length > 0 && (
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>LINKS</Text>
+            {filteredLinks.map((f) => (
+              <LinkRow
+                key={f.id}
+                file={f}
+                onDelete={() => Alert.alert('Delete link?', 'This cannot be undone.', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Delete', style: 'destructive', onPress: () => handleDelete(f) },
+                ])}
+              />
+            ))}
+          </View>
+        )}
+
+        {/* Empty state */}
+        {!loading && totalCount === 0 && (
+          <View style={s.empty}>
+            <Ionicons name="folder-open-outline" size={44} color={colors.textSecondary + '60'} />
+            <Text style={s.emptyTitle}>No files yet</Text>
+            <Text style={s.emptySubtitle}>Tap + to upload the first file</Text>
+          </View>
+        )}
+
+        <View style={{ height: 120 }} />
+      </ScrollView>
+
+      {/* Upload FAB */}
+      <Pressable style={s.fab} onPress={openUpload}>
+        <Ionicons name="add" size={28} color="#fff" />
+      </Pressable>
+
+      {/* Upload sheet */}
       <Modal
         visible={showUpload}
         animationType="slide"
-        transparent
-        onRequestClose={() => !uploading && setShowUpload(false)}
+        presentationStyle="pageSheet"
+        onRequestClose={closeUpload}
       >
-        <Pressable style={s.overlay} onPress={() => !uploading && setShowUpload(false)}>
-          <Pressable style={s.sheet} onPress={() => {}}>
-            <UploadForm
-              key={formKey}
-              imageUri={imageUri}
-              uploading={uploading}
-              onPickGallery={pickGallery}
-              onPickCamera={pickCamera}
-              onSave={handleSave}
-              onCancel={() => setShowUpload(false)}
-            />
-          </Pressable>
-        </Pressable>
+        <View style={[s.sheet, { backgroundColor: colors.surface }]}>
+          <UploadForm
+            fileUri={fileUri}
+            uploading={uploading}
+            onPickGallery={pickGallery}
+            onPickCamera={pickCamera}
+            onPickDocument={pickDocument}
+            onSave={handleSave}
+            onCancel={closeUpload}
+          />
+        </View>
       </Modal>
 
-      {/* Fullscreen viewer */}
-      <Modal
+      {/* Image viewer */}
+      <ImageViewer
+        file={viewerFile}
         visible={viewerVisible}
-        animationType="fade"
-        presentationStyle="fullScreen"
-        onRequestClose={() => setViewerVisible(false)}
-      >
-        <ImageViewer
-          files={filteredPhotos}
-          startIndex={viewerStartIdx}
-          onClose={() => setViewerVisible(false)}
-          onDelete={handleDelete}
-        />
-      </Modal>
-    </>
+        onClose={() => setViewerVisible(false)}
+        onDelete={handleDelete}
+      />
+    </View>
   );
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────────
+// ── Style factories ────────────────────────────────────────────────────────────
 
-const uf = StyleSheet.create({
-  handle: {
-    width: 40, height: 4, borderRadius: 2,
-    backgroundColor: Colors.border,
-    alignSelf: 'center', marginTop: 12, marginBottom: 8,
-  },
-  header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, marginBottom: 4,
-  },
-  title: { ...Typography.label, color: Colors.textPrimary, fontSize: 14 },
-  scroll: { flexGrow: 0 },
-  content: { padding: 20, paddingTop: 12, paddingBottom: 44 },
-  lbl: { ...Typography.label, color: Colors.textSecondary, marginBottom: 8 },
-  catRow: { flexDirection: 'row', gap: 8 },
-  catBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, borderWidth: 1, borderColor: Colors.border, borderRadius: 12, paddingVertical: 10,
-  },
-  catBtnText: { fontSize: 11, fontWeight: '700' },
-  srcRow: { flexDirection: 'row', gap: 12 },
-  srcBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    borderWidth: 1.5, borderColor: Colors.accent + '50', borderRadius: 14,
-    paddingVertical: 20, backgroundColor: Colors.accent + '08',
-  },
-  srcBtnText: { color: Colors.accent, fontWeight: '700', fontSize: 14 },
-  previewWrap: {
-    borderRadius: 12, overflow: 'hidden',
-    height: 180, position: 'relative',
-  },
-  preview: { width: '100%', height: '100%' },
-  changeBtn: {
-    position: 'absolute', bottom: 8, right: 8,
-    backgroundColor: 'rgba(0,0,0,0.62)', borderRadius: 8,
-    paddingHorizontal: 12, paddingVertical: 6,
-  },
-  changeBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
-  input: {
-    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
-    color: Colors.textPrimary, fontSize: 15, marginBottom: 4,
-  },
-  saveBtn: {
-    backgroundColor: Colors.accent, borderRadius: 13,
-    paddingVertical: 15, alignItems: 'center', marginTop: 22,
-  },
-  saveBtnDisabled: { opacity: 0.35 },
-  saveBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 14, letterSpacing: 1.2 },
-});
+function makeUfStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    handle: {
+      width: 36, height: 4, borderRadius: 2,
+      backgroundColor: c.border, alignSelf: 'center', marginTop: 10, marginBottom: 6,
+    },
+    header: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 20, paddingVertical: 14,
+      borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    title: { fontSize: 13, fontWeight: '700', letterSpacing: 0.8, color: c.textPrimary },
+    scroll: { maxHeight: SCREEN_H * 0.78 },
+    content: { padding: 20, paddingBottom: 40 },
+    lbl: {
+      fontSize: 10, fontWeight: '700', letterSpacing: 0.8,
+      color: c.textSecondary, marginBottom: 8,
+    },
+    catRow: { flexDirection: 'row', gap: 8 },
+    catBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      paddingHorizontal: 12, paddingVertical: 8,
+      borderRadius: 20, borderWidth: 1, borderColor: c.border,
+    },
+    catBtnText: { fontSize: 12, fontWeight: '600' },
+    srcRow: { flexDirection: 'row', gap: 10 },
+    srcBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+      paddingVertical: 14, borderRadius: 12,
+      borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceRaised,
+    },
+    srcBtnText: { fontSize: 13, fontWeight: '600', color: c.textPrimary },
+    docPickBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+      paddingVertical: 18, borderRadius: 12,
+      borderWidth: 1.5, borderColor: c.accent + '60',
+      borderStyle: 'dashed', backgroundColor: c.accent + '08',
+    },
+    docPreview: {
+      alignItems: 'center', justifyContent: 'center', gap: 6,
+      paddingVertical: 18, borderRadius: 12,
+      backgroundColor: '#FF980010', borderWidth: 1, borderColor: '#FF980030',
+    },
+    docPreviewText: { fontSize: 13, fontWeight: '500', color: c.textSecondary },
+    changeDocBtn: { marginTop: 4, paddingHorizontal: 16, paddingVertical: 6, borderRadius: 8, backgroundColor: c.surfaceRaised },
+    changeDocBtnText: { fontSize: 12, fontWeight: '600', color: c.accent },
+    previewWrap: { borderRadius: 12, overflow: 'hidden', position: 'relative' },
+    preview: { width: '100%', height: 180, borderRadius: 12 },
+    changeBtn: {
+      position: 'absolute', bottom: 8, right: 8,
+      backgroundColor: '#000a', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8,
+    },
+    changeBtnText: { fontSize: 12, fontWeight: '600', color: '#fff' },
+    inputRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      backgroundColor: c.surfaceRaised, borderRadius: 10,
+      borderWidth: 1, borderColor: c.border, paddingHorizontal: 12, paddingVertical: 10,
+    },
+    input: { flex: 1, fontSize: 14, fontFamily: 'Inter_400Regular' },
+    datePressable: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      paddingVertical: 8, paddingHorizontal: 12,
+      borderRadius: 8, borderWidth: 1, borderColor: c.accent + '50',
+      backgroundColor: c.accent + '10', alignSelf: 'flex-start',
+    },
+    datePressableText: { fontSize: 14, fontWeight: '600', color: c.accent },
+    saveBtn: {
+      marginTop: 24, paddingVertical: 15, borderRadius: 12,
+      backgroundColor: c.accent, alignItems: 'center',
+    },
+    saveBtnDisabled: { opacity: 0.4 },
+    saveBtnText: { fontSize: 14, fontWeight: '700', letterSpacing: 0.5, color: '#fff' },
+  });
+}
 
-const vw = StyleSheet.create({
-  header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingTop: 56, paddingBottom: 12,
-  },
-  counter: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  slide: {
-    width: SCREEN_W, height: VIEWER_IMG_H,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  image: { width: SCREEN_W, height: VIEWER_IMG_H },
-  errorWrap: { alignItems: 'center', gap: 10 },
-  errorText: { color: Colors.textSecondary, fontSize: 14 },
-  caption: { padding: 24, paddingBottom: 48, alignItems: 'center', gap: 4 },
-  captionDate: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  captionLabel: { color: Colors.textSecondary, fontSize: 14 },
-  swipeHint: { color: Colors.textSecondary, fontSize: 12, marginTop: 6 },
-});
+function makeVwStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: '#000', justifyContent: 'space-between' },
+    header: {
+      flexDirection: 'row', alignItems: 'center',
+      paddingTop: Platform.OS === 'ios' ? 56 : 20,
+      paddingHorizontal: 16, paddingBottom: 12,
+      backgroundColor: '#000c',
+    },
+    closeBtn: { padding: 8 },
+    headerMeta: { flex: 1, marginHorizontal: 10 },
+    headerLabel: { fontSize: 15, fontWeight: '700', color: '#fff' },
+    headerDate: { fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 1 },
+    deleteBtn: { padding: 8 },
+    img: { width: SCREEN_W, height: VIEWER_IMG_H, alignSelf: 'center' },
+    footer: { paddingHorizontal: 20, paddingBottom: 40, flexDirection: 'row' },
+    catChip: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
+    },
+    catChipText: { fontSize: 12, fontWeight: '600' },
+  });
+}
 
-const s = StyleSheet.create({
-  filterRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
-  filterBtn: {
-    flex: 1, alignItems: 'center', paddingVertical: 9,
-    borderRadius: 10, borderWidth: 1, borderColor: Colors.border,
-  },
-  filterBtnText: { fontSize: 11, fontWeight: '700' },
-
-  addBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    borderWidth: 1.5, borderColor: Colors.accent + '60', borderRadius: 12,
-    paddingVertical: 12, marginBottom: 16, backgroundColor: Colors.accent + '10',
-  },
-  addBtnText: { color: Colors.accent, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
-
-  loadingText: { color: Colors.textSecondary, textAlign: 'center', paddingTop: 40 },
-  emptyWrap: { alignItems: 'center', paddingTop: 40, gap: 8 },
-  emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 8 },
-  emptySub: { ...Typography.body, color: Colors.textSecondary },
-
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP },
-  gridItem: {
-    width: ITEM_SIZE, height: ITEM_SIZE,
-    borderRadius: 8, overflow: 'hidden',
-    backgroundColor: Colors.surface,
-  },
-  gridThumb: { width: '100%', height: '100%' },
-  gridError: {
-    flex: 1, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: Colors.surface,
-  },
-  gridLabelBar: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 5, paddingVertical: 3,
-  },
-  gridLabelText: { color: '#fff', fontSize: 9, fontWeight: '600' },
-
-  docRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: Colors.surface, borderRadius: 14, padding: 12,
-    marginBottom: 8, borderWidth: 1, borderColor: Colors.border,
-  },
-  docThumb: { width: 58, height: 58, borderRadius: 8 },
-  docThumbError: {
-    width: 58, height: 58, borderRadius: 8,
-    backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1, borderColor: Colors.border,
-  },
-  docInfo: { flex: 1 },
-  docLabel: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
-  docDate: { ...Typography.caption, color: Colors.textSecondary },
-
-  linkRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: Colors.surface, borderRadius: 14, padding: 12,
-    marginBottom: 8, borderWidth: 1, borderColor: '#4CAF5030',
-  },
-  linkIcon: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: '#4CAF5015', justifyContent: 'center', alignItems: 'center',
-  },
-  linkInfo: { flex: 1 },
-  linkLabel: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
-  linkDate: { ...Typography.caption, color: Colors.textSecondary },
-  linkOpenBtn: {
-    backgroundColor: '#4CAF5015', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 6,
-    borderWidth: 1, borderColor: '#4CAF5050',
-  },
-  linkOpenText: { color: '#4CAF50', fontSize: 11, fontWeight: '800', letterSpacing: 0.8 },
-
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: Colors.surface,
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    maxHeight: '92%', paddingBottom: 16,
-  },
-});
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.bg },
+    filterBar: { paddingHorizontal: CONTENT_PAD, paddingVertical: 12, gap: 8 },
+    filterBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      paddingHorizontal: 12, paddingVertical: 7,
+      borderRadius: 20, borderWidth: 1, borderColor: c.border,
+      backgroundColor: c.surfaceRaised,
+    },
+    filterBtnActive: { backgroundColor: c.accent + '22', borderColor: c.accent },
+    filterBtnText: { fontSize: 12, fontWeight: '600', color: c.textSecondary },
+    filterBtnTextActive: { color: c.accent },
+    scrollContent: { paddingHorizontal: CONTENT_PAD },
+    section: { marginBottom: 24 },
+    sectionTitle: {
+      fontSize: 10, fontWeight: '700', letterSpacing: 0.8,
+      color: c.textSecondary, marginBottom: 10, marginTop: 4,
+    },
+    grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP },
+    gridItem: {
+      width: ITEM_SIZE, height: ITEM_SIZE,
+      borderRadius: 8, overflow: 'hidden',
+      backgroundColor: c.surfaceRaised,
+    },
+    gridImg: { width: '100%', height: '100%' },
+    gridLabelWrap: {
+      position: 'absolute', bottom: 0, left: 0, right: 0,
+      backgroundColor: '#000a', paddingHorizontal: 5, paddingVertical: 3,
+    },
+    gridLabel: { fontSize: 9, color: '#fff', fontWeight: '600' },
+    gridCatDot: {
+      position: 'absolute', top: 5, right: 5,
+      width: 7, height: 7, borderRadius: 4,
+    },
+    docRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      paddingVertical: 12, paddingHorizontal: 14,
+      backgroundColor: c.surfaceRaised, borderRadius: 12, marginBottom: 8,
+      borderWidth: 1, borderColor: c.border,
+    },
+    docIconWrap: {
+      width: 44, height: 44, borderRadius: 10,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    docMeta: { flex: 1 },
+    docLabel: { fontSize: 14, fontWeight: '600', color: c.textPrimary },
+    docDate: { fontSize: 11, color: c.textSecondary, marginTop: 2 },
+    sheet: { flex: 1, borderTopLeftRadius: 16, borderTopRightRadius: 16, overflow: 'hidden' },
+    fab: {
+      position: 'absolute', bottom: 24, right: 24,
+      width: 56, height: 56, borderRadius: 28,
+      backgroundColor: c.accent,
+      alignItems: 'center', justifyContent: 'center',
+      shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25, shadowRadius: 8, elevation: 8,
+    },
+    empty: {
+      alignItems: 'center', justifyContent: 'center',
+      paddingTop: 80, gap: 10,
+    },
+    emptyTitle: { fontSize: 16, fontWeight: '700', color: c.textSecondary },
+    emptySubtitle: { fontSize: 13, color: c.textSecondary + '80' },
+  });
+}

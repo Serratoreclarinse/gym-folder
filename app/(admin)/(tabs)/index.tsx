@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
-  ActivityIndicator, Image, Pressable, RefreshControl,
+  ActivityIndicator, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, useWindowDimensions, View,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
-import { Colors, Typography } from '@/constants/theme';
+import { registerPushToken } from '@/lib/pushNotifications';
+import { useAuth } from '@/context/AuthContext';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 type Stats = {
   coachCount: number;
@@ -24,6 +28,14 @@ type AlertItem = {
   title: string;
   subtitle: string;
   route: string;
+};
+
+type RatingItem = {
+  id: string;
+  clientName: string;
+  clientId: string;
+  rating: number;
+  sessionDate: string;
 };
 
 const LEVEL_COLOR = {
@@ -47,19 +59,30 @@ function daysUntil(dateStr: string): number {
 export default function AdminDashboardScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
+  const { profile } = useAuth();
+  const { colors, isDark, toggleTheme } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
-  const [stats, setStats]   = useState<Stats | null>(null);
-  const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  useEffect(() => {
+    if (profile?.id) registerPushToken(profile.id);
+  }, [profile?.id]);
+
+  const [stats, setStats]     = useState<Stats | null>(null);
+  const [alerts, setAlerts]   = useState<AlertItem[]>([]);
+  const [ratings, setRatings] = useState<RatingItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     const ms = monthStart();
 
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+
     const [coachRes, clientRes, pkgRes, sessRes, revMonthRes, revAllRes,
-           lowPkgRes, coachAlertRes, neverPaidRes, allPaymentsRes] = await Promise.all([
-      supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'coach'),
-      supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'client'),
+           lowPkgRes, coachAlertRes, neverPaidRes, allPaymentsRes,
+           ratingsRes, pendingTransferRes, pendingFreezeRes, pendingEqRes] = await Promise.all([
+      supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'coach').is('deactivated_at', null),
+      supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'client').is('deactivated_at', null),
       supabase.from('packages').select('id', { count: 'exact', head: true }).eq('status', 'active'),
       supabase.from('workout_sessions').select('id', { count: 'exact', head: true }).gte('session_date', ms),
       supabase.from('payments').select('amount').gte('paid_at', ms),
@@ -73,6 +96,7 @@ export default function AdminDashboardScreen() {
       supabase.from('profiles')
         .select('id, name, visa_expiry')
         .eq('role', 'coach')
+        .is('deactivated_at', null)
         .not('visa_expiry', 'is', null),
       // Active clients with NO payment ever
       supabase.from('packages')
@@ -80,6 +104,32 @@ export default function AdminDashboardScreen() {
         .eq('status', 'active'),
       // All payments: get distinct client_ids who have paid
       supabase.from('payments').select('client_id'),
+      // Recent session ratings (last 30 days)
+      supabase
+        .from('workout_sessions')
+        .select(`
+          id, session_date, client_id,
+          client:profiles!workout_sessions_client_id_fkey(name),
+          session_ratings(rating)
+        `)
+        .gte('session_date', thirtyDaysAgo)
+        .order('session_date', { ascending: false })
+        .limit(100),
+      // Pending transfers awaiting admin approval
+      supabase
+        .from('client_transfers')
+        .select('id, client_id, from_coach_id, profiles!client_transfers_client_id_fkey(name)')
+        .eq('status', 'pending_admin'),
+      // Pending freeze requests
+      supabase
+        .from('package_freezes')
+        .select('id, client_id, freeze_start, freeze_end, profiles!package_freezes_client_id_fkey(name)')
+        .eq('status', 'pending'),
+      // Pending equipment requests
+      supabase
+        .from('equipment_requests')
+        .select('id, item_name, quantity, coach:profiles!equipment_requests_coach_id_fkey(name)')
+        .eq('status', 'pending'),
     ]);
 
     const revenueThisMonth = (revMonthRes.data ?? []).reduce((s, r: any) => s + Number(r.amount), 0);
@@ -166,10 +216,13 @@ export default function AdminDashboardScreen() {
       }
     }
 
-    // Payment alerts — clients with active package but NO payment on file
+    // Payment alerts — clients with active package but NO payment on file (one alert per client)
     const paidClientIds = new Set((allPaymentsRes.data ?? []).map((p: any) => p.client_id));
+    const noPayAlertedClients = new Set<string>();
     for (const pkg of (neverPaidRes.data ?? []) as any[]) {
       if (paidClientIds.has(pkg.client_id)) continue;
+      if (noPayAlertedClients.has(pkg.client_id)) continue;
+      noPayAlertedClients.add(pkg.client_id);
       const clientName = pkg.profiles?.name ?? 'Unknown Client';
       newAlerts.push({
         id: `nopay-${pkg.client_id}`,
@@ -181,6 +234,45 @@ export default function AdminDashboardScreen() {
       });
     }
 
+    // Pending transfer alerts
+    for (const tx of (pendingTransferRes.data ?? []) as any[]) {
+      const clientName = tx.profiles?.name ?? 'Unknown Client';
+      newAlerts.push({
+        id: `tx-${tx.id}`,
+        level: 'notice',
+        icon: 'swap-horizontal-outline',
+        title: `Transfer Request — ${clientName}`,
+        subtitle: 'Pending admin approval',
+        route: '/(admin)/(tabs)/transfers',
+      });
+    }
+
+    // Pending freeze alerts
+    for (const fz of (pendingFreezeRes.data ?? []) as any[]) {
+      const clientName = fz.profiles?.name ?? 'Unknown Client';
+      newAlerts.push({
+        id: `freeze-${fz.id}`,
+        level: 'notice',
+        icon: 'snow-outline',
+        title: `Freeze Request — ${clientName}`,
+        subtitle: `${fz.freeze_start} → ${fz.freeze_end} · pending approval`,
+        route: `/(admin)/client/${fz.client_id}`,
+      });
+    }
+
+    // Equipment request alerts
+    for (const eq of (pendingEqRes.data ?? []) as any[]) {
+      const coachName = eq.coach?.name ?? 'Unknown Coach';
+      newAlerts.push({
+        id: `eq-${eq.id}`,
+        level: 'notice',
+        icon: 'construct-outline',
+        title: `Equipment Request — ${coachName}`,
+        subtitle: `${eq.item_name}${eq.quantity > 1 ? ` ×${eq.quantity}` : ''} · pending approval`,
+        route: '/(admin)/equipment-requests',
+      });
+    }
+
     // Sort: critical first
     newAlerts.sort((a, b) => {
       const order = { critical: 0, warning: 1, notice: 2 };
@@ -188,40 +280,74 @@ export default function AdminDashboardScreen() {
     });
 
     setAlerts(newAlerts);
+
+    // Build ratings list
+    const newRatings: RatingItem[] = [];
+    for (const row of (ratingsRes.data ?? []) as any[]) {
+      const ratingArr = row.session_ratings as { rating: number }[] | null;
+      if (!ratingArr || ratingArr.length === 0) continue;
+      newRatings.push({
+        id: row.id,
+        clientName: row.client?.name ?? 'Unknown',
+        clientId: row.client_id,
+        rating: ratingArr[0].rating,
+        sessionDate: row.session_date,
+      });
+    }
+    setRatings(newRatings);
+
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // Real-time: silently re-fetch whenever any watched table changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-dashboard')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' },          () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'packages' },          () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'workout_sessions' },  () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' },          () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_transfers' },  () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'session_ratings' },   () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'package_freezes' },   () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'equipment_requests' }, () => load(true))
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [load]);
 
   if (loading && !stats) {
     return (
       <View style={s.center}>
-        <ActivityIndicator size="large" color={Colors.accent} />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
   const monthName = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const statCards = [
-    { icon: 'people-outline',  label: 'Coaches',                    value: stats?.coachCount ?? 0,        color: Colors.accent, route: '/(admin)/(tabs)/coaches' },
-    { icon: 'person-outline',  label: 'Clients',                    value: stats?.clientCount ?? 0,       color: '#4CAF50',     route: '/(admin)/(tabs)/clients' },
-    { icon: 'cube-outline',    label: 'Active Packages',            value: stats?.activePackages ?? 0,    color: '#FF9800',     route: null },
-    { icon: 'barbell-outline', label: `Sessions · ${monthName}`,   value: stats?.sessionsThisMonth ?? 0, color: '#9C27B0',     route: null },
+    { icon: 'people-outline', label: 'Coaches',         value: stats?.coachCount ?? 0,     color: colors.accent, route: '/(admin)/(tabs)/coaches' },
+    { icon: 'person-outline', label: 'Clients',         value: stats?.clientCount ?? 0,    color: colors.success,  route: '/(admin)/(tabs)/clients' },
+    { icon: 'cube-outline',   label: 'Active Packages', value: stats?.activePackages ?? 0, color: colors.warning,  route: '/(admin)/(tabs)/clients' },
   ] as const;
 
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      <Image source={require('@/assets/images/logo.png')} style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.05 }} resizeMode="contain" />
     <ScrollView
       style={s.scroll}
       contentContainerStyle={[s.content, isDesktop && s.contentDesktop]}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={Colors.accent} />}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />}
     >
       <View style={[s.inner, isDesktop && s.innerDesktop]}>
         <View style={s.header}>
-          <Text style={[s.brand, isDesktop && s.brandDesktop]}>ELEVATE</Text>
-          <View style={s.adminPill}>
-            <Text style={s.adminPillText}>ADMIN</Text>
+          <Text style={[s.brand, isDesktop && s.brandDesktop]}>ELEVATƎ</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Pressable onPress={toggleTheme} style={s.themeBtn} hitSlop={8}>
+              <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={16} color={colors.textSecondary} />
+            </Pressable>
+            <View style={s.adminPill}>
+              <Text style={s.adminPillText}>ADMIN</Text>
+            </View>
           </View>
         </View>
 
@@ -251,10 +377,10 @@ export default function AdminDashboardScreen() {
                       <Ionicons name={a.icon as any} size={18} color={color} />
                     </View>
                     <View style={s.alertText}>
-                      <Text style={[s.alertTitle, { color: Colors.textPrimary }]}>{a.title}</Text>
+                      <Text style={[s.alertTitle, { color: colors.textPrimary }]}>{a.title}</Text>
                       <Text style={s.alertSub}>{a.subtitle}</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
+                    <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
                   </Pressable>
                 );
               })}
@@ -266,7 +392,7 @@ export default function AdminDashboardScreen() {
           <>
             <Text style={s.sectionTitle}>ALERTS</Text>
             <View style={s.noAlerts}>
-              <Ionicons name="checkmark-circle-outline" size={20} color="#4CAF50" />
+              <Ionicons name="checkmark-circle-outline" size={20} color={colors.success} />
               <Text style={s.noAlertsText}>All clear — no warnings</Text>
             </View>
           </>
@@ -307,76 +433,133 @@ export default function AdminDashboardScreen() {
             </Text>
           </View>
         </View>
+
+        {/* ── Client Ratings ── */}
+        <Text style={[s.sectionTitle, { marginTop: 28 }]}>CLIENT RATINGS (Last 30 Days)</Text>
+        {ratings.length === 0 ? (
+          <View style={s.noAlerts}>
+            <Ionicons name="star-outline" size={20} color={colors.textSecondary} />
+            <Text style={[s.noAlertsText, { color: colors.textSecondary }]}>No ratings yet</Text>
+          </View>
+        ) : (
+          <View style={s.alertsList}>
+            {ratings.map((r, i) => {
+              const stars = Math.round(r.rating);
+              const isHigh = stars >= 4;
+              const isLow  = stars <= 2;
+              const color  = isHigh ? colors.success : isLow ? colors.danger : colors.warning;
+              const icon   = isHigh ? 'star' : isLow ? 'star-half-outline' : 'star-outline';
+              const dateStr = new Date(r.sessionDate + 'T00:00:00').toLocaleDateString('en-US', {
+                month: 'short', day: 'numeric',
+              });
+              return (
+                <Pressable
+                  key={r.id}
+                  style={[s.alertRow, { borderLeftColor: color }, i < ratings.length - 1 && s.alertRowBorder]}
+                  onPress={() => router.push(`/(admin)/client/${r.clientId}` as any)}
+                >
+                  <View style={[s.alertIconWrap, { backgroundColor: color + '18' }]}>
+                    <Ionicons name={icon as any} size={18} color={color} />
+                  </View>
+                  <View style={s.alertText}>
+                    <Text style={[s.alertTitle, { color: colors.textPrimary }]}>
+                      {r.clientName}
+                    </Text>
+                    <Text style={s.alertSub}>{dateStr} · {stars} star{stars !== 1 ? 's' : ''}</Text>
+                  </View>
+                  <View style={s.starRow}>
+                    {[1,2,3,4,5].map((n) => (
+                      <Ionicons
+                        key={n}
+                        name={n <= stars ? 'star' : 'star-outline'}
+                        size={12}
+                        color={color}
+                      />
+                    ))}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
       </View>
     </ScrollView>
-    </View>
   );
 }
 
-const s = StyleSheet.create({
-  scroll: { flex: 1 },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+  scroll: { flex: 1, backgroundColor: c.bg },
   content: { padding: 20, paddingBottom: 48 },
   contentDesktop: { padding: 40, paddingTop: 32 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.bg },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   inner: { width: '100%' },
   innerDesktop: { maxWidth: 960, alignSelf: 'center' },
 
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 },
-  brand: { fontSize: 18, fontWeight: '800', color: Colors.textPrimary, letterSpacing: 2 },
+  brand: { fontSize: 18, fontWeight: '800', color: c.textPrimary, letterSpacing: 2 },
   brandDesktop: { fontSize: 22 },
-  adminPill: {
-    backgroundColor: Colors.accent + '18', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 4,
-    borderWidth: 1, borderColor: Colors.accent + '50',
+  themeBtn: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
+    justifyContent: 'center', alignItems: 'center',
   },
-  adminPillText: { color: Colors.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  adminPill: {
+    backgroundColor: c.accent + '18', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderWidth: 1, borderColor: c.accent + '50',
+  },
+  adminPillText: { color: c.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
 
-  sectionTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 16 },
+  sectionTitle: { ...Typography.label, color: c.textSecondary, marginBottom: 16 },
 
   // Alerts
-  alertsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
+  alertsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 24, marginBottom: 16 },
   alertBadge: {
-    backgroundColor: Colors.accent, borderRadius: 10,
+    backgroundColor: c.accent, borderRadius: 10,
     minWidth: 20, height: 20, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6,
   },
   alertBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   alertsList: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: c.surface, borderRadius: 14,
+    borderWidth: 1, borderColor: c.border,
     overflow: 'hidden', marginBottom: 4,
   },
   alertRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     padding: 14, borderLeftWidth: 3,
   },
-  alertRowBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
+  alertRowBorder: { borderBottomWidth: 1, borderBottomColor: c.border },
   alertIconWrap: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
   alertText: { flex: 1 },
   alertTitle: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
-  alertSub: { ...Typography.caption, color: Colors.textSecondary },
+  alertSub: { ...Typography.caption, color: c.textSecondary },
   noAlerts: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#4CAF5010', borderRadius: 12,
-    borderWidth: 1, borderColor: '#4CAF5030',
+    backgroundColor: c.success + '10', borderRadius: 12,
+    borderWidth: 1, borderColor: c.success + '30',
     padding: 14, marginBottom: 4,
   },
-  noAlertsText: { ...Typography.body, color: '#4CAF50' },
+  noAlertsText: { ...Typography.body, color: c.success },
 
   // Stats
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   statsGridDesktop: { flexWrap: 'nowrap' },
-  statCard: { width: '47%', backgroundColor: Colors.surface, borderRadius: 14, borderWidth: 1, padding: 14, gap: 6 },
+  statCard: { width: '47%', backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, padding: 14, gap: 6 },
   statCardDesktop: { flex: 1, width: 'auto', padding: 18, gap: 8 },
   statIcon: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   statValue: { fontSize: 24, fontWeight: '800', lineHeight: 28 },
   statValueDesktop: { fontSize: 30, lineHeight: 34 },
-  statLabel: { ...Typography.caption, color: Colors.textSecondary, lineHeight: 15, fontSize: 11 },
+  statLabel: { ...Typography.caption, color: c.textSecondary, lineHeight: 15, fontSize: 11 },
+
+  starRow: { flexDirection: 'row', gap: 2, alignItems: 'center' },
 
   // Revenue
-  revenueCard: { flexDirection: 'row', backgroundColor: Colors.surface, borderRadius: 14, borderWidth: 1, borderColor: '#4CAF5030', overflow: 'hidden' },
+  revenueCard: { flexDirection: 'row', backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: c.success + '30', overflow: 'hidden' },
   revenueItem: { flex: 1, alignItems: 'center', paddingVertical: 20 },
-  revenueDivider: { width: 1, backgroundColor: Colors.border },
-  revenueLabel: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 6 },
-  revenueValue: { fontSize: 22, fontWeight: '900', color: '#4CAF50' },
-});
+  revenueDivider: { width: 1, backgroundColor: c.border },
+  revenueLabel: { ...Typography.caption, color: c.textSecondary, marginBottom: 6 },
+  revenueValue: { fontSize: 22, fontWeight: '900', color: c.success },
+  });
+}

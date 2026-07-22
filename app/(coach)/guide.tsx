@@ -1,7 +1,8 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography } from '@/constants/theme';
+import { Typography, ColorScheme } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 type Section = {
   icon: string;
@@ -11,10 +12,13 @@ type Section = {
   steps: string[];
 };
 
+// Colors.accent and Colors.textSecondary references in SECTIONS are left as
+// hardcoded hex strings since SECTIONS is a static module-level constant.
+// The actual accent color (#E8001D) and textSecondary (#888) are used directly.
 const SECTIONS: Section[] = [
   {
     icon: 'home-outline',
-    iconColor: Colors.accent,
+    iconColor: '#E8001D',
     title: 'Dashboard',
     subtitle: 'Your command center — everything important at a glance.',
     steps: [
@@ -91,7 +95,7 @@ const SECTIONS: Section[] = [
   },
   {
     icon: 'pencil-outline',
-    iconColor: Colors.accent,
+    iconColor: '#E8001D',
     title: 'Log Session',
     subtitle: 'Manually record a session after it has been completed.',
     steps: [
@@ -165,7 +169,7 @@ const SECTIONS: Section[] = [
   },
   {
     icon: 'ban-outline',
-    iconColor: Colors.accent,
+    iconColor: '#E8001D',
     title: 'Blocked Dates',
     subtitle: 'Mark days when you are unavailable — vacation, rest days, or holidays.',
     steps: [
@@ -186,7 +190,7 @@ const SECTIONS: Section[] = [
   },
   {
     icon: 'person-outline',
-    iconColor: Colors.textSecondary,
+    iconColor: '#888',
     title: 'Profile',
     subtitle: 'Manage your personal information and account settings.',
     steps: [
@@ -197,29 +201,29 @@ const SECTIONS: Section[] = [
   },
 ];
 
-function GuideCard({ section }: { section: Section }) {
+function GuideCard({ section, colors, styles }: { section: Section; colors: ColorScheme; styles: ReturnType<typeof makeStyles> }) {
   const [open, setOpen] = useState(false);
   return (
-    <View style={s.card}>
-      <Pressable style={s.cardHeader} onPress={() => setOpen((v) => !v)}>
-        <View style={[s.iconCircle, { backgroundColor: section.iconColor + '20', borderColor: section.iconColor + '40' }]}>
+    <View style={styles.card}>
+      <Pressable style={styles.cardHeader} onPress={() => setOpen((v) => !v)}>
+        <View style={[styles.iconCircle, { backgroundColor: section.iconColor + '20', borderColor: section.iconColor + '40' }]}>
           <Ionicons name={section.icon as any} size={22} color={section.iconColor} />
         </View>
-        <View style={s.headerText}>
-          <Text style={s.cardTitle}>{section.title}</Text>
-          <Text style={s.cardSubtitle} numberOfLines={open ? undefined : 1}>{section.subtitle}</Text>
+        <View style={styles.headerText}>
+          <Text style={styles.cardTitle}>{section.title}</Text>
+          <Text style={styles.cardSubtitle} numberOfLines={open ? undefined : 1}>{section.subtitle}</Text>
         </View>
-        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.textSecondary} />
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textSecondary} />
       </Pressable>
 
       {open && (
-        <View style={s.steps}>
+        <View style={styles.steps}>
           {section.steps.map((step, i) => (
-            <View key={i} style={s.step}>
-              <View style={[s.stepNum, { backgroundColor: section.iconColor + '20' }]}>
-                <Text style={[s.stepNumText, { color: section.iconColor }]}>{i + 1}</Text>
+            <View key={i} style={styles.step}>
+              <View style={[styles.stepNum, { backgroundColor: section.iconColor + '20' }]}>
+                <Text style={[styles.stepNumText, { color: section.iconColor }]}>{i + 1}</Text>
               </View>
-              <Text style={s.stepText}>{step}</Text>
+              <Text style={styles.stepText}>{step}</Text>
             </View>
           ))}
         </View>
@@ -229,10 +233,13 @@ function GuideCard({ section }: { section: Section }) {
 }
 
 export default function CoachGuideScreen() {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+
   return (
     <ScrollView style={s.scroll} contentContainerStyle={s.content}>
       <View style={s.hero}>
-        <Ionicons name="book-outline" size={40} color={Colors.accent} />
+        <Ionicons name="book-outline" size={40} color={colors.accent} />
         <Text style={s.heroTitle}>COACH USER GUIDE</Text>
         <Text style={s.heroSub}>
           Tap each section to learn how it works.{'\n'}Everything you need is right here.
@@ -240,66 +247,68 @@ export default function CoachGuideScreen() {
       </View>
 
       {SECTIONS.map((section) => (
-        <GuideCard key={section.title} section={section} />
+        <GuideCard key={section.title} section={section} colors={colors} styles={s} />
       ))}
 
       <View style={s.footer}>
-        <Ionicons name="heart-outline" size={18} color={Colors.textSecondary} />
+        <Ionicons name="heart-outline" size={18} color={colors.textSecondary} />
         <Text style={s.footerText}>You've got this, Coach!</Text>
       </View>
     </ScrollView>
   );
 }
 
-const s = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: Colors.bg },
-  content: { padding: 16, paddingBottom: 48 },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    scroll: { flex: 1, backgroundColor: c.bg },
+    content: { padding: 16, paddingBottom: 48 },
 
-  hero: {
-    alignItems: 'center', paddingVertical: 28, paddingHorizontal: 20,
-    backgroundColor: Colors.surface, borderRadius: 20,
-    borderWidth: 1, borderColor: Colors.accent + '30',
-    marginBottom: 16, gap: 8,
-  },
-  heroTitle: {
-    ...Typography.label, color: Colors.accent,
-    fontSize: 16, fontWeight: '800', letterSpacing: 2, marginTop: 4,
-  },
-  heroSub: {
-    ...Typography.body, color: Colors.textSecondary,
-    textAlign: 'center', lineHeight: 22,
-  },
+    hero: {
+      alignItems: 'center', paddingVertical: 28, paddingHorizontal: 20,
+      backgroundColor: c.surface, borderRadius: 20,
+      borderWidth: 1, borderColor: c.accent + '30',
+      marginBottom: 16, gap: 8,
+    },
+    heroTitle: {
+      ...Typography.label, color: c.accent,
+      fontSize: 16, fontWeight: '800', letterSpacing: 2, marginTop: 4,
+    },
+    heroSub: {
+      ...Typography.body, color: c.textSecondary,
+      textAlign: 'center', lineHeight: 22,
+    },
 
-  card: {
-    backgroundColor: Colors.surface, borderRadius: 16,
-    borderWidth: 1, borderColor: Colors.border,
-    marginBottom: 10, overflow: 'hidden',
-  },
-  cardHeader: {
-    flexDirection: 'row', alignItems: 'center',
-    padding: 16, gap: 12,
-  },
-  iconCircle: {
-    width: 44, height: 44, borderRadius: 22,
-    justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1, flexShrink: 0,
-  },
-  headerText: { flex: 1 },
-  cardTitle: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700', marginBottom: 2 },
-  cardSubtitle: { ...Typography.caption, color: Colors.textSecondary, lineHeight: 17 },
+    card: {
+      backgroundColor: c.surface, borderRadius: 16,
+      borderWidth: 1, borderColor: c.border,
+      marginBottom: 10, overflow: 'hidden',
+    },
+    cardHeader: {
+      flexDirection: 'row', alignItems: 'center',
+      padding: 16, gap: 12,
+    },
+    iconCircle: {
+      width: 44, height: 44, borderRadius: 22,
+      justifyContent: 'center', alignItems: 'center',
+      borderWidth: 1, flexShrink: 0,
+    },
+    headerText: { flex: 1 },
+    cardTitle: { ...Typography.body, color: c.textPrimary, fontWeight: '700', marginBottom: 2 },
+    cardSubtitle: { ...Typography.caption, color: c.textSecondary, lineHeight: 17 },
 
-  steps: {
-    borderTopWidth: 1, borderTopColor: Colors.border,
-    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 16, gap: 12,
-  },
-  step: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
-  stepNum: {
-    width: 24, height: 24, borderRadius: 12,
-    justifyContent: 'center', alignItems: 'center', flexShrink: 0, marginTop: 1,
-  },
-  stepNumText: { fontSize: 11, fontWeight: '800' },
-  stepText: { ...Typography.body, color: Colors.textPrimary, flex: 1, lineHeight: 22 },
+    steps: {
+      borderTopWidth: 1, borderTopColor: c.border,
+      paddingHorizontal: 16, paddingTop: 14, paddingBottom: 16, gap: 12,
+    },
+    step: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+    stepNum: {
+      width: 24, height: 24, borderRadius: 12,
+      justifyContent: 'center', alignItems: 'center', flexShrink: 0, marginTop: 1,
+    },
+    stepNumText: { fontSize: 11, fontWeight: '800' },
+    stepText: { ...Typography.body, color: c.textPrimary, flex: 1, lineHeight: 22 },
 
-  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12 },
-  footerText: { ...Typography.body, color: Colors.textSecondary },
-});
+    footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12 },
+    footerText: { ...Typography.body, color: c.textSecondary },
+  });
+}

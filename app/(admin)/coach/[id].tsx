@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Alert, Modal, Platform, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
@@ -6,8 +6,10 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
+import { PhoneInput } from '@/components/PhoneInput';
 import { useAuth } from '@/context/AuthContext';
-import { Colors, Typography } from '@/constants/theme';
+import { Typography, ColorScheme } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 type CoachProfile = {
   id: string;
@@ -42,7 +44,22 @@ type BlockedDate = {
 };
 
 const TYPE_LABEL: Record<string, string> = { leave: 'Leave', meeting: 'Meeting', other: 'Other' };
-const TYPE_COLOR: Record<string, string> = { leave: Colors.danger, meeting: '#2196F3', other: Colors.textSecondary };
+
+type AvailSlot = {
+  day_of_week: number;
+  is_active: boolean;
+  start_time: string;
+  end_time: string;
+};
+
+type PastSession = {
+  id: string;
+  session_date: string;
+  duration_minutes: number;
+  session_type: string;
+  status: string | null;
+  client_name: string;
+};
 
 function initials(name: string) {
   return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
@@ -57,6 +74,15 @@ function fmtDateTime(iso: string) {
     weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
   });
 }
+
+function fmtTime(t: string) {
+  const [h, m] = t.split(':').map(Number);
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const hour = h % 12 || 12;
+  return `${hour}:${m.toString().padStart(2, '0')} ${ampm}`;
+}
+
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function daysUntil(dateStr: string): number {
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -91,6 +117,15 @@ function getVisaLevel(days: number | null): VisaLevel | null {
 }
 
 export default function CoachDetailScreen() {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+
+  const TYPE_COLOR: Record<string, string> = {
+    leave: colors.danger,
+    meeting: '#2196F3',
+    other: colors.textSecondary,
+  };
+
   const { id } = useLocalSearchParams<{ id: string }>();
   const { profile: adminProfile } = useAuth();
   const { width } = useWindowDimensions();
@@ -100,6 +135,8 @@ export default function CoachDetailScreen() {
   const [clients, setClients] = useState<ActiveClient[]>([]);
   const [sessionsThisMonth, setSessionsThisMonth] = useState(0);
   const [revenueThisMonth, setRevenueThisMonth] = useState(0);
+  const [avgRating, setAvgRating] = useState<number | null>(null);
+  const [retentionRate, setRetentionRate] = useState<number | null>(null);
   const [upcomingSessions, setUpcomingSessions] = useState<UpcomingSession[]>([]);
   const [blockedDates, setBlockedDates] = useState<BlockedDate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,6 +144,7 @@ export default function CoachDetailScreen() {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
   const [editBirthday, setEditBirthday] = useState('');
   const [editVisaExpiry, setEditVisaExpiry] = useState('');
   const [saving, setSaving] = useState(false);
@@ -117,27 +155,33 @@ export default function CoachDetailScreen() {
   const [blockNotes, setBlockNotes] = useState('');
   const [addingBlock, setAddingBlock] = useState(false);
   const [deactivating, setDeactivating] = useState(false);
+  const [availSchedule, setAvailSchedule] = useState<AvailSlot[]>([]);
+  const [pastSessions, setPastSessions] = useState<PastSession[]>([]);
 
-  const handleDeactivate = () => {
-    Alert.alert(
-      'Deactivate Account',
-      `Move ${coach?.name ?? 'this coach'} to the Recycle Bin? Their clients will remain but this coach will no longer appear in the coaches list. You can restore them later.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Deactivate',
-          style: 'destructive',
-          onPress: async () => {
-            setDeactivating(true);
-            const { error } = await supabase
-              .rpc('admin_deactivate_account', { p_user_id: id });
-            setDeactivating(false);
-            if (error) { Alert.alert('Error', error.message); return; }
-            router.back();
-          },
+  const handleDeactivate = async () => {
+    const msg = `Move ${coach?.name ?? 'this coach'} to the Recycle Bin? Their clients will remain but this coach will no longer appear in the coaches list. You can restore them later.`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(msg)) return;
+      setDeactivating(true);
+      const { error } = await supabase.rpc('admin_deactivate_account', { p_user_id: id });
+      setDeactivating(false);
+      if (error) { window.alert('Error: ' + error.message); return; }
+      router.back();
+      return;
+    }
+    Alert.alert('Deactivate Account', msg, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Deactivate', style: 'destructive',
+        onPress: async () => {
+          setDeactivating(true);
+          const { error } = await supabase.rpc('admin_deactivate_account', { p_user_id: id });
+          setDeactivating(false);
+          if (error) { Alert.alert('Error', error.message); return; }
+          router.back();
         },
-      ],
-    );
+      },
+    ]);
   };
 
   const load = useCallback(async () => {
@@ -147,11 +191,11 @@ export default function CoachDetailScreen() {
     monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
     const today = new Date().toISOString().split('T')[0];
 
-    const [profileRes, pkgsRes, sessRes, revRes, schedRes, blockRes, payRes] = await Promise.all([
+    const [profileRes, pkgsRes, sessRes, revRes, schedRes, blockRes, payRes, ratingsRes, allPkgsRes, availRes, pastSessRes] = await Promise.all([
       supabase.from('profiles').select('id, name, email, phone, birthday, visa_expiry').eq('id', id).single(),
       supabase
         .from('packages')
-        .select('sessions_remaining, package_type, client:profiles!packages_client_id_fkey(id, name, email)')
+        .select('sessions_remaining, package_type, client:profiles!packages_client_id_fkey(id, name, email, deactivated_at)')
         .eq('coach_id', id).eq('status', 'active'),
       supabase
         .from('workout_sessions')
@@ -172,6 +216,25 @@ export default function CoachDetailScreen() {
         .order('date').limit(30),
       supabase
         .from('payments').select('amount, client_id').eq('coach_id', id),
+      supabase
+        .from('workout_sessions')
+        .select('session_ratings(rating)')
+        .eq('coach_id', id),
+      supabase
+        .from('packages')
+        .select('client_id, status')
+        .eq('coach_id', id),
+      supabase
+        .from('coach_availability')
+        .select('day_of_week, is_active, start_time, end_time')
+        .eq('coach_id', id)
+        .order('day_of_week'),
+      supabase
+        .from('workout_sessions')
+        .select('id, session_date, duration_minutes, session_type, status, client:profiles!workout_sessions_client_id_fkey(name)')
+        .eq('coach_id', id)
+        .order('session_date', { ascending: false })
+        .limit(5),
     ]);
 
     if (profileRes.data) {
@@ -179,6 +242,7 @@ export default function CoachDetailScreen() {
       setCoach(p);
       setEditName(p.name);
       setEditPhone(p.phone ?? '');
+      setEditEmail(p.email ?? '');
       setEditBirthday(p.birthday ?? '');
       setEditVisaExpiry(p.visa_expiry ?? '');
     }
@@ -190,18 +254,32 @@ export default function CoachDetailScreen() {
     });
 
     setClients(
-      (pkgsRes.data ?? []).map((row: any) => ({
-        id: row.client.id,
-        name: row.client.name,
-        email: row.client.email,
-        sessionsRemaining: row.sessions_remaining,
-        packageType: row.package_type,
-        totalPaid: payTotals[row.client.id] ?? 0,
-      })),
+      (pkgsRes.data ?? [])
+        .filter((row: any) => row.client && !row.client.deactivated_at)
+        .map((row: any) => ({
+          id: row.client.id,
+          name: row.client.name,
+          email: row.client.email,
+          sessionsRemaining: row.sessions_remaining,
+          packageType: row.package_type,
+          totalPaid: payTotals[row.client.id] ?? 0,
+        })),
     );
 
     setSessionsThisMonth(sessRes.count ?? 0);
     setRevenueThisMonth((revRes.data ?? []).reduce((sum, r: any) => sum + Number(r.amount), 0));
+
+    // Avg rating
+    const allRatings: number[] = [];
+    for (const sess of ratingsRes.data ?? []) {
+      for (const r of (sess as any).session_ratings ?? []) allRatings.push(r.rating);
+    }
+    setAvgRating(allRatings.length > 0 ? allRatings.reduce((s, r) => s + r, 0) / allRatings.length : null);
+
+    // Retention rate: unique clients with active pkg / all unique clients ever
+    const allUniqueClients  = new Set((allPkgsRes.data ?? []).map((p: any) => p.client_id));
+    const activeUniqueClients = new Set((allPkgsRes.data ?? []).filter((p: any) => p.status === 'active').map((p: any) => p.client_id));
+    setRetentionRate(allUniqueClients.size > 0 ? Math.round((activeUniqueClients.size / allUniqueClients.size) * 100) : null);
 
     setUpcomingSessions(
       (schedRes.data ?? []).map((row: any) => ({
@@ -213,6 +291,17 @@ export default function CoachDetailScreen() {
     );
 
     setBlockedDates((blockRes.data ?? []) as BlockedDate[]);
+    setAvailSchedule((availRes.data ?? []) as AvailSlot[]);
+    setPastSessions(
+      (pastSessRes.data ?? []).map((row: any) => ({
+        id: row.id,
+        session_date: row.session_date,
+        duration_minutes: row.duration_minutes,
+        session_type: row.session_type ?? 'gym',
+        status: row.status,
+        client_name: (row.client as any)?.name ?? '—',
+      })),
+    );
     setLoading(false);
   }, [id]);
 
@@ -231,15 +320,28 @@ export default function CoachDetailScreen() {
         p_visa_expiry: editVisaExpiry.trim() || null,
       }),
     ]);
-    setSaving(false);
     if (r1.error || r2.error) {
+      setSaving(false);
       Alert.alert('Error', r1.error?.message ?? r2.error?.message ?? 'Failed to save');
       return;
     }
+    const newEmail = editEmail.trim().toLowerCase();
+    if (newEmail && newEmail !== coach?.email) {
+      const { data: emailData, error: emailErr } = await supabase.functions.invoke('update-user-email', {
+        body: { user_id: id, new_email: newEmail },
+      });
+      if (emailErr || emailData?.error) {
+        setSaving(false);
+        Alert.alert('Error', emailData?.error ?? emailErr?.message ?? 'Failed to update email');
+        return;
+      }
+    }
+    setSaving(false);
     setCoach((c) => c ? {
       ...c,
       name: editName.trim(),
       phone: editPhone.trim() || null,
+      email: newEmail || c.email,
       birthday: editBirthday.trim() || null,
       visa_expiry: editVisaExpiry.trim() || null,
     } : c);
@@ -281,7 +383,7 @@ export default function CoachDetailScreen() {
   };
 
   if (loading) {
-    return <View style={s.center}><ActivityIndicator size="large" color={Colors.accent} /></View>;
+    return <View style={s.center}><ActivityIndicator size="large" color={colors.accent} /></View>;
   }
   if (!coach) {
     return <View style={s.center}><Text style={s.grayText}>Coach not found.</Text></View>;
@@ -300,18 +402,18 @@ export default function CoachDetailScreen() {
       <ScrollView
         style={s.scroll}
         contentContainerStyle={[s.content, isDesktop && s.contentDesktop]}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={Colors.accent} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />}
       >
         <View style={[s.inner, isDesktop && s.innerDesktop]}>
 
           {/* ── Alerts ───────────────────────────────────────── */}
           {bdWarn && bdDays !== null && (
             <View style={[s.alertBanner, {
-              borderColor: bdDays <= 7 ? '#FF980080' : '#FF980040',
-              backgroundColor: bdDays <= 7 ? '#FF980015' : '#FF980008',
+              borderColor: bdDays <= 7 ? colors.warning + '80' : colors.warning + '40',
+              backgroundColor: bdDays <= 7 ? colors.warning + '15' : colors.warning + '08',
             }]}>
-              <Ionicons name="gift-outline" size={16} color="#FF9800" />
-              <Text style={[s.alertText, { color: '#FF9800' }]}>
+              <Ionicons name="gift-outline" size={16} color={colors.warning} />
+              <Text style={[s.alertText, { color: colors.warning }]}>
                 {bdDays === 0
                   ? `TODAY is ${coach.name.split(' ')[0]}'s birthday! 🎉`
                   : bdDays <= 7
@@ -345,15 +447,22 @@ export default function CoachDetailScreen() {
               {editing ? (
                 <>
                   <TextInput style={s.editInput} value={editName} onChangeText={setEditName}
-                    placeholder="Full name" placeholderTextColor={Colors.textSecondary} autoCapitalize="words" />
-                  <TextInput style={[s.editInput, { marginTop: 6 }]} value={editPhone} onChangeText={setEditPhone}
-                    placeholder="Phone (optional)" placeholderTextColor={Colors.textSecondary} keyboardType="phone-pad" />
+                    placeholder="Full name" placeholderTextColor={colors.textSecondary} autoCapitalize="words" />
+                  <TextInput style={[s.editInput, { marginTop: 6 }]} value={editEmail} onChangeText={setEditEmail}
+                    placeholder="Email" placeholderTextColor={colors.textSecondary} keyboardType="email-address" autoCapitalize="none" />
+                  <PhoneInput
+                    value={editPhone}
+                    onChange={setEditPhone}
+                    colors={colors}
+                    containerStyle={{ marginTop: 6 }}
+                    inputStyle={s.editInput}
+                  />
                   {Platform.OS === 'web'
-                    ? React.createElement('input', { type: 'date', value: editBirthday, onChange: (e: any) => setEditBirthday(e.target.value), style: { marginTop: 6, background: Colors.bg, border: `1px solid ${Colors.border}`, borderRadius: 10, padding: '9px 12px', color: Colors.textPrimary, fontSize: 14, width: '100%', boxSizing: 'border-box', cursor: 'pointer', colorScheme: 'dark' } })
-                    : <TextInput style={[s.editInput, { marginTop: 6 }]} value={editBirthday} onChangeText={setEditBirthday} placeholder="Birthday (YYYY-MM-DD)" placeholderTextColor={Colors.textSecondary} />}
+                    ? React.createElement('input', { type: 'date', value: editBirthday, onChange: (e: any) => setEditBirthday(e.target.value), style: { marginTop: 6, background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: 10, padding: '9px 12px', color: colors.textPrimary, fontSize: 14, width: '100%', boxSizing: 'border-box', cursor: 'pointer', colorScheme: 'dark' } })
+                    : <TextInput style={[s.editInput, { marginTop: 6 }]} value={editBirthday} onChangeText={setEditBirthday} placeholder="Birthday (YYYY-MM-DD)" placeholderTextColor={colors.textSecondary} />}
                   {Platform.OS === 'web'
-                    ? React.createElement('input', { type: 'date', value: editVisaExpiry, onChange: (e: any) => setEditVisaExpiry(e.target.value), style: { marginTop: 6, background: Colors.bg, border: `1px solid ${Colors.border}`, borderRadius: 10, padding: '9px 12px', color: Colors.textPrimary, fontSize: 14, width: '100%', boxSizing: 'border-box', cursor: 'pointer', colorScheme: 'dark' } })
-                    : <TextInput style={[s.editInput, { marginTop: 6 }]} value={editVisaExpiry} onChangeText={setEditVisaExpiry} placeholder="Visa Expiry (YYYY-MM-DD)" placeholderTextColor={Colors.textSecondary} />}
+                    ? React.createElement('input', { type: 'date', value: editVisaExpiry, onChange: (e: any) => setEditVisaExpiry(e.target.value), style: { marginTop: 6, background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: 10, padding: '9px 12px', color: colors.textPrimary, fontSize: 14, width: '100%', boxSizing: 'border-box', cursor: 'pointer', colorScheme: 'dark' } })
+                    : <TextInput style={[s.editInput, { marginTop: 6 }]} value={editVisaExpiry} onChangeText={setEditVisaExpiry} placeholder="Visa Expiry (YYYY-MM-DD)" placeholderTextColor={colors.textSecondary} />}
                   <View style={s.editActions}>
                     <Pressable style={s.saveBtn} onPress={handleSave} disabled={saving}>
                       <Text style={s.saveBtnText}>{saving ? 'SAVING…' : 'SAVE'}</Text>
@@ -361,6 +470,7 @@ export default function CoachDetailScreen() {
                     <Pressable style={s.cancelEditBtn} onPress={() => {
                       setEditing(false);
                       setEditName(coach.name); setEditPhone(coach.phone ?? '');
+                      setEditEmail(coach.email ?? '');
                       setEditBirthday(coach.birthday ?? ''); setEditVisaExpiry(coach.visa_expiry ?? '');
                     }}>
                       <Text style={s.cancelEditText}>CANCEL</Text>
@@ -374,13 +484,13 @@ export default function CoachDetailScreen() {
                   {coach.phone && <Text style={s.coachSub}>{coach.phone}</Text>}
                   {coach.birthday && (
                     <View style={s.pillRow}>
-                      <Ionicons name="gift-outline" size={12} color={Colors.textSecondary} />
+                      <Ionicons name="gift-outline" size={12} color={colors.textSecondary} />
                       <Text style={s.pillText}>{fmtDate(coach.birthday)}</Text>
                     </View>
                   )}
                   {coach.visa_expiry && (
                     <View style={s.pillRow}>
-                      <Ionicons name="card-outline" size={12} color={visaLevel ? VISA_STYLE[visaLevel].color : Colors.textSecondary} />
+                      <Ionicons name="card-outline" size={12} color={visaLevel ? VISA_STYLE[visaLevel].color : colors.textSecondary} />
                       <Text style={[s.pillText, visaLevel ? { color: VISA_STYLE[visaLevel].color } : null]}>
                         Visa: {fmtDate(coach.visa_expiry)}
                       </Text>
@@ -391,7 +501,7 @@ export default function CoachDetailScreen() {
             </View>
             {!editing && (
               <Pressable style={s.editBtn} onPress={() => setEditing(true)}>
-                <Ionicons name="pencil-outline" size={16} color={Colors.textSecondary} />
+                <Ionicons name="pencil-outline" size={16} color={colors.textSecondary} />
               </Pressable>
             )}
           </View>
@@ -399,7 +509,7 @@ export default function CoachDetailScreen() {
           {/* ── Stats ────────────────────────────────────────── */}
           <View style={s.statsRow}>
             <View style={s.statBox}>
-              <Text style={[s.statVal, { color: Colors.accent }]}>{clients.length}</Text>
+              <Text style={[s.statVal, { color: colors.accent }]}>{clients.length}</Text>
               <Text style={s.statLbl}>Active Clients</Text>
             </View>
             <View style={s.statDivider} />
@@ -409,10 +519,25 @@ export default function CoachDetailScreen() {
             </View>
             <View style={s.statDivider} />
             <View style={s.statBox}>
-              <Text style={[s.statVal, { color: '#4CAF50', fontSize: 20 }]} numberOfLines={1} adjustsFontSizeToFit>
+              <Text style={[s.statVal, { color: colors.success, fontSize: 20 }]} numberOfLines={1} adjustsFontSizeToFit>
                 OMR {revenueThisMonth.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               </Text>
               <Text style={s.statLbl}>Revenue · {monthName}</Text>
+            </View>
+          </View>
+          <View style={s.statsRow}>
+            <View style={s.statBox}>
+              <Text style={[s.statVal, { color: colors.warning }]}>
+                {avgRating !== null ? `${avgRating.toFixed(1)} ★` : '—'}
+              </Text>
+              <Text style={s.statLbl}>Avg Rating</Text>
+            </View>
+            <View style={s.statDivider} />
+            <View style={s.statBox}>
+              <Text style={[s.statVal, { color: '#2196F3' }]}>
+                {retentionRate !== null ? `${retentionRate}%` : '—'}
+              </Text>
+              <Text style={s.statLbl}>Client Retention</Text>
             </View>
           </View>
 
@@ -420,7 +545,7 @@ export default function CoachDetailScreen() {
           <Text style={s.sectionTitle}>COACH SALES</Text>
           {clients.length === 0 ? (
             <View style={s.empty}>
-              <Ionicons name="person-outline" size={40} color={Colors.border} />
+              <Ionicons name="person-outline" size={40} color={colors.border} />
               <Text style={s.emptyText}>No active clients</Text>
             </View>
           ) : (
@@ -447,7 +572,7 @@ export default function CoachDetailScreen() {
                     <Text style={s.sessionsBadgeNum}>{c.sessionsRemaining}</Text>
                     <Text style={s.sessionsBadgeLbl}>left</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color={Colors.border} style={{ marginLeft: 4 }} />
+                  <Ionicons name="chevron-forward" size={16} color={colors.border} style={{ marginLeft: 4 }} />
                 </Pressable>
               ))}
             </View>
@@ -464,7 +589,7 @@ export default function CoachDetailScreen() {
               {upcomingSessions.map((sess, i) => (
                 <View key={sess.id} style={[s.scheduleRow, i === upcomingSessions.length - 1 && { borderBottomWidth: 0 }]}>
                   <View style={s.scheduleIcon}>
-                    <Ionicons name="calendar-outline" size={16} color={Colors.accent} />
+                    <Ionicons name="calendar-outline" size={16} color={colors.accent} />
                   </View>
                   <View style={s.scheduleInfo}>
                     <Text style={s.scheduleClient}>{sess.client_name}</Text>
@@ -473,6 +598,33 @@ export default function CoachDetailScreen() {
                   </View>
                 </View>
               ))}
+            </View>
+          )}
+
+          {/* ── Availability Schedule ────────────────────────── */}
+          <Text style={[s.sectionTitle, { marginTop: 28 }]}>AVAILABILITY SCHEDULE</Text>
+          {availSchedule.length === 0 ? (
+            <View style={s.emptyCard}>
+              <Text style={s.grayText}>No availability set</Text>
+            </View>
+          ) : (
+            <View style={s.scheduleList}>
+              {[1, 2, 3, 4, 5, 6, 0].map((dow, i, arr) => {
+                const slot = availSchedule.find((a) => a.day_of_week === dow);
+                const active = slot?.is_active ?? false;
+                return (
+                  <View key={dow} style={[s.availRow, i === arr.length - 1 && { borderBottomWidth: 0 }]}>
+                    <Text style={[s.availDay, !active && { color: colors.textSecondary }]}>{DOW[dow]}</Text>
+                    {active && slot ? (
+                      <Text style={s.availHours}>{fmtTime(slot.start_time)} – {fmtTime(slot.end_time)}</Text>
+                    ) : (
+                      <View style={s.availOffChip}>
+                        <Text style={s.availOffText}>Day Off</Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
             </View>
           )}
 
@@ -486,7 +638,7 @@ export default function CoachDetailScreen() {
               setBlockNotes('');
               setShowBlockModal(true);
             }}>
-              <Ionicons name="add" size={14} color={Colors.bg} />
+              <Ionicons name="add" size={14} color={colors.bg} />
               <Text style={s.addBlockBtnText}>Add</Text>
             </Pressable>
           </View>
@@ -497,7 +649,7 @@ export default function CoachDetailScreen() {
           ) : (
             <View style={s.scheduleList}>
               {blockedDates.map((bd, i) => {
-                const color = TYPE_COLOR[bd.type] ?? Colors.textSecondary;
+                const color = TYPE_COLOR[bd.type] ?? colors.textSecondary;
                 return (
                   <View
                     key={bd.id}
@@ -511,7 +663,7 @@ export default function CoachDetailScreen() {
                       {bd.notes ? <Text style={s.scheduleNotes}>{bd.notes}</Text> : null}
                     </View>
                     <Pressable onPress={() => handleRemoveBlock(bd)} hitSlop={16} style={{ padding: 8 }}>
-                      <Ionicons name="trash-outline" size={18} color={Colors.danger} />
+                      <Ionicons name="trash-outline" size={18} color={colors.danger} />
                     </Pressable>
                   </View>
                 );
@@ -519,6 +671,66 @@ export default function CoachDetailScreen() {
             </View>
           )}
           <Text style={s.longPressTip}>Tap trash icon to remove a blocked date</Text>
+
+          {/* ── Past Sessions ─────────────────────────────────── */}
+          <View style={[s.sectionRow, { marginTop: 28 }]}>
+            <Text style={s.sectionTitle}>PAST SESSIONS</Text>
+            {pastSessions.length > 0 && (
+              <Pressable
+                style={({ pressed }) => [s.viewAllBtn, pressed && { opacity: 0.7 }]}
+                onPress={() => router.push({ pathname: '/(admin)/coach-sessions/[id]', params: { id, name: coach.name } } as any)}
+              >
+                <Text style={s.viewAllTxt}>View All</Text>
+                <Ionicons name="chevron-forward" size={13} color={colors.accent} />
+              </Pressable>
+            )}
+          </View>
+          {pastSessions.length === 0 ? (
+            <View style={s.emptyCard}>
+              <Text style={s.grayText}>No sessions logged yet</Text>
+            </View>
+          ) : (
+            <View style={s.scheduleList}>
+              {pastSessions.map((sess, i) => {
+                const STATUS_COLOR: Record<string, string> = {
+                  confirmed: colors.success, pending: colors.warning, absent: colors.danger, no_show: colors.danger,
+                };
+                const STATUS_LABEL: Record<string, string> = {
+                  confirmed: 'Done', pending: 'Pending', absent: 'Absent', no_show: 'No Show',
+                };
+                const d = new Date(sess.session_date + 'T00:00:00');
+                const statusColor = STATUS_COLOR[sess.status ?? ''] ?? colors.textSecondary;
+                return (
+                  <View key={sess.id} style={[s.scheduleRow, i === pastSessions.length - 1 && { borderBottomWidth: 0 }]}>
+                    <View style={s.pastSessDateCol}>
+                      <Text style={s.pastSessDay}>
+                        {d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}
+                      </Text>
+                      <Text style={s.pastSessYear}>{d.getFullYear()}</Text>
+                    </View>
+                    <View style={s.scheduleInfo}>
+                      <Text style={s.scheduleClient}>{sess.client_name}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                        <Text style={s.scheduleTime}>{sess.duration_minutes} min</Text>
+                        <Ionicons
+                          name={sess.session_type === 'home' ? 'home-outline' : 'barbell-outline'}
+                          size={11}
+                          color={colors.textSecondary}
+                        />
+                      </View>
+                    </View>
+                    {sess.status && (
+                      <View style={[s.sessStatusPill, { backgroundColor: statusColor + '20', borderColor: statusColor + '60' }]}>
+                        <Text style={[s.sessStatusText, { color: statusColor }]}>
+                          {STATUS_LABEL[sess.status] ?? sess.status}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          )}
 
         </View>
 
@@ -530,7 +742,7 @@ export default function CoachDetailScreen() {
             onPress={handleDeactivate}
             disabled={deactivating}
           >
-            <Ionicons name="archive-outline" size={16} color={Colors.danger} />
+            <Ionicons name="archive-outline" size={16} color={colors.danger} />
             <Text style={s.deactivateBtnText}>{deactivating ? 'Deactivating…' : 'Deactivate Account'}</Text>
           </Pressable>
         </View>
@@ -548,7 +760,7 @@ export default function CoachDetailScreen() {
               value={blockDate}
               onChangeText={setBlockDate}
               placeholder="e.g. 2026-07-15"
-              placeholderTextColor={Colors.textSecondary}
+              placeholderTextColor={colors.textSecondary}
               keyboardType="numbers-and-punctuation"
               autoFocus
             />
@@ -558,10 +770,10 @@ export default function CoachDetailScreen() {
               {(['leave', 'meeting', 'other'] as const).map((t) => (
                 <Pressable
                   key={t}
-                  style={[s.typeBtn, blockType === t && { backgroundColor: Colors.accent, borderColor: Colors.accent }]}
+                  style={[s.typeBtn, blockType === t && { backgroundColor: colors.accent, borderColor: colors.accent }]}
                   onPress={() => setBlockType(t)}
                 >
-                  <Text style={[s.typeBtnText, blockType === t && { color: Colors.bg }]}>
+                  <Text style={[s.typeBtnText, blockType === t && { color: colors.bg }]}>
                     {TYPE_LABEL[t]}
                   </Text>
                 </Pressable>
@@ -574,7 +786,7 @@ export default function CoachDetailScreen() {
               value={blockNotes}
               onChangeText={setBlockNotes}
               placeholder="e.g. Staff meeting at 10am…"
-              placeholderTextColor={Colors.textSecondary}
+              placeholderTextColor={colors.textSecondary}
               multiline
             />
 
@@ -597,175 +809,196 @@ export default function CoachDetailScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: Colors.bg },
-  content: { padding: 20, paddingBottom: 48 },
-  contentDesktop: { padding: 40, paddingTop: 32 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.bg },
-  inner: { width: '100%' },
-  innerDesktop: { maxWidth: 720, alignSelf: 'center' },
-  grayText: { ...Typography.body, color: Colors.textSecondary },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    scroll: { flex: 1, backgroundColor: c.bg },
+    content: { padding: 20, paddingBottom: 48 },
+    contentDesktop: { padding: 40, paddingTop: 32 },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    inner: { width: '100%' },
+    innerDesktop: { maxWidth: 720, alignSelf: 'center' },
+    grayText: { ...Typography.body, color: c.textSecondary },
 
-  // Alerts
-  alertBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 10,
-  },
-  alertText: { ...Typography.body, fontWeight: '600', flex: 1 },
+    // Alerts
+    alertBanner: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 10,
+    },
+    alertText: { ...Typography.body, fontWeight: '600', flex: 1 },
 
-  // Profile
-  profileCard: {
-    flexDirection: 'row', alignItems: 'flex-start',
-    backgroundColor: Colors.surface, borderRadius: 16,
-    borderWidth: 1, borderColor: Colors.border,
-    padding: 18, gap: 14, marginBottom: 16,
-  },
-  avatarLg: {
-    width: 60, height: 60, borderRadius: 30,
-    backgroundColor: Colors.accent + '18',
-    borderWidth: 2, borderColor: Colors.accent + '50',
-    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
-  },
-  avatarLgText: { fontSize: 20, fontWeight: '800', color: Colors.accent },
-  profileRight: { flex: 1 },
-  coachName: { ...Typography.subtitle, color: Colors.textPrimary, fontWeight: '700', marginBottom: 3 },
-  coachEmail: { ...Typography.body, color: Colors.textSecondary, marginBottom: 2 },
-  coachSub: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 3 },
-  pillRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
-  pillText: { ...Typography.caption, color: Colors.textSecondary },
-  editBtn: {
-    width: 34, height: 34, borderRadius: 10,
-    backgroundColor: Colors.border + '40',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  editInput: {
-    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
-    color: Colors.textPrimary, fontSize: 14,
-  },
-  editActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  saveBtn: { backgroundColor: Colors.accent, borderRadius: 9, paddingHorizontal: 16, paddingVertical: 8 },
-  saveBtnText: { color: Colors.bg, fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
-  cancelEditBtn: { backgroundColor: Colors.border + '40', borderRadius: 9, paddingHorizontal: 14, paddingVertical: 8 },
-  cancelEditText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700' },
+    // Profile
+    profileCard: {
+      flexDirection: 'row', alignItems: 'flex-start',
+      backgroundColor: c.surface, borderRadius: 16,
+      borderWidth: 1, borderColor: c.border,
+      padding: 18, gap: 14, marginBottom: 16,
+    },
+    avatarLg: {
+      width: 60, height: 60, borderRadius: 30,
+      backgroundColor: c.accent + '18',
+      borderWidth: 2, borderColor: c.accent + '50',
+      justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+    },
+    avatarLgText: { fontSize: 20, fontWeight: '800', color: c.accent },
+    profileRight: { flex: 1 },
+    coachName: { ...Typography.subtitle, color: c.textPrimary, fontWeight: '700', marginBottom: 3 },
+    coachEmail: { ...Typography.body, color: c.textSecondary, marginBottom: 2 },
+    coachSub: { ...Typography.caption, color: c.textSecondary, marginBottom: 3 },
+    pillRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+    pillText: { ...Typography.caption, color: c.textSecondary },
+    editBtn: {
+      width: 34, height: 34, borderRadius: 10,
+      backgroundColor: c.border + '40',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    editInput: {
+      backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
+      borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
+      color: c.textPrimary, fontSize: 14,
+    },
+    editActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
+    saveBtn: { backgroundColor: c.accent, borderRadius: 9, paddingHorizontal: 16, paddingVertical: 8 },
+    saveBtnText: { color: c.bg, fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
+    cancelEditBtn: { backgroundColor: c.border + '40', borderRadius: 9, paddingHorizontal: 14, paddingVertical: 8 },
+    cancelEditText: { color: c.textSecondary, fontSize: 12, fontWeight: '700' },
 
-  // Stats
-  statsRow: {
-    flexDirection: 'row',
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border,
-    marginBottom: 24, overflow: 'hidden',
-  },
-  statBox: { flex: 1, alignItems: 'center', paddingVertical: 18 },
-  statDivider: { width: 1, backgroundColor: Colors.border },
-  statVal: { fontSize: 28, fontWeight: '800', lineHeight: 32 },
-  statLbl: { ...Typography.caption, color: Colors.textSecondary, marginTop: 3, textAlign: 'center' },
+    // Stats
+    statsRow: {
+      flexDirection: 'row',
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border,
+      marginBottom: 24, overflow: 'hidden',
+    },
+    statBox: { flex: 1, alignItems: 'center', paddingVertical: 18 },
+    statDivider: { width: 1, backgroundColor: c.border },
+    statVal: { fontSize: 28, fontWeight: '800', lineHeight: 32 },
+    statLbl: { ...Typography.caption, color: c.textSecondary, marginTop: 3, textAlign: 'center' },
 
-  sectionTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 12 },
-  sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+    sectionTitle: { ...Typography.label, color: c.textSecondary, marginBottom: 12 },
+    sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
 
-  // Coach Sales (client list)
-  empty: { alignItems: 'center', paddingVertical: 40, gap: 8 },
-  emptyText: { ...Typography.body, color: Colors.textSecondary },
-  emptyCard: {
-    backgroundColor: Colors.surface, borderRadius: 12,
-    borderWidth: 1, borderColor: Colors.border,
-    padding: 20, alignItems: 'center',
-  },
+    // Coach Sales (client list)
+    empty: { alignItems: 'center', paddingVertical: 40, gap: 8 },
+    emptyText: { ...Typography.body, color: c.textSecondary },
+    emptyCard: {
+      backgroundColor: c.surface, borderRadius: 12,
+      borderWidth: 1, borderColor: c.border,
+      padding: 20, alignItems: 'center',
+    },
 
-  clientList: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
-  },
-  clientRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    padding: 14, borderBottomWidth: 1, borderBottomColor: Colors.border + '80',
-  },
-  clientAvatar: {
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: '#4CAF5018', borderWidth: 1, borderColor: '#4CAF5040',
-    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
-  },
-  clientAvatarText: { fontSize: 13, fontWeight: '700', color: '#4CAF50' },
-  clientInfo: { flex: 1 },
-  clientName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
-  clientEmail: { ...Typography.caption, color: Colors.textSecondary },
-  clientPaid: { fontSize: 11, color: '#4CAF50', fontWeight: '600', marginTop: 2 },
-  sessionsBadge: { alignItems: 'center', minWidth: 38 },
-  sessionsBadgeNum: { fontSize: 18, fontWeight: '800', color: Colors.accent, lineHeight: 22 },
-  sessionsBadgeLbl: { fontSize: 10, fontWeight: '600', color: Colors.textSecondary },
+    clientList: {
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border, overflow: 'hidden',
+    },
+    clientRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      padding: 14, borderBottomWidth: 1, borderBottomColor: c.border + '80',
+    },
+    clientAvatar: {
+      width: 38, height: 38, borderRadius: 19,
+      backgroundColor: c.success + '18', borderWidth: 1, borderColor: c.success + '40',
+      justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+    },
+    clientAvatarText: { fontSize: 13, fontWeight: '700', color: c.success },
+    clientInfo: { flex: 1 },
+    clientName: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
+    clientEmail: { ...Typography.caption, color: c.textSecondary },
+    clientPaid: { fontSize: 11, color: c.success, fontWeight: '600', marginTop: 2 },
+    sessionsBadge: { alignItems: 'center', minWidth: 38 },
+    sessionsBadgeNum: { fontSize: 18, fontWeight: '800', color: c.accent, lineHeight: 22 },
+    sessionsBadgeLbl: { fontSize: 10, fontWeight: '600', color: c.textSecondary },
 
-  // Upcoming schedule + blocked dates
-  scheduleList: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
-  },
-  scheduleRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    padding: 14, borderBottomWidth: 1, borderBottomColor: Colors.border + '70',
-  },
-  scheduleIcon: {
-    width: 34, height: 34, borderRadius: 10,
-    backgroundColor: Colors.accent + '12', borderWidth: 1, borderColor: Colors.accent + '30',
-    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
-  },
-  scheduleInfo: { flex: 1 },
-  scheduleClient: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
-  scheduleTime: { ...Typography.caption, color: Colors.textSecondary },
-  scheduleNotes: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic', marginTop: 2 },
+    // Upcoming schedule + blocked dates
+    scheduleList: {
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border, overflow: 'hidden',
+    },
+    scheduleRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      padding: 14, borderBottomWidth: 1, borderBottomColor: c.border + '70',
+    },
+    scheduleIcon: {
+      width: 34, height: 34, borderRadius: 10,
+      backgroundColor: c.accent + '12', borderWidth: 1, borderColor: c.accent + '30',
+      justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+    },
+    scheduleInfo: { flex: 1 },
+    scheduleClient: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
+    scheduleTime: { ...Typography.caption, color: c.textSecondary },
+    scheduleNotes: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic', marginTop: 2 },
 
-  typeChip: {
-    borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5,
-    flexShrink: 0, minWidth: 58, alignItems: 'center',
-  },
-  typeChipText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
+    typeChip: {
+      borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5,
+      flexShrink: 0, minWidth: 58, alignItems: 'center',
+    },
+    typeChipText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
 
-  addBlockBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: Colors.accent, borderRadius: 8,
-    paddingHorizontal: 12, paddingVertical: 6,
-  },
-  addBlockBtnText: { color: Colors.bg, fontSize: 12, fontWeight: '800' },
-  longPressTip: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center', marginTop: 8 },
+    availRow: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      padding: 13, borderBottomWidth: 1, borderBottomColor: c.border + '70',
+    },
+    availDay: { fontSize: 13, fontWeight: '700', color: c.textPrimary, width: 36 },
+    availHours: { fontSize: 13, color: c.textSecondary, flex: 1, textAlign: 'right' },
+    availOffChip: {
+      backgroundColor: c.border + '40', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2,
+    },
+    availOffText: { fontSize: 11, fontWeight: '600', color: c.textSecondary },
 
-  // Modal
-  overlay: { flex: 1, backgroundColor: '#00000080', justifyContent: 'flex-end' },
-  modalBox: {
-    backgroundColor: Colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    padding: 24, gap: 12,
-  },
-  modalTitle: { ...Typography.subtitle, color: Colors.textPrimary, fontWeight: '700' },
-  modalLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: -4 },
-  modalInput: {
-    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12,
-    color: Colors.textPrimary, fontSize: 15,
-  },
-  typeRow: { flexDirection: 'row', gap: 8 },
-  typeBtn: {
-    flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center',
-    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bg,
-  },
-  typeBtnText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
-  modalActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  modalBtnPrimary: {
-    flex: 1, backgroundColor: Colors.accent, borderRadius: 12,
-    paddingVertical: 14, alignItems: 'center',
-  },
-  modalBtnPrimaryText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 0.8 },
-  modalBtnCancel: {
-    backgroundColor: Colors.border + '40', borderRadius: 12,
-    paddingHorizontal: 20, paddingVertical: 14, alignItems: 'center',
-  },
-  modalBtnCancelText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '700' },
+    pastSessDateCol: { alignItems: 'center', minWidth: 40 },
+    pastSessDay: { fontSize: 13, fontWeight: '700', color: c.textPrimary },
+    pastSessYear: { fontSize: 10, color: c.textSecondary, marginTop: 1 },
+    sessStatusPill: { borderRadius: 6, borderWidth: 1, paddingHorizontal: 7, paddingVertical: 2, flexShrink: 0 },
+    sessStatusText: { fontSize: 10, fontWeight: '700' },
 
-  dangerSection: { marginTop: 36, marginBottom: 8, gap: 12 },
-  dangerLabel: { fontSize: 11, fontWeight: '800', color: Colors.textSecondary, letterSpacing: 1 },
-  deactivateBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    borderWidth: 1, borderColor: Colors.danger + '60',
-    borderRadius: 12, paddingVertical: 13, paddingHorizontal: 16,
-    backgroundColor: Colors.danger + '08',
-  },
-  deactivateBtnText: { fontSize: 14, fontWeight: '700', color: Colors.danger },
-});
+    addBlockBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      backgroundColor: c.accent, borderRadius: 8,
+      paddingHorizontal: 12, paddingVertical: 6,
+    },
+    addBlockBtnText: { color: c.bg, fontSize: 12, fontWeight: '800' },
+    viewAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+    viewAllTxt: { fontSize: 13, fontWeight: '700', color: c.accent },
+    longPressTip: { ...Typography.caption, color: c.textSecondary, textAlign: 'center', marginTop: 8 },
+
+    // Modal
+    overlay: { flex: 1, backgroundColor: '#00000080', justifyContent: 'flex-end' },
+    modalBox: {
+      backgroundColor: c.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+      padding: 24, gap: 12,
+    },
+    modalTitle: { ...Typography.subtitle, color: c.textPrimary, fontWeight: '700' },
+    modalLabel: { ...Typography.label, color: c.textSecondary, marginBottom: -4 },
+    modalInput: {
+      backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
+      borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12,
+      color: c.textPrimary, fontSize: 15,
+    },
+    typeRow: { flexDirection: 'row', gap: 8 },
+    typeBtn: {
+      flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center',
+      borderWidth: 1, borderColor: c.border, backgroundColor: c.bg,
+    },
+    typeBtnText: { fontSize: 13, fontWeight: '700', color: c.textSecondary },
+    modalActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
+    modalBtnPrimary: {
+      flex: 1, backgroundColor: c.accent, borderRadius: 12,
+      paddingVertical: 14, alignItems: 'center',
+    },
+    modalBtnPrimaryText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 0.8 },
+    modalBtnCancel: {
+      backgroundColor: c.border + '40', borderRadius: 12,
+      paddingHorizontal: 20, paddingVertical: 14, alignItems: 'center',
+    },
+    modalBtnCancelText: { color: c.textSecondary, fontSize: 14, fontWeight: '700' },
+
+    dangerSection: { marginTop: 36, marginBottom: 8, gap: 12 },
+    dangerLabel: { fontSize: 11, fontWeight: '800', color: c.textSecondary, letterSpacing: 1 },
+    deactivateBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      borderWidth: 1, borderColor: c.danger + '60',
+      borderRadius: 12, paddingVertical: 13, paddingHorizontal: 16,
+      backgroundColor: c.danger + '08',
+    },
+    deactivateBtnText: { fontSize: 14, fontWeight: '700', color: c.danger },
+  });
+}

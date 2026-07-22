@@ -1,16 +1,20 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert, KeyboardAvoidingView, Modal, Platform, Pressable,
   ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
+import { PhoneInput } from '@/components/PhoneInput';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { Colors, Typography } from '@/constants/theme';
+import { Typography, ColorScheme } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 export default function AddCoachScreen() {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
   const [name, setName] = useState('');
@@ -36,6 +40,16 @@ export default function AddCoachScreen() {
       return;
     }
     setLoading(true);
+    const { data: existing } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', email.trim().toLowerCase())
+      .maybeSingle();
+    if (existing) {
+      setLoading(false);
+      setErrorMsg('An account with this email already exists.');
+      return;
+    }
     try {
       const { data, error } = await supabase.functions.invoke('create-coach', {
         body: {
@@ -76,7 +90,7 @@ export default function AddCoachScreen() {
 
           {!!errorMsg && <Text style={s.errorBanner}>{errorMsg}</Text>}
 
-          <Field label="Full Name" value={name} onChange={setName} placeholder="John Smith" required />
+          <Field label="Full Name" value={name} onChange={setName} placeholder="John Smith" required colors={colors} s={s} />
           <Field
             label="Email"
             value={email}
@@ -85,8 +99,13 @@ export default function AddCoachScreen() {
             keyboard="email-address"
             required
             error={emailError}
+            colors={colors}
+            s={s}
           />
-          <Field label="Phone" value={phone} onChange={setPhone} placeholder="+968 1234 5678" keyboard="phone-pad" />
+          <View style={s.field}>
+            <Text style={s.fieldLabel}>Phone</Text>
+            <PhoneInput value={phone} onChange={setPhone} colors={colors} />
+          </View>
 
           <View style={s.note}>
             <Text style={s.noteText}>
@@ -108,7 +127,7 @@ export default function AddCoachScreen() {
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
             <View style={s.modalIcon}>
-              <Ionicons name="checkmark-circle" size={36} color="#4CAF50" />
+              <Ionicons name="checkmark-circle" size={36} color={colors.success} />
             </View>
             <Text style={s.modalTitle}>Coach Added!</Text>
             <Text style={s.modalSub}>{successData?.coachName} is now in the system.</Text>
@@ -130,23 +149,24 @@ export default function AddCoachScreen() {
 }
 
 function Field({
-  label, value, onChange, placeholder, keyboard, required, error,
+  label, value, onChange, placeholder, keyboard, required, error, colors, s,
 }: {
   label: string; value: string; onChange: (v: string) => void;
   placeholder?: string; keyboard?: any; required?: boolean; error?: string;
+  colors: any; s: any;
 }) {
   return (
     <View style={s.field}>
       <Text style={s.label}>
         {label}
-        {required && <Text style={{ color: Colors.accent }}> *</Text>}
+        {required && <Text style={{ color: colors.accent }}> *</Text>}
       </Text>
       <TextInput
         style={[s.input, !!error && s.inputError]}
         value={value}
         onChangeText={onChange}
         placeholder={placeholder}
-        placeholderTextColor={Colors.textSecondary}
+        placeholderTextColor={colors.textSecondary}
         keyboardType={keyboard ?? 'default'}
         autoCapitalize={keyboard === 'email-address' ? 'none' : 'words'}
         autoCorrect={false}
@@ -156,44 +176,46 @@ function Field({
   );
 }
 
-const s = StyleSheet.create({
-  kav: { flex: 1, backgroundColor: Colors.bg },
-  scroll: { flex: 1 },
-  content: { padding: 20, paddingBottom: 60 },
-  contentDesktop: { padding: 40, paddingTop: 32, alignItems: 'center' },
-  form: {},
-  formDesktop: { width: '100%', maxWidth: 560 },
-  sectionTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 16 },
-  field: { marginBottom: 16 },
-  label: { ...Typography.label, color: Colors.textSecondary, marginBottom: 8 },
-  input: {
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13,
-    color: Colors.textPrimary, fontSize: 15,
-  },
-  inputError: { borderColor: Colors.accent },
-  fieldError: { ...Typography.caption, color: Colors.accent, marginTop: 5 },
-  note: {
-    backgroundColor: Colors.surface, borderRadius: 12, padding: 14,
-    borderWidth: 1, borderColor: Colors.border, marginBottom: 24,
-  },
-  noteText: { ...Typography.body, color: Colors.textSecondary, lineHeight: 20 },
-  submitBtn: {
-    backgroundColor: Colors.accent, borderRadius: 14, paddingVertical: 16, alignItems: 'center',
-  },
-  submitDisabled: { opacity: 0.4 },
-  submitText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
-  errorBanner: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, color: Colors.accent, marginBottom: 16, fontSize: 14 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  modalCard: { backgroundColor: Colors.surface, borderRadius: 20, padding: 28, width: '100%', maxWidth: 400, borderWidth: 1, borderColor: Colors.border, alignItems: 'center' },
-  modalIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#4CAF5018', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: Colors.textPrimary, marginBottom: 6, textAlign: 'center' },
-  modalSub: { ...Typography.body, color: Colors.textSecondary, marginBottom: 20, textAlign: 'center' },
-  modalBold: { fontWeight: '800', color: Colors.accent, fontSize: 16 },
-  credBox: { width: '100%', backgroundColor: Colors.bg, borderRadius: 12, padding: 16, gap: 4, marginBottom: 12 },
-  credLabel: { ...Typography.label, color: Colors.textSecondary, marginTop: 8 },
-  credValue: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
-  credHint: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center', marginBottom: 20, lineHeight: 18 },
-  modalBtn: { backgroundColor: '#4CAF50', borderRadius: 14, paddingVertical: 14, alignItems: 'center', width: '100%' },
-  modalBtnText: { color: '#fff', fontSize: 14, fontWeight: '800', letterSpacing: 1 },
-});
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    kav: { flex: 1, backgroundColor: c.bg },
+    scroll: { flex: 1, backgroundColor: c.bg },
+    content: { padding: 20, paddingBottom: 60 },
+    contentDesktop: { padding: 40, paddingTop: 32, alignItems: 'center' },
+    form: {},
+    formDesktop: { width: '100%', maxWidth: 560 },
+    sectionTitle: { ...Typography.label, color: c.textSecondary, marginBottom: 16 },
+    field: { marginBottom: 16 },
+    label: { ...Typography.label, color: c.textSecondary, marginBottom: 8 },
+    input: {
+      backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
+      borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13,
+      color: c.textPrimary, fontSize: 15,
+    },
+    inputError: { borderColor: c.accent },
+    fieldError: { ...Typography.caption, color: c.accent, marginTop: 5 },
+    note: {
+      backgroundColor: c.surface, borderRadius: 12, padding: 14,
+      borderWidth: 1, borderColor: c.border, marginBottom: 24,
+    },
+    noteText: { ...Typography.body, color: c.textSecondary, lineHeight: 20 },
+    submitBtn: {
+      backgroundColor: c.accent, borderRadius: 14, paddingVertical: 16, alignItems: 'center',
+    },
+    submitDisabled: { opacity: 0.4 },
+    submitText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 },
+    errorBanner: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, color: c.accent, marginBottom: 16, fontSize: 14 },
+    modalOverlay: { flex: 1, backgroundColor: c.overlay, justifyContent: 'center', alignItems: 'center', padding: 24 },
+    modalCard: { backgroundColor: c.surface, borderRadius: 20, padding: 28, width: '100%', maxWidth: 400, borderWidth: 1, borderColor: c.border, alignItems: 'center' },
+    modalIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: c.success + '18', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+    modalTitle: { fontSize: 20, fontWeight: '800', color: c.textPrimary, marginBottom: 6, textAlign: 'center' },
+    modalSub: { ...Typography.body, color: c.textSecondary, marginBottom: 20, textAlign: 'center' },
+    modalBold: { fontWeight: '800', color: c.accent, fontSize: 16 },
+    credBox: { width: '100%', backgroundColor: c.bg, borderRadius: 12, padding: 16, gap: 4, marginBottom: 12 },
+    credLabel: { ...Typography.label, color: c.textSecondary, marginTop: 8 },
+    credValue: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    credHint: { ...Typography.caption, color: c.textSecondary, textAlign: 'center', marginBottom: 20, lineHeight: 18 },
+    modalBtn: { backgroundColor: c.success, borderRadius: 14, paddingVertical: 14, alignItems: 'center', width: '100%' },
+    modalBtnText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1 },
+  });
+}

@@ -38,6 +38,9 @@ type AuthContextType = {
   profile: Profile | null;
   loading: boolean;
   profileError: string | null;
+  needsPasswordReset: boolean;
+  accountDeactivated: boolean;
+  clearDeactivated: () => void;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
@@ -48,6 +51,9 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   loading: true,
   profileError: null,
+  needsPasswordReset: false,
+  accountDeactivated: false,
+  clearDeactivated: () => {},
   signOut: async () => {},
   refreshProfile: async () => {},
 });
@@ -77,6 +83,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [needsPasswordReset, setNeedsPasswordReset] = useState(false);
+  const [accountDeactivated, setAccountDeactivated] = useState(false);
 
   async function syncProfileFromDB(userId: string, jwtRole: UserRole) {
     try {
@@ -86,6 +94,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .eq('id', userId)
         .single();
       if (data) {
+        if ((data as any).deactivated_at) {
+          setAccountDeactivated(true);
+          await supabase.auth.signOut();
+          return;
+        }
         setProfile({ ...(data as Profile), role: jwtRole });
       }
     } catch {
@@ -116,6 +129,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         saveWebSession(session);
         setSession(session);
 
+        if (event === 'PASSWORD_RECOVERY') {
+          setNeedsPasswordReset(true);
+        }
+
         if (session?.user) {
           const metaProfile = buildProfileFromSession(session);
           setProfile(metaProfile);
@@ -124,6 +141,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else {
           setProfile(null);
           setProfileError(null);
+          setNeedsPasswordReset(false);
         }
 
         if (event === 'INITIAL_SESSION') {
@@ -162,12 +180,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  const clearDeactivated = () => setAccountDeactivated(false);
+
   const signOut = async () => {
-    await supabase.auth.signOut();
+    // Clear our custom web session immediately so reload won't restore it
+    saveWebSession(null);
+    // Clear React state right away — don't wait for onAuthStateChange
+    setSession(null);
+    setProfile(null);
+    // Best-effort Supabase signout (may fail if token already expired)
+    try { await supabase.auth.signOut(); } catch {}
   };
 
   return (
-    <AuthContext.Provider value={{ session, user: session?.user ?? null, profile, loading, profileError, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ session, user: session?.user ?? null, profile, loading, profileError, needsPasswordReset, accountDeactivated, clearDeactivated, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

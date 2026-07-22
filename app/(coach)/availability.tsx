@@ -1,5 +1,5 @@
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+﻿import { router } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,7 +15,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAvailability, type DayAvailability, type AvailabilityBreak } from '@/hooks/useAvailability';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
+import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAYS_SHORT = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -51,72 +54,105 @@ function timeToY(t: string): number {
   return ((h + m / 60 - G_START) / G_SPAN) * GRID_H;
 }
 
-function WeeklyGrid({ days }: { days: DayAvailability[] }) {
+type BookedSlot = { start: string; end: string };
+
+function WeeklyGrid({ days, bookedSlots }: { days: DayAvailability[]; bookedSlots: Record<number, BookedSlot[]> }) {
+  const { colors } = useTheme();
+  const gridSt = useMemo(() => makeGridSt(colors), [colors]);
   const COL_W = 34;
   return (
-    <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
-      {/* Hour labels */}
-      <View style={{ width: 28, height: GRID_H, position: 'relative' }}>
-        {[5, 9, 13, 17, 21].map((h) => (
-          <Text
-            key={h}
-            style={[gridSt.hourLbl, { top: ((h - G_START) / G_SPAN) * GRID_H - 5 }]}
-          >
-            {h >= 12 ? `${h === 12 ? 12 : h - 12}p` : `${h}a`}
-          </Text>
-        ))}
-      </View>
-      {/* Day columns */}
-      {days.map((day) => {
-        const active = day.is_active;
-        const topY    = active ? Math.max(0, timeToY(day.start_time)) : 0;
-        const bottomY = active ? Math.min(GRID_H, timeToY(day.end_time)) : 0;
-        const barH    = Math.max(0, bottomY - topY);
+    <View>
+      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+        {/* Hour labels */}
+        <View style={{ width: 28, height: GRID_H, position: 'relative' }}>
+          {[5, 9, 13, 17, 21].map((h) => (
+            <Text
+              key={h}
+              style={[gridSt.hourLbl, { top: ((h - G_START) / G_SPAN) * GRID_H - 5 }]}
+            >
+              {h >= 12 ? `${h === 12 ? 12 : h - 12}p` : `${h}a`}
+            </Text>
+          ))}
+        </View>
+        {/* Day columns */}
+        {days.map((day) => {
+          const active = day.is_active;
+          const topY    = active ? Math.max(0, timeToY(day.start_time)) : 0;
+          const bottomY = active ? Math.min(GRID_H, timeToY(day.end_time)) : 0;
+          const barH    = Math.max(0, bottomY - topY);
+          const booked  = bookedSlots[day.day_of_week] ?? [];
 
-        return (
-          <View key={day.day_of_week} style={{ alignItems: 'center', gap: 4 }}>
-            <View style={{
-              width: COL_W, height: GRID_H,
-              backgroundColor: Colors.surface,
-              borderRadius: 6, borderWidth: 1, borderColor: Colors.border,
-              overflow: 'hidden',
-            }}>
-              {active && barH > 0 && (
-                <View style={{
-                  position: 'absolute', top: topY, height: barH, left: 2, right: 2,
-                  backgroundColor: AVAIL_GREEN + '40',
-                  borderRadius: 4, borderWidth: 1, borderColor: AVAIL_GREEN + '70',
-                }} />
-              )}
+          return (
+            <View key={day.day_of_week} style={{ alignItems: 'center', gap: 4 }}>
+              <View style={{
+                width: COL_W, height: GRID_H,
+                backgroundColor: colors.surface,
+                borderRadius: 6, borderWidth: 1, borderColor: colors.border,
+                overflow: 'hidden',
+              }}>
+                {active && barH > 0 && (
+                  <View style={{
+                    position: 'absolute', top: topY, height: barH, left: 2, right: 2,
+                    backgroundColor: colors.success + '40',
+                    borderRadius: 4, borderWidth: 1, borderColor: colors.success + '70',
+                  }} />
+                )}
+                {booked.map((slot, i) => {
+                  const sTop = Math.max(0, timeToY(slot.start));
+                  const sH   = Math.max(4, Math.min(GRID_H - sTop, timeToY(slot.end) - sTop));
+                  return (
+                    <View key={i} style={{
+                      position: 'absolute', top: sTop, height: sH, left: 2, right: 2,
+                      backgroundColor: 'rgba(255,77,77,0.55)',
+                      borderRadius: 3, borderWidth: 1, borderColor: 'rgba(255,77,77,0.85)',
+                    }} />
+                  );
+                })}
+              </View>
+              <Text style={gridSt.dayLbl}>{DAYS_SHORT[day.day_of_week]}</Text>
             </View>
-            <Text style={gridSt.dayLbl}>{DAYS_SHORT[day.day_of_week]}</Text>
-          </View>
-        );
-      })}
+          );
+        })}
+      </View>
+      {/* Legend */}
+      <View style={{ flexDirection: 'row', gap: 14, marginTop: 8, marginLeft: 36 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#4CAF5066' }} />
+          <Text style={gridSt.dayLbl}>Available</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: 'rgba(255,77,77,0.55)' }} />
+          <Text style={gridSt.dayLbl}>Booked</Text>
+        </View>
+      </View>
     </View>
   );
 }
 
-const AVAIL_GREEN = '#4CAF50';
-
-const gridSt = StyleSheet.create({
+function makeGridSt(colors: ColorScheme) {
+  return StyleSheet.create({
   hourLbl: {
     position: 'absolute',
     fontSize: 9,
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
   },
   dayLbl: {
     fontSize: 10,
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
     textAlign: 'center',
   },
 });
+}
 
 // ── Main screen ──────────────────────────────────────────────────────────────
 export default function AvailabilityScreen() {
+  const { profile } = useAuth();
+  const { colors } = useTheme();
+  const st = useMemo(() => makeStyles(colors), [colors]);
   const { availability, loading, refetch, saveDay } = useAvailability();
   const [days, setDays]           = useState<DayAvailability[]>([]);
   const [expandedDay, setExpanded] = useState<number | null>(null);
+  const [bookedSlots, setBookedSlots] = useState<Record<number, BookedSlot[]>>({});
   const [timePicker, setTimePicker] = useState<{
     dow: number;
     field: 'start' | 'end' | 'bk_start' | 'bk_end';
@@ -127,6 +163,34 @@ export default function AvailabilityScreen() {
   useEffect(() => {
     if (availability.length > 0) setDays(availability);
   }, [availability]);
+
+  // Fetch this week's booked sessions
+  useEffect(() => {
+    if (!profile?.id) return;
+    const now = new Date();
+    const weekLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    supabase
+      .from('scheduled_sessions')
+      .select('scheduled_at, duration_minutes')
+      .eq('coach_id', profile.id)
+      .gte('scheduled_at', now.toISOString())
+      .lte('scheduled_at', weekLater.toISOString())
+      .in('status', ['pending', 'client_confirmed'])
+      .then(({ data }) => {
+        if (!data) return;
+        const slots: Record<number, BookedSlot[]> = {};
+        data.forEach((s: any) => {
+          const dt  = new Date(s.scheduled_at);
+          const dow = dt.getDay();
+          const start = `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
+          const endDt = new Date(dt.getTime() + (s.duration_minutes ?? 60) * 60000);
+          const end   = `${String(endDt.getHours()).padStart(2, '0')}:${String(endDt.getMinutes()).padStart(2, '0')}`;
+          if (!slots[dow]) slots[dow] = [];
+          slots[dow].push({ start, end });
+        });
+        setBookedSlots(slots);
+      });
+  }, [profile?.id]);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const apply = (updated: DayAvailability) => {
@@ -219,7 +283,7 @@ export default function AvailabilityScreen() {
   if (loading && days.length === 0) {
     return (
       <View style={st.centered}>
-        <ActivityIndicator color={Colors.accent} />
+        <ActivityIndicator color={colors.accent} />
       </View>
     );
   }
@@ -231,11 +295,11 @@ export default function AvailabilityScreen() {
       <ScrollView
         style={st.scroll}
         contentContainerStyle={st.content}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={Colors.accent} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={colors.accent} />}
       >
         {!hasAnyActive && (
           <View style={st.emptyBanner}>
-            <Ionicons name="calendar-outline" size={40} color={Colors.border} />
+            <Ionicons name="calendar-outline" size={40} color={colors.border} />
             <Text style={st.emptyTitle}>No availability set</Text>
             <Text style={st.emptySub}>Toggle on the days you're available to start accepting sessions</Text>
           </View>
@@ -268,15 +332,15 @@ export default function AvailabilityScreen() {
                   {day.is_active && (
                     <Ionicons
                       name={isExp ? 'chevron-up' : 'chevron-down'}
-                      size={16} color={Colors.textSecondary}
+                      size={16} color={colors.textSecondary}
                       style={{ marginRight: 10 }}
                     />
                   )}
                   <Switch
                     value={day.is_active}
                     onValueChange={(v) => handleToggle(day.day_of_week, v)}
-                    trackColor={{ false: Colors.border, true: Colors.accent + '50' }}
-                    thumbColor={day.is_active ? Colors.accent : Colors.textSecondary}
+                    trackColor={{ false: colors.border, true: colors.accent + '50' }}
+                    thumbColor={day.is_active ? colors.accent : colors.textSecondary}
                   />
                 </View>
               </Pressable>
@@ -293,7 +357,7 @@ export default function AvailabilityScreen() {
                         onPress={() => setTimePicker({ dow: day.day_of_week, field: 'start' })}
                       >
                         <Text style={st.timeTxt}>{fmt12(day.start_time)}</Text>
-                        <Ionicons name="chevron-down" size={14} color={Colors.accent} />
+                        <Ionicons name="chevron-down" size={14} color={colors.accent} />
                       </Pressable>
                     </View>
                     <Text style={st.dash}>–</Text>
@@ -304,7 +368,7 @@ export default function AvailabilityScreen() {
                         onPress={() => setTimePicker({ dow: day.day_of_week, field: 'end' })}
                       >
                         <Text style={st.timeTxt}>{fmt12(day.end_time)}</Text>
-                        <Ionicons name="chevron-down" size={14} color={Colors.accent} />
+                        <Ionicons name="chevron-down" size={14} color={colors.accent} />
                       </Pressable>
                     </View>
                   </View>
@@ -346,7 +410,7 @@ export default function AvailabilityScreen() {
                   <View style={st.breaksHead}>
                     <Text style={st.fieldLbl}>BREAKS</Text>
                     <Pressable style={st.addBrk} onPress={() => handleAddBreak(day.day_of_week)}>
-                      <Ionicons name="add" size={14} color={Colors.accent} />
+                      <Ionicons name="add" size={14} color={colors.accent} />
                       <Text style={st.addBrkTxt}>Add</Text>
                     </Pressable>
                   </View>
@@ -369,7 +433,7 @@ export default function AvailabilityScreen() {
                           <Text style={st.brkTxt}>{fmt12(br.end_time)}</Text>
                         </Pressable>
                         <Pressable onPress={() => handleRemoveBr(day.day_of_week, idx)} hitSlop={8}>
-                          <Ionicons name="close-circle" size={20} color={Colors.danger} />
+                          <Ionicons name="close-circle" size={20} color={colors.danger} />
                         </Pressable>
                       </View>
                     ))
@@ -385,11 +449,11 @@ export default function AvailabilityScreen() {
           <>
             <Text style={[st.sectionLabel, { marginTop: 28 }]}>WEEKLY OVERVIEW</Text>
             <View style={st.gridCard}>
-              <WeeklyGrid days={days} />
+              <WeeklyGrid days={days} bookedSlots={bookedSlots} />
               <View style={st.gridLegend}>
-                <View style={[st.legendDot, { backgroundColor: AVAIL_GREEN }]} />
+                <View style={[st.legendDot, { backgroundColor: colors.success }]} />
                 <Text style={st.legendTxt}>Available</Text>
-                <View style={[st.legendDot, { backgroundColor: Colors.border, marginLeft: 14 }]} />
+                <View style={[st.legendDot, { backgroundColor: colors.border, marginLeft: 14 }]} />
                 <Text style={st.legendTxt}>Off</Text>
               </View>
             </View>
@@ -402,9 +466,9 @@ export default function AvailabilityScreen() {
           style={({ pressed }) => [st.blockedBtn, pressed && { opacity: 0.75 }]}
           onPress={() => router.push('/(coach)/blocked-dates')}
         >
-          <Ionicons name="ban-outline" size={20} color={Colors.textPrimary} />
+          <Ionicons name="ban-outline" size={20} color={colors.textPrimary} />
           <Text style={st.blockedTxt}>Manage Blocked Dates</Text>
-          <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
+          <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
         </Pressable>
       </ScrollView>
 
@@ -420,7 +484,7 @@ export default function AvailabilityScreen() {
             <View style={st.sheetHeader}>
               <Text style={st.sheetTitle}>Select Time</Text>
               <Pressable onPress={() => setTimePicker(null)} hitSlop={8}>
-                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
               </Pressable>
             </View>
             <FlatList
@@ -435,7 +499,7 @@ export default function AvailabilityScreen() {
                     onPress={() => handleTimeSelect(item.value)}
                   >
                     <Text style={[st.pickOptTxt, sel && st.pickOptTxtSel]}>{item.label}</Text>
-                    {sel && <Ionicons name="checkmark" size={16} color={Colors.accent} />}
+                    {sel && <Ionicons name="checkmark" size={16} color={colors.accent} />}
                   </Pressable>
                 );
               }}
@@ -447,85 +511,87 @@ export default function AvailabilityScreen() {
   );
 }
 
-const st = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: Colors.bg },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+  scroll: { flex: 1, backgroundColor: c.bg },
   content: { padding: 20, paddingBottom: 48 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.bg },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   emptyBanner: {
     alignItems: 'center', gap: 8, paddingVertical: 28, marginBottom: 24,
-    backgroundColor: Colors.surface, borderRadius: 16,
-    borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: c.surface, borderRadius: 16,
+    borderWidth: 1, borderColor: c.border,
   },
-  emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 6 },
-  emptySub:  { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', paddingHorizontal: 20 },
+  emptyTitle: { ...Typography.subtitle, color: c.textPrimary, marginTop: 6 },
+  emptySub:  { ...Typography.body, color: c.textSecondary, textAlign: 'center', paddingHorizontal: 20 },
 
-  sectionLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: 12 },
+  sectionLabel: { ...Typography.label, color: c.textSecondary, marginBottom: 12 },
 
   // Day card
-  dayCard:   { backgroundColor: Colors.surface, borderRadius: 14, borderWidth: 1, borderColor: Colors.border, marginBottom: 8, overflow: 'hidden' },
-  dayCardOn: { borderColor: Colors.accent + '30' },
+  dayCard:   { backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: c.border, marginBottom: 8, overflow: 'hidden' },
+  dayCardOn: { borderColor: c.accent + '30' },
   dayRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14 },
   dayLeft:   { flex: 1 },
   dayRight:  { flexDirection: 'row', alignItems: 'center' },
-  dayName:   { ...Typography.body, color: Colors.textSecondary, fontWeight: '600' },
-  dayNameOn: { color: Colors.textPrimary },
-  dayTime:   { ...Typography.caption, color: Colors.accent, marginTop: 2 },
+  dayName:   { ...Typography.body, color: c.textSecondary, fontWeight: '600' },
+  dayNameOn: { color: c.textPrimary },
+  dayTime:   { ...Typography.caption, color: c.accent, marginTop: 2 },
 
   // Expanded
-  expanded: { paddingHorizontal: 14, paddingBottom: 16, borderTopWidth: 1, borderTopColor: Colors.border },
+  expanded: { paddingHorizontal: 14, paddingBottom: 16, borderTopWidth: 1, borderTopColor: c.border },
   timeRow:  { flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginTop: 14, marginBottom: 16 },
   timeCol:  { flex: 1 },
-  dash:     { ...Typography.body, color: Colors.textSecondary, marginBottom: 10 },
-  fieldLbl: { ...Typography.label, color: Colors.textSecondary, fontSize: 10, marginBottom: 6 },
-  fieldHint:{ ...Typography.caption, fontSize: 11, color: Colors.textSecondary, marginTop: 2 },
+  dash:     { ...Typography.body, color: c.textSecondary, marginBottom: 10 },
+  fieldLbl: { ...Typography.label, color: c.textSecondary, fontSize: 10, marginBottom: 6 },
+  fieldHint:{ ...Typography.caption, fontSize: 11, color: c.textSecondary, marginTop: 2 },
   timeBtn:  {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: Colors.bg, borderRadius: 10, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: c.bg, borderRadius: 10, borderWidth: 1, borderColor: c.border,
     paddingHorizontal: 12, paddingVertical: 10,
   },
-  timeTxt:  { ...Typography.body, color: Colors.textPrimary, fontWeight: '500' },
+  timeTxt:  { ...Typography.body, color: c.textPrimary, fontWeight: '500' },
 
   // Duration
   durationRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  durBtn:  { flex: 1, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', backgroundColor: Colors.bg },
-  durBtnOn:{ backgroundColor: Colors.accent + '18', borderColor: Colors.accent + '60' },
-  durTxt:  { ...Typography.caption, color: Colors.textSecondary, fontWeight: '600' },
-  durTxtOn:{ color: Colors.accent },
+  durBtn:  { flex: 1, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: c.border, alignItems: 'center', backgroundColor: c.bg },
+  durBtnOn:{ backgroundColor: c.accent + '18', borderColor: c.accent + '60' },
+  durTxt:  { ...Typography.caption, color: c.textSecondary, fontWeight: '600' },
+  durTxtOn:{ color: c.accent },
 
   // Max clients stepper
   maxRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
   stepper: { flexDirection: 'row', alignItems: 'center' },
-  stepBtn: { width: 34, height: 34, borderRadius: 10, backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border, justifyContent: 'center', alignItems: 'center' },
-  stepTxt: { fontSize: 18, fontWeight: '600', color: Colors.textPrimary },
-  stepVal: { ...Typography.subtitle, color: Colors.textPrimary, fontWeight: '700', minWidth: 38, textAlign: 'center' },
+  stepBtn: { width: 34, height: 34, borderRadius: 10, backgroundColor: c.bg, borderWidth: 1, borderColor: c.border, justifyContent: 'center', alignItems: 'center' },
+  stepTxt: { fontSize: 18, fontWeight: '600', color: c.textPrimary },
+  stepVal: { ...Typography.subtitle, color: c.textPrimary, fontWeight: '700', minWidth: 38, textAlign: 'center' },
 
   // Breaks
   breaksHead:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   addBrk:    { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  addBrkTxt: { color: Colors.accent, fontSize: 13, fontWeight: '600' },
-  noBreaks:  { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic', marginBottom: 6 },
+  addBrkTxt: { color: c.accent, fontSize: 13, fontWeight: '600' },
+  noBreaks:  { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic', marginBottom: 6 },
   brkRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  brkBtn:    { flex: 1, backgroundColor: Colors.bg, borderRadius: 8, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 10, paddingVertical: 7, alignItems: 'center' },
-  brkTxt:    { ...Typography.caption, color: Colors.textPrimary, fontWeight: '500' },
+  brkBtn:    { flex: 1, backgroundColor: c.bg, borderRadius: 8, borderWidth: 1, borderColor: c.border, paddingHorizontal: 10, paddingVertical: 7, alignItems: 'center' },
+  brkTxt:    { ...Typography.caption, color: c.textPrimary, fontWeight: '500' },
 
   // Grid
-  gridCard:   { backgroundColor: Colors.surface, borderRadius: 14, borderWidth: 1, borderColor: Colors.border, padding: 14 },
+  gridCard:   { backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: c.border, padding: 14 },
   gridLegend: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
   legendDot:  { width: 10, height: 10, borderRadius: 5 },
-  legendTxt:  { ...Typography.caption, color: Colors.textSecondary, marginLeft: 5 },
+  legendTxt:  { ...Typography.caption, color: c.textSecondary, marginLeft: 5 },
 
   // Blocked dates link
-  blockedBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: Colors.border },
-  blockedTxt: { ...Typography.body, color: Colors.textPrimary, fontWeight: '500', flex: 1 },
+  blockedBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: c.border },
+  blockedTxt: { ...Typography.body, color: c.textPrimary, fontWeight: '500', flex: 1 },
 
   // Modal
-  overlay:    { flex: 1, backgroundColor: '#000000AA', justifyContent: 'flex-end' },
-  sheet:      { backgroundColor: Colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 36 },
+  overlay:    { flex: 1, backgroundColor: c.overlay, justifyContent: 'flex-end' },
+  sheet:      { backgroundColor: c.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 36 },
   sheetHeader:{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sheetTitle: { ...Typography.subtitle, color: Colors.textPrimary },
+  sheetTitle: { ...Typography.subtitle, color: c.textPrimary },
   pickOpt:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 13, borderRadius: 10, marginBottom: 2 },
-  pickOptSel: { backgroundColor: Colors.accent + '18' },
-  pickOptTxt: { ...Typography.body, color: Colors.textPrimary },
-  pickOptTxtSel: { color: Colors.accent, fontWeight: '600' },
+  pickOptSel: { backgroundColor: c.accent + '18' },
+  pickOptTxt: { ...Typography.body, color: c.textPrimary },
+  pickOptTxtSel: { color: c.accent, fontWeight: '600' },
 });
+}

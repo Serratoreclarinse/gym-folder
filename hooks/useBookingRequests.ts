@@ -55,7 +55,41 @@ export function useClientBookingRequests(coachId: string | null, packageId: stri
     return { error: error?.message ?? null };
   };
 
-  return { requests, refetch, submitRequest };
+  const cancelRequest = async (id: string): Promise<{ error: string | null }> => {
+    if (!user?.id) return { error: 'Not authenticated' };
+    const { error } = await supabase
+      .from('booking_requests')
+      .delete()
+      .eq('id', id)
+      .eq('client_id', user.id)
+      .eq('status', 'pending');
+    if (error) return { error: error.message };
+    await refetch();
+    return { error: null };
+  };
+
+  return { requests, refetch, submitRequest, cancelRequest };
+}
+
+// ── Helpers ────────────────────────────────────────────────────
+function parseTime(time: string): string {
+  const t24 = time.match(/^(\d{1,2}):(\d{2})$/);
+  if (t24) return `${t24[1].padStart(2, '0')}:${t24[2]}`;
+  const t12 = time.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i);
+  if (t12) {
+    let h = parseInt(t12[1], 10);
+    const min = t12[2] ?? '00';
+    if (/pm/i.test(t12[3]) && h !== 12) h += 12;
+    if (/am/i.test(t12[3]) && h === 12) h = 0;
+    return `${String(h).padStart(2, '0')}:${min}`;
+  }
+  return '09:00';
+}
+
+function buildScheduledAt(date: string, time: string | null): string | null {
+  if (!date.match(/^\d{4}-\d{2}-\d{2}$/)) return null;
+  const timeStr = time ? parseTime(time.trim()) : '09:00';
+  return `${date}T${timeStr}:00`;
 }
 
 // ── Coach side ─────────────────────────────────────────────────
@@ -84,15 +118,62 @@ export function useCoachBookingRequests() {
   const respond = async (id: string, status: 'accepted' | 'declined'): Promise<void> => {
     const target = requests.find((r) => r.id === id);
     await supabase.from('booking_requests').update({ status }).eq('id', id);
+
     if (target) {
       const isBooking = target.type === 'booking';
+
+      // Auto-create a scheduled session when a booking request is accepted with a preferred date
+      if (status === 'accepted' && isBooking && target.preferred_date) {
+        const scheduledAt = buildScheduledAt(target.preferred_date, target.preferred_time);
+        if (scheduledAt) {
+          let durationMinutes = 60;
+          if (target.package_id) {
+            const { data: pkg } = await supabase
+              .from('packages')
+              .select('package_type')
+              .eq('id', target.package_id)
+              .maybeSingle();
+            if (pkg?.package_type === '30min') durationMinutes = 30;
+            else if (pkg?.package_type === '45min') durationMinutes = 45;
+          }
+          await supabase.from('scheduled_sessions').insert({
+            coach_id: target.coach_id,
+            client_id: target.client_id,
+            scheduled_at: scheduledAt,
+            notes: target.notes ?? null,
+            duration_minutes: durationMinutes,
+          });
+        }
+      }
+
+      const scheduledDateStr = (status === 'accepted' && isBooking && target.preferred_date)
+        ? ` on ${new Date(target.preferred_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`
+          + (target.preferred_time ? ` at ${target.preferred_time}` : '')
+        : '';
+
       if (status === 'accepted') {
         await sendPushNotification(target.client_id, {
           title: isBooking ? '✅ Session Request Accepted' : '✅ Renewal Request Accepted',
           body: isBooking
-            ? 'Your coach accepted your session request. Check your schedule for the details.'
+            ? `Your coach confirmed your session${scheduledDateStr}. Check your schedule!`
             : 'Your coach accepted your renewal request. Your package will be updated soon.',
         });
+
+        // On renewal acceptance, alert all admins to create a new package
+        if (!isBooking) {
+          const { data: admins } = await supabase.rpc('get_admin_user_ids');
+          if (admins && (admins as { user_id: string }[]).length > 0) {
+            const clientName = target.client_name ?? 'A client';
+            await Promise.all(
+              (admins as { user_id: string }[]).map((row) =>
+                sendPushNotification(row.user_id, {
+                  title: '📦 Package Renewal Needed',
+                  body: `${clientName} needs a new package. Please create one from the admin panel.`,
+                })
+              )
+            );
+          }
+        }
       } else {
         await sendPushNotification(target.client_id, {
           title: isBooking ? '❌ Session Request Declined' : '❌ Renewal Request Declined',

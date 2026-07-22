@@ -1,11 +1,12 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useClients, type ClientWithPackage } from '@/hooks/useClients';
 import { getDaysUntilBirthday } from '@/hooks/useBirthdays';
 import { ErrorBanner } from '@/components/ErrorBanner';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 const PACKAGE_LABEL: Record<string, string> = {
   '30min': '30 min',
@@ -14,10 +15,12 @@ const PACKAGE_LABEL: Record<string, string> = {
 };
 
 function PackageBadge({ remaining, status }: { remaining: number; status: string }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const expired = status === 'expired';
   const warning = !expired && remaining <= 2;
-  const color = expired ? Colors.textSecondary : warning ? '#FFA500' : Colors.accent;
-  const bg = expired ? Colors.border : warning ? '#FFA50020' : Colors.accent + '18';
+  const color = expired ? colors.textSecondary : warning ? colors.warning : colors.accent;
+  const bg = expired ? colors.border : warning ? colors.warning + '20' : colors.accent + '18';
   return (
     <View style={[styles.badge, { backgroundColor: bg, borderColor: color + '60' }]}>
       <Text style={[styles.badgeText, { color }]}>
@@ -28,6 +31,8 @@ function PackageBadge({ remaining, status }: { remaining: number; status: string
 }
 
 function ClientCard({ client }: { client: ClientWithPackage }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const pkg = client.activePackage;
   const initials = client.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
   const hasBday = client.birthday != null && getDaysUntilBirthday(client.birthday) <= 3;
@@ -60,7 +65,7 @@ function ClientCard({ client }: { client: ClientWithPackage }) {
         {pkg ? (
           <PackageBadge remaining={pkg.sessions_remaining} status={pkg.status} />
         ) : null}
-        <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} style={{ marginTop: 8 }} />
+        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginTop: 8 }} />
       </View>
     </Pressable>
   );
@@ -68,6 +73,8 @@ function ClientCard({ client }: { client: ClientWithPackage }) {
 
 export default function CoachClientsScreen() {
   const { clients, loading, error, refetch } = useClients();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   useFocusEffect(useCallback(() => { refetch(); }, [refetch]));
 
@@ -75,7 +82,7 @@ export default function CoachClientsScreen() {
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={Colors.accent} />}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={colors.accent} />}
     >
       {error && <ErrorBanner message={error} onRetry={refetch} />}
       <View style={styles.header}>
@@ -83,14 +90,14 @@ export default function CoachClientsScreen() {
           {clients.length} {clients.length === 1 ? 'client' : 'clients'}
         </Text>
         <Pressable style={styles.addBtn} onPress={() => router.push('/(coach)/add-client')}>
-          <Ionicons name="add" size={18} color={Colors.bg} />
+          <Ionicons name="add" size={18} color={colors.bg} />
           <Text style={styles.addBtnText}>ADD CLIENT</Text>
         </Pressable>
       </View>
 
       {!loading && clients.length === 0 ? (
         <View style={styles.empty}>
-          <Ionicons name="people-outline" size={48} color={Colors.border} />
+          <Ionicons name="people-outline" size={48} color={colors.border} />
           <Text style={styles.emptyTitle}>No clients yet</Text>
           <Text style={styles.emptySub}>Tap "Add Client" to get started</Text>
         </View>
@@ -101,56 +108,58 @@ export default function CoachClientsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: Colors.bg },
-  content: { padding: 20, paddingBottom: 40 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  count: { ...Typography.body, color: Colors.textSecondary },
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: Colors.accent,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  addBtnText: { color: Colors.bg, fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
-  clientCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    gap: 12,
-  },
-  avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: Colors.accent + '18',
-    borderWidth: 1,
-    borderColor: Colors.accent + '40',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarText: { fontSize: 16, fontWeight: '700', color: Colors.accent },
-  clientInfo: { flex: 1 },
-  clientName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
-  clientEmail: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 4 },
-  packageType: { ...Typography.caption, color: Colors.textSecondary },
-  rightCol: { alignItems: 'flex-end' },
-  badge: {
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-  },
-  badgeText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
-  empty: { alignItems: 'center', paddingTop: 80, gap: 8 },
-  emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 12 },
-  emptySub: { ...Typography.body, color: Colors.textSecondary },
-});
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    scroll: { flex: 1, backgroundColor: c.bg },
+    content: { padding: 20, paddingBottom: 40 },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    count: { ...Typography.body, color: c.textSecondary },
+    addBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: c.accent,
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 9,
+    },
+    addBtnText: { color: c.bg, fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
+    clientCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: c.surface,
+      borderRadius: 16,
+      padding: 14,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: c.border,
+      gap: 12,
+    },
+    avatar: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      backgroundColor: c.accent + '18',
+      borderWidth: 1,
+      borderColor: c.accent + '40',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    avatarText: { fontSize: 16, fontWeight: '700', color: c.accent },
+    clientInfo: { flex: 1 },
+    clientName: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
+    clientEmail: { ...Typography.caption, color: c.textSecondary, marginBottom: 4 },
+    packageType: { ...Typography.caption, color: c.textSecondary },
+    rightCol: { alignItems: 'flex-end' },
+    badge: {
+      borderRadius: 8,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderWidth: 1,
+    },
+    badgeText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+    empty: { alignItems: 'center', paddingTop: 80, gap: 8 },
+    emptyTitle: { ...Typography.subtitle, color: c.textPrimary, marginTop: 12 },
+    emptySub: { ...Typography.body, color: c.textSecondary },
+  });
+}

@@ -1,9 +1,21 @@
-import { Slot, useRouter, useSegments } from 'expo-router';
+import { Slot, useRouter } from 'expo-router';
+import { DarkTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Alert, Animated, Platform, StyleSheet, Text, View } from 'react-native';
+import { GlobalAlert, showAppAlert } from '@/components/GlobalAlert';
+
+// Monkey-patch Alert.alert so all existing calls use the themed modal
+const _nativeAlert = Alert.alert.bind(Alert);
+(Alert as any).alert = (
+  title: string,
+  message?: string,
+  buttons?: Parameters<typeof Alert.alert>[2],
+  _options?: Parameters<typeof Alert.alert>[3],
+) => showAppAlert(title, message, buttons as any);
 import * as Linking from 'expo-linking';
 import * as Updates from 'expo-updates';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
 import { supabase } from '@/lib/supabase';
@@ -11,6 +23,7 @@ import { useFonts } from 'expo-font';
 import {
   Montserrat_700Bold,
   Montserrat_800ExtraBold,
+  Montserrat_900Black,
   Montserrat_600SemiBold,
 } from '@expo-google-fonts/montserrat';
 import {
@@ -18,6 +31,32 @@ import {
   Inter_500Medium,
   Inter_600SemiBold,
 } from '@expo-google-fonts/inter';
+
+function AnimatedSplash({ fontsLoaded }: { fontsLoaded: boolean }) {
+  const fadeAnim  = useRef(new Animated.Value(1)).current;
+  const scaleAnim = useRef(new Animated.Value(0.85)).current;
+
+  useEffect(() => {
+    Animated.spring(scaleAnim, { toValue: 1, friction: 7, useNativeDriver: true }).start();
+  }, []);
+
+  useEffect(() => {
+    if (!fontsLoaded) return;
+    const t = setTimeout(() => {
+      Animated.timing(fadeAnim, { toValue: 0, duration: 350, useNativeDriver: true }).start();
+    }, 400);
+    return () => clearTimeout(t);
+  }, [fontsLoaded]);
+
+  return (
+    <Animated.View style={[styles.splash, { opacity: fadeAnim }]} pointerEvents="none">
+      <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+        <Text style={styles.splashText}>ELEVATƎ</Text>
+      </Animated.View>
+      <Text style={styles.splashSub}>Personal Training</Text>
+    </Animated.View>
+  );
+}
 
 function useAuthDeepLink() {
   useEffect(() => {
@@ -33,43 +72,6 @@ function useAuthDeepLink() {
   }, []);
 }
 
-// Stays mounted for the entire app lifetime — watches auth state and navigates.
-// This avoids the bug where index.tsx was unmounted after redirecting to login
-// and could no longer react to SIGNED_IN events.
-function AuthNavigation() {
-  const { session, profile, loading } = useAuth();
-  const segments = useSegments();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (loading) return;
-
-    const inAuthGroup = segments[0] === '(auth)';
-    const inCoachGroup = segments[0] === '(coach)';
-    const inClientGroup = segments[0] === '(client)';
-    const inAdminGroup = segments[0] === '(admin)';
-
-    if (!session) {
-      if (!inAuthGroup) router.replace('/(auth)/login');
-    } else if (profile) {
-      if (profile.role === 'coach' && !inCoachGroup) {
-        router.replace('/(coach)');
-      } else if (profile.role === 'client' && !inClientGroup) {
-        router.replace('/(client)');
-      } else if (profile.role === 'admin' && !inAdminGroup) {
-        router.replace('/(admin)');
-      }
-    }
-  }, [session, profile, loading, segments]);
-
-  return null;
-}
-
-function ThemedStatusBar() {
-  const { isDark } = useTheme();
-  return <StatusBar style={isDark ? 'light' : 'dark'} />;
-}
-
 function useAutoUpdate() {
   useEffect(() => {
     if (__DEV__) return;
@@ -80,11 +82,52 @@ function useAutoUpdate() {
           await Updates.fetchUpdateAsync();
           await Updates.reloadAsync();
         }
-      } catch {
-        // silently ignore — update applies on next launch if this fails
-      }
+      } catch { /* silently ignore */ }
     })();
   }, []);
+}
+
+function AuthNavigation() {
+  const { session, profile, loading, needsPasswordReset } = useAuth();
+  const router = useRouter();
+
+  const sessionId   = session?.user?.id ?? null;
+  const profileRole = profile?.role     ?? null;
+
+  useEffect(() => {
+    // Don't navigate while auth is still resolving
+    if (loading) return;
+
+    let live = true;
+    AsyncStorage.getItem('onboarding_done').then((val) => {
+      if (!live) return;
+
+      if (!sessionId) {
+        // Not logged in: show onboarding for first-timers, login otherwise
+        if (Platform.OS !== 'web' && val !== 'true') {
+          router.replace('/onboarding' as any);
+        } else {
+          router.replace('/(auth)/login' as any);
+        }
+        return;
+      }
+
+      // Logged in: always go to role screen — never bounce back to onboarding
+      if (needsPasswordReset) { router.replace('/(auth)/reset-password' as any); return; }
+      if      (profileRole === 'coach')  router.replace('/(coach)'  as any);
+      else if (profileRole === 'client') router.replace('/(client)' as any);
+      else if (profileRole === 'admin')  router.replace('/(admin)'  as any);
+    });
+
+    return () => { live = false; };
+  }, [sessionId, profileRole, loading, needsPasswordReset]);
+
+  return null;
+}
+
+function ThemedStatusBar() {
+  const { isDark } = useTheme();
+  return <StatusBar style={isDark ? 'light' : 'dark'} />;
 }
 
 export default function RootLayout() {
@@ -95,21 +138,52 @@ export default function RootLayout() {
     Montserrat_600SemiBold,
     Montserrat_700Bold,
     Montserrat_800ExtraBold,
+    Montserrat_900Black,
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
   });
 
-  // On web (Vercel static build), fonts load via CSS — don't block render
-  if (!fontsLoaded && Platform.OS !== 'web') return null;
-
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <ThemedStatusBar />
-        <AuthNavigation />
-        <Slot />
-      </AuthProvider>
-    </ThemeProvider>
+    <NavThemeProvider value={DarkTheme}>
+      <View style={{ flex: 1, backgroundColor: '#0A0A0A' }}>
+        {(fontsLoaded || Platform.OS === 'web') && (
+          <ThemeProvider>
+            <AuthProvider>
+              <ThemedStatusBar />
+              <AuthNavigation />
+              <Slot />
+              <GlobalAlert />
+            </AuthProvider>
+          </ThemeProvider>
+        )}
+        {/* Splash renders immediately — covers the font-loading gap AND auth wait */}
+        <AnimatedSplash fontsLoaded={fontsLoaded} />
+      </View>
+    </NavThemeProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  splash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#0A0A0A',
+    justifyContent:  'center',
+    alignItems:      'center',
+    gap:             8,
+    zIndex:          9999,
+  },
+  splashText: {
+    fontSize:      42,
+    fontWeight:    '800',
+    color:         '#FFFFFF',
+    letterSpacing: 5,
+  },
+  splashSub: {
+    fontSize:      13,
+    fontWeight:    '500',
+    color:         '#666666',
+    letterSpacing: 3,
+    textTransform: 'uppercase',
+  },
+});

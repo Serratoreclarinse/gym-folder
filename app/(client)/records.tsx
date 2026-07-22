@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Dimensions,
@@ -20,9 +20,12 @@ import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 import { useClientPRs, type PersonalRecord } from '@/hooks/useClientPRs';
 import { useMyProgressPhotos, type ProgressPhoto } from '@/hooks/useProgressPhotos';
 import { useMyMeasurements } from '@/hooks/useBodyMeasurements';
+import { useMyCheckins, thisWeekMonday, type CheckinInput } from '@/hooks/useWeeklyCheckins';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { Colors, Typography } from '@/constants/theme';
+import { Typography } from '@/constants/theme';
+import type { ColorScheme } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 const SCREEN_W = Dimensions.get('window').width;
 const PAD = 20;
@@ -160,6 +163,7 @@ async function buildReportHtml(
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 function MiniWeightChart({ points }: { points: { logged_at: string; weight_kg: number }[] }) {
+  const { colors } = useTheme();
   if (points.length < 2) return null;
   const weights = points.map((p) => p.weight_kg);
   const minW = Math.min(...weights), maxW = Math.max(...weights);
@@ -173,18 +177,18 @@ function MiniWeightChart({ points }: { points: { logged_at: string; weight_kg: n
   return (
     <Svg width={CHART_W} height={CHART_H}>
       {yLabels.map((v, i) => (
-        <SvgText key={i} x={CP.left - 4} y={y(v) + 4} fontSize={9} fill={Colors.textSecondary} textAnchor="end">
+        <SvgText key={i} x={CP.left - 4} y={y(v) + 4} fontSize={9} fill={colors.textSecondary} textAnchor="end">
           {v.toFixed(1)}
         </SvgText>
       ))}
-      <Line x1={CP.left} y1={CP.top} x2={CP.left} y2={CP.top + iH} stroke={Colors.border} strokeWidth={1} />
-      <Line x1={CP.left} y1={CP.top + iH} x2={CP.left + iW} y2={CP.top + iH} stroke={Colors.border} strokeWidth={1} />
-      <Path d={d} stroke={Colors.accent} strokeWidth={2} fill="none" />
+      <Line x1={CP.left} y1={CP.top} x2={CP.left} y2={CP.top + iH} stroke={colors.border} strokeWidth={1} />
+      <Line x1={CP.left} y1={CP.top + iH} x2={CP.left + iW} y2={CP.top + iH} stroke={colors.border} strokeWidth={1} />
+      <Path d={d} stroke={colors.accent} strokeWidth={2} fill="none" />
       {points.map((p, i) => (
-        <Circle key={i} cx={x(i)} cy={y(p.weight_kg)} r={3} fill={Colors.accent} />
+        <Circle key={i} cx={x(i)} cy={y(p.weight_kg)} r={3} fill={colors.accent} />
       ))}
       {[0, points.length - 1].map((i) => (
-        <SvgText key={i} x={x(i)} y={CHART_H - 4} fontSize={9} fill={Colors.textSecondary} textAnchor={i === 0 ? 'start' : 'end'}>
+        <SvgText key={i} x={x(i)} y={CHART_H - 4} fontSize={9} fill={colors.textSecondary} textAnchor={i === 0 ? 'start' : 'end'}>
           {new Date(points[i].logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
         </SvgText>
       ))}
@@ -195,6 +199,8 @@ function MiniWeightChart({ points }: { points: { logged_at: string; weight_kg: n
 export default function RecordsScreen() {
   const { user, profile } = useAuth();
   const { prs, loading, refetch } = useClientPRs();
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const [generating, setGenerating] = useState(false);
 
   // Coach ID from active package
@@ -210,58 +216,8 @@ export default function RecordsScreen() {
       .then(({ data }) => setCoachId(data?.coach_id ?? null));
   }, [user?.id]);
 
-  // Body measurements
-  const { measurements, upsert: upsertMeasurement } = useMyMeasurements(user?.id ?? undefined);
-  const [measModal, setMeasModal] = useState(false);
-  const [mWeight, setMWeight] = useState('');
-  const [mFat, setMFat] = useState('');
-  const [mMuscle, setMMuscle] = useState('');
-  const [mChest, setMChest] = useState('');
-  const [mWaist, setMWaist] = useState('');
-  const [mHips, setMHips] = useState('');
-  const [mArms, setMArms] = useState('');
-  const [mThighs, setMThighs] = useState('');
-  const [mNotes, setMNotes] = useState('');
-  const [savingMeas, setSavingMeas] = useState(false);
-
-  function openMeasModal() {
-    const today = measurements.find((m) => m.logged_at === new Date().toISOString().slice(0, 10));
-    setMWeight(today?.weight_kg?.toString() ?? '');
-    setMFat(today?.body_fat_pct?.toString() ?? '');
-    setMMuscle(today?.muscle_mass_kg?.toString() ?? '');
-    setMChest(today?.chest_cm?.toString() ?? '');
-    setMWaist(today?.waist_cm?.toString() ?? '');
-    setMHips(today?.hips_cm?.toString() ?? '');
-    setMArms(today?.arms_cm?.toString() ?? '');
-    setMThighs(today?.thighs_cm?.toString() ?? '');
-    setMNotes(today?.notes ?? '');
-    setMeasModal(true);
-  }
-
-  async function handleSaveMeasurement() {
-    const parse = (v: string) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
-    if (!mWeight && !mFat && !mMuscle && !mChest && !mWaist && !mHips && !mArms && !mThighs) {
-      Alert.alert('Nothing to save', 'Enter at least one measurement.');
-      return;
-    }
-    setSavingMeas(true);
-    const err = await upsertMeasurement({
-      client_id: user!.id,
-      logged_at: new Date().toISOString().slice(0, 10),
-      weight_kg: parse(mWeight),
-      body_fat_pct: parse(mFat),
-      muscle_mass_kg: parse(mMuscle),
-      chest_cm: parse(mChest),
-      waist_cm: parse(mWaist),
-      hips_cm: parse(mHips),
-      arms_cm: parse(mArms),
-      thighs_cm: parse(mThighs),
-      notes: mNotes.trim() || null,
-    });
-    setSavingMeas(false);
-    if (err) { Alert.alert('Error', err); return; }
-    setMeasModal(false);
-  }
+  // Body measurements (read-only — coach logs from client profile)
+  const { measurements } = useMyMeasurements(user?.id ?? undefined);
 
   // Progress photos
   const { photos, sendPhoto, deletePhoto } = useMyProgressPhotos(user?.id ?? null);
@@ -269,7 +225,64 @@ export default function RecordsScreen() {
   const [pickedUri, setPickedUri] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
   const [sending, setSending] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [viewing, setViewing] = useState<ProgressPhoto | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  // Photo compare mode
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareSelected, setCompareSelected] = useState<string[]>([]);
+  const [comparePhotos, setComparePhotos] = useState<[ProgressPhoto, ProgressPhoto] | null>(null);
+
+  // Weekly check-in
+  const { checkins, thisWeek, upsert: upsertCheckin } = useMyCheckins(user?.id ?? null, coachId);
+  const [checkinModal, setCheckinModal] = useState(false);
+  const [ciMood, setCiMood] = useState(3);
+  const [ciSleep, setCiSleep] = useState(3);
+  const [ciEnergy, setCiEnergy] = useState(3);
+  const [ciWeight, setCiWeight] = useState('');
+  const [ciNotes, setCiNotes] = useState('');
+  const [ciSaving, setCiSaving] = useState(false);
+  const [ciError, setCiError] = useState<string | null>(null);
+
+  function openCheckinModal() {
+    setCiError(null);
+    if (thisWeek) {
+      setCiMood(thisWeek.mood ?? 3);
+      setCiSleep(thisWeek.sleep_quality ?? 3);
+      setCiEnergy(thisWeek.energy_level ?? 3);
+      setCiWeight(thisWeek.weight_kg?.toString() ?? '');
+      setCiNotes(thisWeek.notes ?? '');
+    } else {
+      setCiMood(3); setCiSleep(3); setCiEnergy(3); setCiWeight(''); setCiNotes('');
+    }
+    setCheckinModal(true);
+  }
+
+  async function handleSaveCheckin() {
+    setCiError(null);
+    setCiSaving(true);
+    try {
+      const { error } = await upsertCheckin({ mood: ciMood, sleep_quality: ciSleep, energy_level: ciEnergy, weight_kg: ciWeight, notes: ciNotes } as CheckinInput);
+      if (error) { setCiError(error); return; }
+      setCheckinModal(false);
+    } finally {
+      setCiSaving(false);
+    }
+  }
+
+  function toggleCompareSelect(photo: ProgressPhoto) {
+    setCompareSelected((prev) => {
+      if (prev.includes(photo.id)) return prev.filter((id) => id !== photo.id);
+      if (prev.length >= 2) return prev;
+      const next = [...prev, photo.id];
+      if (next.length === 2) {
+        const p1 = photos.find((p) => p.id === next[0])!;
+        const p2 = photos.find((p) => p.id === next[1])!;
+        setComparePhotos([p1, p2]);
+      }
+      return next;
+    });
+  }
 
   async function handlePickPhoto() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -288,32 +301,37 @@ export default function RecordsScreen() {
     setPhotoModal(true);
   }
 
+  function closePhotoModal() {
+    setPhotoModal(false);
+    setPickedUri(null);
+    setNoteText('');
+    setPhotoError(null);
+  }
+
   async function handleSendPhoto() {
-    if (!pickedUri || !coachId) return;
+    if (!pickedUri) return;
+    if (!coachId) { setPhotoError('No active package found. Ask your coach to assign one.'); return; }
+    setPhotoError(null);
     setSending(true);
-    const { error } = await sendPhoto(coachId, pickedUri, noteText);
-    setSending(false);
-    if (error) {
-      Alert.alert('Upload failed', error);
-    } else {
-      setPhotoModal(false);
-      setPickedUri(null);
-      setNoteText('');
+    try {
+      const { error } = await sendPhoto(coachId, pickedUri, noteText);
+      if (error) {
+        setPhotoError(error);
+      } else {
+        closePhotoModal();
+      }
+    } catch (e: any) {
+      setPhotoError(e?.message ?? 'Something went wrong');
+    } finally {
+      setSending(false);
     }
   }
 
-  function handleDeletePhoto(photo: ProgressPhoto) {
-    Alert.alert('Delete photo?', 'This will permanently remove it.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete', style: 'destructive',
-        onPress: async () => {
-          const { error } = await deletePhoto(photo);
-          if (error) Alert.alert('Error', error);
-          if (viewing?.id === photo.id) setViewing(null);
-        },
-      },
-    ]);
+  async function doDeletePhoto(photo: ProgressPhoto) {
+    const { error } = await deletePhoto(photo);
+    if (error) console.warn('[deletePhoto]', error);
+    setDeleteConfirm(false);
+    if (viewing?.id === photo.id) setViewing(null);
   }
 
   async function handleGenerateReport() {
@@ -343,7 +361,7 @@ export default function RecordsScreen() {
       <ScrollView
         style={s.scroll}
         contentContainerStyle={s.content}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={Colors.accent} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={colors.accent} />}
       >
         {/* ── PRs header ── */}
         <View style={s.titleRow}>
@@ -356,7 +374,7 @@ export default function RecordsScreen() {
             onPress={handleGenerateReport}
             disabled={generating}
           >
-            <Ionicons name="document-text-outline" size={15} color={Colors.accent} />
+            <Ionicons name="document-text-outline" size={15} color={colors.accent} />
             <Text style={s.reportBtnText}>{generating ? 'Generating…' : 'PDF Report'}</Text>
           </Pressable>
         </View>
@@ -364,7 +382,7 @@ export default function RecordsScreen() {
         {/* ── PR list ── */}
         {!loading && prs.length === 0 ? (
           <View style={s.empty}>
-            <Ionicons name="trophy-outline" size={56} color={Colors.border} />
+            <Ionicons name="trophy-outline" size={56} color={colors.border} />
             <Text style={s.emptyTitle}>No records yet</Text>
             <Text style={s.emptySub}>Complete sessions with weighted exercises to start tracking PRs</Text>
           </View>
@@ -380,10 +398,10 @@ export default function RecordsScreen() {
               <View style={s.info}>
                 <Text style={s.exerciseName}>{pr.exercise_name}</Text>
                 <View style={s.metaRow}>
-                  <Ionicons name="calendar-outline" size={11} color={Colors.textSecondary} />
+                  <Ionicons name="calendar-outline" size={11} color={colors.textSecondary} />
                   <Text style={s.metaText}>{fmtDate(pr.achieved_date)}</Text>
                   <Text style={s.dot}>·</Text>
-                  <Ionicons name="repeat-outline" size={11} color={Colors.textSecondary} />
+                  <Ionicons name="repeat-outline" size={11} color={colors.textSecondary} />
                   <Text style={s.metaText}>{pr.session_count}× performed</Text>
                 </View>
               </View>
@@ -395,6 +413,51 @@ export default function RecordsScreen() {
           ))
         )}
 
+        {/* ── Weekly Check-in ── */}
+        <View style={s.checkinHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.sectionHeading}>WEEKLY CHECK-IN</Text>
+            <Text style={s.sub}>How are you feeling this week?</Text>
+          </View>
+          <Pressable style={s.sendBtn} onPress={openCheckinModal}>
+            <Ionicons name={thisWeek ? 'create-outline' : 'add-outline'} size={15} color={colors.accent} />
+            <Text style={s.sendBtnText}>{thisWeek ? 'Edit' : 'Fill In'}</Text>
+          </Pressable>
+        </View>
+
+        {thisWeek ? (
+          <View style={s.checkinCard}>
+            <View style={s.checkinRow}>
+              <Text style={s.checkinLabel}>Mood</Text>
+              <Text style={s.checkinEmoji}>{'😞😕😐🙂😄'[thisWeek.mood! - 1]}</Text>
+              <Text style={s.checkinValue}>{thisWeek.mood}/5</Text>
+            </View>
+            <View style={s.checkinRow}>
+              <Text style={s.checkinLabel}>Sleep</Text>
+              <Text style={s.checkinEmoji}>{'🌙'}</Text>
+              <Text style={s.checkinValue}>{thisWeek.sleep_quality}/5</Text>
+            </View>
+            <View style={s.checkinRow}>
+              <Text style={s.checkinLabel}>Energy</Text>
+              <Text style={s.checkinEmoji}>{'⚡'}</Text>
+              <Text style={s.checkinValue}>{thisWeek.energy_level}/5</Text>
+            </View>
+            {thisWeek.weight_kg && (
+              <View style={s.checkinRow}>
+                <Text style={s.checkinLabel}>Weight</Text>
+                <Text style={s.checkinEmoji}>{'⚖️'}</Text>
+                <Text style={s.checkinValue}>{thisWeek.weight_kg} kg</Text>
+              </View>
+            )}
+            {thisWeek.notes ? <Text style={s.checkinNotes}>{thisWeek.notes}</Text> : null}
+          </View>
+        ) : (
+          <View style={s.photoEmpty}>
+            <Ionicons name="clipboard-outline" size={32} color={colors.border} />
+            <Text style={s.photoEmptyText}>No check-in this week yet</Text>
+          </View>
+        )}
+
         {/* ── Progress Photos ── */}
         {coachId ? (
           <>
@@ -403,25 +466,65 @@ export default function RecordsScreen() {
                 <Text style={s.sectionHeading}>PROGRESS PHOTOS</Text>
                 <Text style={s.sub}>Sent privately to your coach only.</Text>
               </View>
-              <Pressable style={s.sendBtn} onPress={handlePickPhoto}>
-                <Ionicons name="camera-outline" size={15} color={Colors.accent} />
-                <Text style={s.sendBtnText}>Send Photo</Text>
-              </Pressable>
+              <View style={s.photoHeaderBtns}>
+                {photos.length >= 2 && (
+                  <Pressable
+                    style={[s.sendBtn, compareMode && { backgroundColor: colors.accent + '20', borderColor: colors.accent }]}
+                    onPress={() => { setCompareMode((v) => !v); setCompareSelected([]); setComparePhotos(null); }}
+                  >
+                    <Ionicons name="git-compare-outline" size={15} color={colors.accent} />
+                    <Text style={s.sendBtnText}>{compareMode ? 'Cancel' : 'Compare'}</Text>
+                  </Pressable>
+                )}
+                <Pressable style={s.sendBtn} onPress={handlePickPhoto}>
+                  <Ionicons name="camera-outline" size={15} color={colors.accent} />
+                  <Text style={s.sendBtnText}>Send</Text>
+                </Pressable>
+              </View>
             </View>
+
+            {compareMode && (
+              <Text style={s.compareHint}>
+                {compareSelected.length === 0 ? 'Select 2 photos to compare' : compareSelected.length === 1 ? 'Select 1 more photo' : 'Tap Compare to view'}
+              </Text>
+            )}
 
             {photos.length === 0 ? (
               <View style={s.photoEmpty}>
-                <Ionicons name="camera-outline" size={36} color={Colors.border} />
+                <Ionicons name="camera-outline" size={36} color={colors.border} />
                 <Text style={s.photoEmptyText}>No photos sent yet</Text>
               </View>
             ) : (
               <View style={s.photoGrid}>
-                {photos.map((p) => (
-                  <Pressable key={p.id} onPress={() => setViewing(p)}>
-                    <Image source={{ uri: p.file_url }} style={s.photoThumb} resizeMode="cover" />
-                  </Pressable>
-                ))}
+                {photos.map((p) => {
+                  const isSelected = compareSelected.includes(p.id);
+                  return (
+                    <Pressable
+                      key={p.id}
+                      onPress={() => compareMode ? toggleCompareSelect(p) : setViewing(p)}
+                      style={s.photoThumbWrap}
+                    >
+                      <Image source={{ uri: p.file_url }} style={s.photoThumb} resizeMode="cover" />
+                      {compareMode && (
+                        <View style={[s.compareCheck, isSelected && { backgroundColor: colors.accent, borderColor: colors.accent }]}>
+                          {isSelected && <Ionicons name="checkmark" size={12} color="#fff" />}
+                        </View>
+                      )}
+                    </Pressable>
+                  );
+                })}
               </View>
+            )}
+
+            {compareMode && compareSelected.length === 2 && (
+              <Pressable style={s.compareBtn} onPress={() => {
+                const p1 = photos.find((p) => p.id === compareSelected[0])!;
+                const p2 = photos.find((p) => p.id === compareSelected[1])!;
+                setComparePhotos([p1, p2]);
+              }}>
+                <Ionicons name="git-compare-outline" size={16} color="#fff" />
+                <Text style={s.compareBtnText}>VIEW COMPARISON</Text>
+              </Pressable>
             )}
           </>
         ) : null}
@@ -430,18 +533,15 @@ export default function RecordsScreen() {
         <View style={s.measHeader}>
           <View style={{ flex: 1 }}>
             <Text style={s.sectionHeading}>BODY MEASUREMENTS</Text>
-            <Text style={s.sub}>Track your weight and body measurements over time.</Text>
+            <Text style={s.sub}>Your coach logs measurements during sessions or InBody scans.</Text>
           </View>
-          <Pressable style={s.sendBtn} onPress={openMeasModal}>
-            <Ionicons name="add-outline" size={15} color={Colors.accent} />
-            <Text style={s.sendBtnText}>Log Today</Text>
-          </Pressable>
         </View>
 
         {measurements.length === 0 ? (
           <View style={s.photoEmpty}>
-            <Ionicons name="body-outline" size={36} color={Colors.border} />
-            <Text style={s.photoEmptyText}>No measurements logged yet</Text>
+            <Ionicons name="body-outline" size={36} color={colors.border} />
+            <Text style={s.photoEmptyText}>No measurements yet</Text>
+            <Text style={[s.photoEmptyText, { fontSize: 12, marginTop: 4 }]}>Your coach will log these during your sessions</Text>
           </View>
         ) : (
           <>
@@ -476,81 +576,8 @@ export default function RecordsScreen() {
         <View style={{ height: 32 }} />
       </ScrollView>
 
-      {/* ── Send Photo modal ── */}
-      {/* ── Log Measurement modal ── */}
-      <Modal visible={measModal} transparent animationType="slide" onRequestClose={() => setMeasModal(false)}>
-        <Pressable style={s.modalBackdrop} onPress={() => setMeasModal(false)} />
-        <ScrollView style={s.measModalSheet} keyboardShouldPersistTaps="handled">
-          <Text style={s.modalTitle}>Log Measurements</Text>
-          <Text style={[s.sub, { marginBottom: 16 }]}>Today — {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</Text>
-
-          <View style={s.measInputRow}>
-            <View style={s.measInputGroup}>
-              <Text style={s.measInputLabel}>Weight (kg)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 72.5" placeholderTextColor={Colors.textSecondary}
-                keyboardType="decimal-pad" value={mWeight} onChangeText={setMWeight} />
-            </View>
-            <View style={s.measInputGroup}>
-              <Text style={s.measInputLabel}>Body fat (%)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 18.0" placeholderTextColor={Colors.textSecondary}
-                keyboardType="decimal-pad" value={mFat} onChangeText={setMFat} />
-            </View>
-          </View>
-          <View style={s.measInputRow}>
-            <View style={s.measInputGroup}>
-              <Text style={s.measInputLabel}>Muscle mass (kg)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 35.0" placeholderTextColor={Colors.textSecondary}
-                keyboardType="decimal-pad" value={mMuscle} onChangeText={setMMuscle} />
-            </View>
-            <View style={s.measInputGroup}>
-              <Text style={s.measInputLabel}>Chest (cm)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 95" placeholderTextColor={Colors.textSecondary}
-                keyboardType="decimal-pad" value={mChest} onChangeText={setMChest} />
-            </View>
-          </View>
-          <View style={s.measInputRow}>
-            <View style={s.measInputGroup}>
-              <Text style={s.measInputLabel}>Waist (cm)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 80" placeholderTextColor={Colors.textSecondary}
-                keyboardType="decimal-pad" value={mWaist} onChangeText={setMWaist} />
-            </View>
-            <View style={s.measInputGroup}>
-              <Text style={s.measInputLabel}>Hips (cm)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 98" placeholderTextColor={Colors.textSecondary}
-                keyboardType="decimal-pad" value={mHips} onChangeText={setMHips} />
-            </View>
-          </View>
-          <View style={s.measInputRow}>
-            <View style={s.measInputGroup}>
-              <Text style={s.measInputLabel}>Arms (cm)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 35" placeholderTextColor={Colors.textSecondary}
-                keyboardType="decimal-pad" value={mArms} onChangeText={setMArms} />
-            </View>
-            <View style={s.measInputGroup}>
-              <Text style={s.measInputLabel}>Thighs (cm)</Text>
-              <TextInput style={s.measInput} placeholder="e.g. 58" placeholderTextColor={Colors.textSecondary}
-                keyboardType="decimal-pad" value={mThighs} onChangeText={setMThighs} />
-            </View>
-          </View>
-          <TextInput
-            style={[s.measInput, { marginBottom: 16 }]}
-            placeholder="Notes (optional)"
-            placeholderTextColor={Colors.textSecondary}
-            value={mNotes} onChangeText={setMNotes}
-          />
-          <Pressable
-            style={[s.sendConfirmBtn, savingMeas && { opacity: 0.6 }]}
-            onPress={handleSaveMeasurement}
-            disabled={savingMeas}
-          >
-            <Text style={s.sendConfirmText}>{savingMeas ? 'Saving…' : 'Save'}</Text>
-          </Pressable>
-          <View style={{ height: 40 }} />
-        </ScrollView>
-      </Modal>
-
-      <Modal visible={photoModal} transparent animationType="slide" onRequestClose={() => setPhotoModal(false)}>
-        <Pressable style={s.modalBackdrop} onPress={() => setPhotoModal(false)} />
+      <Modal visible={photoModal} transparent animationType="slide" onRequestClose={closePhotoModal}>
+        <Pressable style={s.modalBackdrop} onPress={closePhotoModal} />
         <View style={s.modalSheet}>
           <Text style={s.modalTitle}>Send to Coach</Text>
           {pickedUri && (
@@ -559,11 +586,16 @@ export default function RecordsScreen() {
           <TextInput
             style={s.noteInput}
             placeholder="Add a note (optional)"
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={colors.textSecondary}
             value={noteText}
             onChangeText={setNoteText}
             maxLength={200}
           />
+          {photoError ? (
+            <Text style={{ color: colors.danger, fontSize: 13, textAlign: 'center', marginBottom: 8 }}>
+              {photoError}
+            </Text>
+          ) : null}
           <Pressable
             style={[s.sendConfirmBtn, sending && { opacity: 0.6 }]}
             onPress={handleSendPhoto}
@@ -574,18 +606,100 @@ export default function RecordsScreen() {
         </View>
       </Modal>
 
-      {/* ── Fullscreen viewer ── */}
-      <Modal visible={!!viewing} transparent animationType="fade" onRequestClose={() => setViewing(null)}>
-        <View style={s.viewerOverlay}>
-          <Pressable style={s.viewerClose} onPress={() => setViewing(null)}>
+      {/* ── Photo comparison modal ── */}
+      <Modal visible={!!comparePhotos} transparent animationType="fade" onRequestClose={() => { setComparePhotos(null); setCompareSelected([]); setCompareMode(false); }}>
+        <View style={s.compareOverlay}>
+          <Pressable style={s.viewerClose} onPress={() => { setComparePhotos(null); setCompareSelected([]); setCompareMode(false); }}>
             <Ionicons name="close" size={26} color="#fff" />
           </Pressable>
-          <Pressable
-            style={s.viewerDelete}
-            onPress={() => viewing && handleDeletePhoto(viewing)}
-          >
-            <Ionicons name="trash-outline" size={22} color="#FF4D4D" />
+          <Text style={s.compareTitle}>BEFORE / AFTER</Text>
+          {comparePhotos && (
+            <View style={s.compareSplit}>
+              <View style={s.compareHalf}>
+                <Image source={{ uri: comparePhotos[0].file_url }} style={s.compareImg} resizeMode="cover" />
+                <Text style={s.compareDate}>{fmtDateTime(comparePhotos[0].sent_at)}</Text>
+              </View>
+              <View style={s.compareDivider} />
+              <View style={s.compareHalf}>
+                <Image source={{ uri: comparePhotos[1].file_url }} style={s.compareImg} resizeMode="cover" />
+                <Text style={s.compareDate}>{fmtDateTime(comparePhotos[1].sent_at)}</Text>
+              </View>
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      {/* ── Weekly check-in modal ── */}
+      <Modal visible={checkinModal} transparent animationType="slide" onRequestClose={() => setCheckinModal(false)}>
+        <Pressable style={s.modalBackdrop} onPress={() => setCheckinModal(false)} />
+        <ScrollView style={s.measModalSheet} keyboardShouldPersistTaps="handled">
+          <Text style={s.modalTitle}>Weekly Check-in</Text>
+          <Text style={[s.sub, { marginBottom: 20 }]}>Week of {new Date(thisWeekMonday() + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</Text>
+
+          {([
+            { label: 'Mood', emoji: ['😞','😕','😐','🙂','😄'], value: ciMood, set: setCiMood },
+            { label: 'Sleep Quality', emoji: ['😴','😪','😑','😌','🌙'], value: ciSleep, set: setCiSleep },
+            { label: 'Energy Level', emoji: ['🪫','😓','😐','💪','⚡'], value: ciEnergy, set: setCiEnergy },
+          ] as const).map(({ label, emoji, value, set }) => (
+            <View key={label} style={s.ciRow}>
+              <Text style={s.ciLabel}>{label}</Text>
+              <View style={s.ciButtons}>
+                {[1,2,3,4,5].map((n) => (
+                  <Pressable key={n} style={[s.ciBtn, value === n && s.ciBtnActive]} onPress={() => (set as any)(n)}>
+                    <Text style={s.ciBtnEmoji}>{emoji[n-1]}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ))}
+
+          <Text style={s.ciLabel}>Weight (kg) — optional</Text>
+          <TextInput
+            style={[s.measInput, { marginBottom: 16 }]}
+            placeholder="e.g. 72.5"
+            placeholderTextColor={colors.textSecondary}
+            keyboardType="decimal-pad"
+            value={ciWeight}
+            onChangeText={setCiWeight}
+          />
+          <Text style={s.ciLabel}>Notes — optional</Text>
+          <TextInput
+            style={[s.measInput, { height: 80, textAlignVertical: 'top', paddingTop: 10, marginBottom: 20 }]}
+            placeholder="How are you feeling? Any concerns?"
+            placeholderTextColor={colors.textSecondary}
+            value={ciNotes}
+            onChangeText={setCiNotes}
+            multiline
+            maxLength={500}
+          />
+          {ciError ? (
+            <Text style={{ color: colors.danger, fontSize: 13, textAlign: 'center', marginBottom: 8 }}>
+              {ciError}
+            </Text>
+          ) : null}
+          <Pressable style={[s.sendConfirmBtn, ciSaving && { opacity: 0.6 }]} onPress={handleSaveCheckin} disabled={ciSaving}>
+            <Text style={s.sendConfirmText}>{ciSaving ? 'Saving…' : 'Save Check-in'}</Text>
           </Pressable>
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </Modal>
+
+      {/* ── Fullscreen viewer ── */}
+      <Modal
+        visible={!!viewing}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { setDeleteConfirm(false); setViewing(null); }}
+      >
+        <View style={s.viewerOverlay}>
+          <Pressable style={s.viewerClose} onPress={() => { setDeleteConfirm(false); setViewing(null); }}>
+            <Ionicons name="close" size={26} color="#fff" />
+          </Pressable>
+          {!deleteConfirm && (
+            <Pressable style={s.viewerDelete} onPress={() => setDeleteConfirm(true)}>
+              <Ionicons name="trash-outline" size={22} color="#FF4D4D" />
+            </Pressable>
+          )}
           {viewing && (
             <>
               <Image source={{ uri: viewing.file_url }} style={s.viewerImg} resizeMode="contain" />
@@ -595,6 +709,19 @@ export default function RecordsScreen() {
               </View>
             </>
           )}
+          {deleteConfirm && viewing && (
+            <View style={s.viewerConfirm}>
+              <Text style={s.viewerConfirmText}>Delete this photo?</Text>
+              <View style={s.viewerConfirmBtns}>
+                <Pressable style={s.viewerCancelBtn} onPress={() => setDeleteConfirm(false)}>
+                  <Text style={s.viewerCancelText}>Cancel</Text>
+                </Pressable>
+                <Pressable style={s.viewerDeleteBtn} onPress={() => doDeletePhoto(viewing)}>
+                  <Text style={s.viewerDeleteText}>Delete</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
         </View>
       </Modal>
     </>
@@ -603,130 +730,205 @@ export default function RecordsScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const s = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: Colors.bg },
-  content: { padding: PAD, paddingTop: 24 },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    scroll: { flex: 1, backgroundColor: c.bg },
+    content: { padding: PAD, paddingTop: 24 },
 
-  titleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 12 },
-  sectionHeading: { ...Typography.label, color: Colors.textSecondary, marginBottom: 4 },
-  sub: { ...Typography.caption, color: Colors.textSecondary, lineHeight: 18 },
+    titleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 12 },
+    sectionHeading: { ...Typography.label, color: c.textSecondary, marginBottom: 4 },
+    sub: { ...Typography.caption, color: c.textSecondary, lineHeight: 18 },
 
-  reportBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    borderWidth: 1, borderColor: Colors.accent + '60',
-    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
-    backgroundColor: Colors.accent + '10',
-  },
-  reportBtnText: { ...Typography.caption, color: Colors.accent, fontWeight: '600' },
+    reportBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      borderWidth: 1, borderColor: c.accent + '60',
+      borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
+      backgroundColor: c.accent + '10',
+    },
+    reportBtnText: { ...Typography.caption, color: c.accent, fontWeight: '600' },
 
-  empty: { alignItems: 'center', paddingTop: 48, paddingBottom: 8, gap: 8 },
-  emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 12 },
-  emptySub: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
+    empty: { alignItems: 'center', paddingTop: 48, paddingBottom: 8, gap: 8 },
+    emptyTitle: { ...Typography.subtitle, color: c.textPrimary, marginTop: 12 },
+    emptySub: { ...Typography.body, color: c.textSecondary, textAlign: 'center', lineHeight: 20 },
 
-  card: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border,
-    paddingVertical: 14, paddingHorizontal: 14,
-    marginBottom: 8, gap: 12,
-  },
-  rankCol: { width: 28, alignItems: 'center' },
-  medal: { fontSize: 22 },
-  rankNum: { ...Typography.label, color: Colors.textSecondary, fontSize: 13 },
-  info: { flex: 1 },
-  exerciseName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 4 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText: { ...Typography.caption, color: Colors.textSecondary },
-  dot: { color: Colors.border, fontSize: 10 },
-  weightCol: { alignItems: 'flex-end' },
-  weight: { ...Typography.subtitle, color: Colors.accent, fontWeight: '700' },
-  weightLabel: { ...Typography.label, color: Colors.textSecondary, fontSize: 9, marginTop: 1 },
+    card: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border,
+      paddingVertical: 14, paddingHorizontal: 14,
+      marginBottom: 8, gap: 12,
+    },
+    rankCol: { width: 28, alignItems: 'center' },
+    medal: { fontSize: 22 },
+    rankNum: { ...Typography.label, color: c.textSecondary, fontSize: 13 },
+    info: { flex: 1 },
+    exerciseName: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 4 },
+    metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    metaText: { ...Typography.caption, color: c.textSecondary },
+    dot: { color: c.border, fontSize: 10 },
+    weightCol: { alignItems: 'flex-end' },
+    weight: { ...Typography.subtitle, color: c.accent, fontWeight: '700' },
+    weightLabel: { ...Typography.label, color: c.textSecondary, fontSize: 9, marginTop: 1 },
 
-  // Progress photos
-  photoHeader: {
-    flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
-    marginTop: 28, marginBottom: 14, gap: 12,
-  },
-  sendBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    borderWidth: 1, borderColor: Colors.accent + '60',
-    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
-    backgroundColor: Colors.accent + '10',
-  },
-  sendBtnText: { ...Typography.caption, color: Colors.accent, fontWeight: '600' },
-  photoEmpty: { alignItems: 'center', paddingVertical: 28, gap: 8 },
-  photoEmptyText: { ...Typography.body, color: Colors.textSecondary },
-  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },
-  photoThumb: { width: THUMB, height: THUMB, borderRadius: 4, backgroundColor: Colors.surface },
+    // Progress photos
+    photoHeader: {
+      flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
+      marginTop: 28, marginBottom: 14, gap: 12,
+    },
+    sendBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      borderWidth: 1, borderColor: c.accent + '60',
+      borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
+      backgroundColor: c.accent + '10',
+    },
+    sendBtnText: { ...Typography.caption, color: c.accent, fontWeight: '600' },
+    photoEmpty: { alignItems: 'center', paddingVertical: 28, gap: 8 },
+    photoEmptyText: { ...Typography.body, color: c.textSecondary },
+    photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },
+    photoThumb: { width: THUMB, height: THUMB, borderRadius: 4, backgroundColor: c.surface },
 
-  // Send modal
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
-  modalSheet: {
-    backgroundColor: Colors.surface,
-    borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    padding: 24, gap: 14,
-  },
-  modalTitle: { ...Typography.subtitle, color: Colors.textPrimary, fontWeight: '700' },
-  modalPreview: {
-    width: '100%', height: 220, borderRadius: 12,
-    backgroundColor: Colors.border,
-  },
-  noteInput: {
-    borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 10, padding: 12,
-    ...Typography.body, color: Colors.textPrimary,
-    backgroundColor: Colors.bg,
-  },
-  sendConfirmBtn: {
-    backgroundColor: Colors.accent, borderRadius: 12,
-    padding: 14, alignItems: 'center',
-  },
-  sendConfirmText: { ...Typography.subtitle, color: '#fff', fontWeight: '700' },
+    // Send modal
+    modalBackdrop: { flex: 1, backgroundColor: c.overlay },
+    modalSheet: {
+      backgroundColor: c.surface,
+      borderTopLeftRadius: 20, borderTopRightRadius: 20,
+      padding: 24, gap: 14,
+    },
+    modalTitle: { ...Typography.subtitle, color: c.textPrimary, fontWeight: '700' },
+    modalPreview: {
+      width: '100%', height: 220, borderRadius: 12,
+      backgroundColor: c.border,
+    },
+    noteInput: {
+      borderWidth: 1, borderColor: c.border,
+      borderRadius: 10, padding: 12,
+      ...Typography.body, color: c.textPrimary,
+      backgroundColor: c.bg,
+    },
+    sendConfirmBtn: {
+      backgroundColor: c.accent, borderRadius: 12,
+      padding: 14, alignItems: 'center',
+    },
+    sendConfirmText: { ...Typography.subtitle, color: '#fff', fontWeight: '700' },
 
-  // Body measurements
-  measHeader: {
-    flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
-    marginTop: 28, marginBottom: 14, gap: 12,
-  },
-  measChartCard: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border,
-    padding: 14, marginBottom: 8,
-  },
-  measRow: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.surface, borderRadius: 12,
-    borderWidth: 1, borderColor: Colors.border,
-    paddingVertical: 10, paddingHorizontal: 14,
-    marginBottom: 6, gap: 12,
-  },
-  measDate: { width: 52, ...Typography.caption, color: Colors.textSecondary },
-  measStats: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  measStat: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
-  measStatMuted: { ...Typography.caption, color: Colors.textSecondary },
-  measModalSheet: {
-    backgroundColor: Colors.surface,
-    borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    padding: 24,
-  },
-  measInputRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  measInputGroup: { flex: 1, gap: 5 },
-  measInputLabel: { ...Typography.label, color: Colors.textSecondary, fontSize: 10 },
-  measInput: {
-    borderWidth: 1, borderColor: Colors.border, borderRadius: 10,
-    padding: 11, ...Typography.body, color: Colors.textPrimary,
-    backgroundColor: Colors.bg,
-  },
+    // Body measurements
+    measHeader: {
+      flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
+      marginTop: 28, marginBottom: 14, gap: 12,
+    },
+    measChartCard: {
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border,
+      padding: 14, marginBottom: 8,
+    },
+    measRow: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: c.surface, borderRadius: 12,
+      borderWidth: 1, borderColor: c.border,
+      paddingVertical: 10, paddingHorizontal: 14,
+      marginBottom: 6, gap: 12,
+    },
+    measDate: { width: 52, ...Typography.caption, color: c.textSecondary },
+    measStats: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    measStat: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    measStatMuted: { ...Typography.caption, color: c.textSecondary },
+    measModalSheet: {
+      backgroundColor: c.surface,
+      borderTopLeftRadius: 20, borderTopRightRadius: 20,
+      padding: 24,
+      maxHeight: '85%',
+    },
+    measInputRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+    measInputGroup: { flex: 1, gap: 5 },
+    measInputLabel: { ...Typography.label, color: c.textSecondary, fontSize: 10 },
+    measInput: {
+      borderWidth: 1, borderColor: c.border, borderRadius: 10,
+      padding: 11, ...Typography.body, color: c.textPrimary,
+      backgroundColor: c.bg,
+    },
 
-  // Viewer
-  viewerOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.92)',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  viewerClose: { position: 'absolute', top: 52, right: 20, zIndex: 10, padding: 8 },
-  viewerDelete: { position: 'absolute', top: 52, left: 20, zIndex: 10, padding: 8 },
-  viewerImg: { width: SCREEN_W, height: SCREEN_W * 1.2 },
-  viewerCaption: { marginTop: 16, alignItems: 'center', gap: 4, paddingHorizontal: 24 },
-  viewerDate: { ...Typography.caption, color: 'rgba(255,255,255,0.6)' },
-  viewerNote: { ...Typography.body, color: '#fff', textAlign: 'center' },
-});
+    // Viewer
+    viewerOverlay: {
+      flex: 1, backgroundColor: 'rgba(0,0,0,0.92)',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    viewerClose: { position: 'absolute', top: 52, right: 20, zIndex: 10, padding: 8 },
+    viewerDelete: { position: 'absolute', top: 52, left: 20, zIndex: 10, padding: 8 },
+    viewerImg: { width: SCREEN_W, height: SCREEN_W * 1.2 },
+    viewerCaption: { marginTop: 16, alignItems: 'center', gap: 4, paddingHorizontal: 24 },
+    viewerDate: { ...Typography.caption, color: 'rgba(255,255,255,0.6)' },
+    viewerNote: { ...Typography.body, color: '#fff', textAlign: 'center' },
+    viewerConfirm: {
+      position: 'absolute', bottom: 48, left: 24, right: 24,
+      backgroundColor: 'rgba(0,0,0,0.85)', borderRadius: 14,
+      padding: 20, alignItems: 'center', gap: 14,
+    },
+    viewerConfirmText: { ...Typography.subtitle, color: '#fff', fontWeight: '700' },
+    viewerConfirmBtns: { flexDirection: 'row', gap: 12, width: '100%' },
+    viewerCancelBtn: {
+      flex: 1, paddingVertical: 12, borderRadius: 10,
+      borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', alignItems: 'center',
+    },
+    viewerCancelText: { ...Typography.body, color: '#fff', fontWeight: '600' },
+    viewerDeleteBtn: {
+      flex: 1, paddingVertical: 12, borderRadius: 10,
+      backgroundColor: '#FF4D4D', alignItems: 'center',
+    },
+    viewerDeleteText: { ...Typography.body, color: '#fff', fontWeight: '700' },
+
+    // Photo compare
+    photoHeaderBtns: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+    photoThumbWrap: { position: 'relative' },
+    compareCheck: {
+      position: 'absolute', top: 4, right: 4,
+      width: 20, height: 20, borderRadius: 10,
+      backgroundColor: 'rgba(0,0,0,0.4)', borderWidth: 1.5, borderColor: '#fff',
+      alignItems: 'center', justifyContent: 'center',
+    },
+    compareHint: { ...Typography.caption, color: c.textSecondary, marginBottom: 8 },
+    compareBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      backgroundColor: c.accent, borderRadius: 12,
+      paddingVertical: 12, justifyContent: 'center', marginTop: 12,
+    },
+    compareBtnText: { ...Typography.label, color: '#fff', letterSpacing: 1 },
+    compareOverlay: {
+      flex: 1, backgroundColor: 'rgba(0,0,0,0.95)',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    compareTitle: { ...Typography.label, color: 'rgba(255,255,255,0.5)', letterSpacing: 2, marginBottom: 12 },
+    compareSplit: { flexDirection: 'row', width: SCREEN_W, gap: 2 },
+    compareHalf: { flex: 1, alignItems: 'center' },
+    compareImg: { width: (SCREEN_W - 2) / 2, height: SCREEN_W * 0.7 },
+    compareDivider: { width: 2, backgroundColor: 'rgba(255,255,255,0.15)' },
+    compareDate: { ...Typography.caption, color: 'rgba(255,255,255,0.5)', marginTop: 6, textAlign: 'center' },
+
+    // Weekly check-in
+    checkinHeader: {
+      flexDirection: 'row', alignItems: 'center',
+      justifyContent: 'space-between', marginTop: 28, marginBottom: 12,
+    },
+    checkinCard: {
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border,
+      padding: 14, marginBottom: 24, gap: 8,
+    },
+    checkinRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    checkinLabel: { ...Typography.caption, color: c.textSecondary, flex: 1 },
+    checkinEmoji: { fontSize: 18 },
+    checkinValue: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    checkinNotes: { ...Typography.caption, color: c.textSecondary, marginTop: 4 },
+
+    // Check-in modal
+    ciRow: { marginBottom: 16 },
+    ciLabel: { ...Typography.label, color: c.textSecondary, marginBottom: 8 },
+    ciButtons: { flexDirection: 'row', gap: 8 },
+    ciBtn: {
+      flex: 1, alignItems: 'center', paddingVertical: 10,
+      backgroundColor: c.surface, borderRadius: 10,
+      borderWidth: 1, borderColor: c.border,
+    },
+    ciBtnActive: { backgroundColor: c.accent + '20', borderColor: c.accent },
+    ciBtnEmoji: { fontSize: 22 },
+  });
+}

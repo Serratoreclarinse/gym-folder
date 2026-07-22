@@ -1,16 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useActiveSessionContext } from '@/context/ActiveSessionContext';
 import { QRScanModal } from '@/components/QRScanModal';
-import { Colors, Typography } from '@/constants/theme';
+import { Typography, ColorScheme } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 const TAB_BAR_HEIGHT = 58;
 
 export function FloatingSessionBar() {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const { activeSession, endSession } = useActiveSessionContext();
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
@@ -19,6 +23,14 @@ export function FloatingSessionBar() {
   const [checkedIn, setCheckedIn] = useState(false);
   const [loadingWorkout, setLoadingWorkout] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const checkinKey = activeSession ? `@elevat3/checkedIn_${activeSession.session_id}` : null;
+  useEffect(() => {
+    if (!checkinKey) return;
+    AsyncStorage.getItem(checkinKey).then((val) => {
+      if (val === 'true') setCheckedIn(true);
+    });
+  }, [checkinKey]);
 
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
@@ -65,7 +77,14 @@ export function FloatingSessionBar() {
 
     const exercises = (data?.exercises as unknown[]) ?? [];
     if (!exercises.length) {
-      Alert.alert('No Exercises', 'No exercises were planned for this session.');
+      Alert.alert(
+        'No Exercises',
+        'No exercises were planned for this session.',
+        [
+          { text: 'Keep Timer', style: 'cancel' },
+          { text: 'End Session', style: 'destructive', onPress: () => endSession() },
+        ],
+      );
       return;
     }
 
@@ -80,6 +99,7 @@ export function FloatingSessionBar() {
         durationMinutes: String(data?.duration_minutes ?? activeSession.current_duration),
         sessionNotes: data?.notes ?? '',
         clientName: activeSession.client_name,
+        sessionId: activeSession.session_id,
         alreadySaved: 'true',
       },
     } as any);
@@ -88,7 +108,7 @@ export function FloatingSessionBar() {
   const handleQRConfirm = async () => {
     setShowQRScan(false);
     setCheckedIn(true);
-    await openWorkoutPortal();
+    if (checkinKey) await AsyncStorage.setItem(checkinKey, 'true');
   };
 
   return (
@@ -98,7 +118,7 @@ export function FloatingSessionBar() {
         style={[s.wrapper, { bottom: TAB_BAR_HEIGHT + insets.bottom }]}
       >
         <View style={[s.bar, isRed && s.barRed]}>
-          <View style={[s.stripe, { backgroundColor: isRed ? Colors.accent : '#4CAF50' }]} />
+          <View style={[s.stripe, { backgroundColor: isRed ? colors.accent : colors.success }]} />
 
           <View style={s.info}>
             <Text style={s.clientName} numberOfLines={1}>
@@ -119,7 +139,7 @@ export function FloatingSessionBar() {
             <Ionicons
               name={checkedIn ? 'barbell-outline' : 'qr-code-outline'}
               size={19}
-              color={checkedIn ? '#4CAF50' : Colors.textSecondary}
+              color={checkedIn ? colors.success : colors.textSecondary}
             />
           </Pressable>
 
@@ -129,7 +149,7 @@ export function FloatingSessionBar() {
             onPress={handleEnd}
             hitSlop={10}
           >
-            <Ionicons name="stop-circle-outline" size={20} color={Colors.danger} />
+            <Ionicons name="stop-circle-outline" size={20} color={colors.danger} />
           </Pressable>
         </View>
       </View>
@@ -145,7 +165,7 @@ export function FloatingSessionBar() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (c: ColorScheme) => StyleSheet.create({
   wrapper: {
     position: 'absolute',
     left: 0,
@@ -156,10 +176,10 @@ const s = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     overflow: 'hidden',
     height: 52,
     shadowColor: '#000',
@@ -169,8 +189,8 @@ const s = StyleSheet.create({
     elevation: 8,
   },
   barRed: {
-    borderColor: Colors.accent + '60',
-    backgroundColor: Colors.accent + '10',
+    borderColor: c.accent + '60',
+    backgroundColor: c.accent + '10',
   },
   stripe: {
     width: 4,
@@ -183,20 +203,20 @@ const s = StyleSheet.create({
   },
   clientName: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     fontWeight: '700',
     letterSpacing: 0.3,
     marginBottom: 1,
   },
   timer: {
     ...Typography.body,
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     fontWeight: '800',
     fontSize: 15,
     letterSpacing: 0.5,
   },
   timerRed: {
-    color: Colors.accent,
+    color: c.accent,
   },
   iconBtn: {
     width: 40,

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Alert, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, View,
@@ -7,7 +7,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { sendPushNotification } from '@/lib/pushNotifications';
-import { Colors, Typography } from '@/constants/theme';
+import { Typography, ColorScheme } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 type Transfer = {
   id: string;
@@ -33,20 +34,23 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled:      'Cancelled',
 };
 
-const STATUS_COLOR: Record<string, string> = {
-  pending_admin:  '#FF9800',
-  pending_coach:  Colors.accent,
-  accepted:       '#4CAF50',
-  rejected_admin: Colors.danger,
-  rejected_coach: Colors.danger,
-  cancelled:      Colors.textSecondary,
-};
-
 function initials(name: string) {
   return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
 }
 
 export default function AdminTransfersScreen() {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+
+  const STATUS_COLOR: Record<string, string> = {
+    pending_admin:  colors.warning,
+    pending_coach:  colors.accent,
+    accepted:       colors.success,
+    rejected_admin: colors.danger,
+    rejected_coach: colors.danger,
+    cancelled:      colors.textSecondary,
+  };
+
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -136,14 +140,14 @@ export default function AdminTransfersScreen() {
   const history = transfers.filter((t) => t.status !== 'pending_admin');
 
   if (loading) {
-    return <View style={s.center}><ActivityIndicator size="large" color={Colors.accent} /></View>;
+    return <View style={s.center}><ActivityIndicator size="large" color={colors.accent} /></View>;
   }
 
   return (
     <ScrollView
       style={s.scroll}
       contentContainerStyle={s.content}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={Colors.accent} />}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />}
     >
       {/* Pending approval */}
       {pending.length > 0 ? (
@@ -177,8 +181,8 @@ export default function AdminTransfersScreen() {
                       {t.package_type} · {t.sessions_remaining} sessions left
                     </Text>
                   </View>
-                  <View style={[s.statusPill, { backgroundColor: '#FF980020', borderColor: '#FF980060' }]}>
-                    <Text style={[s.statusPillText, { color: '#FF9800' }]}>PENDING</Text>
+                  <View style={[s.statusPill, { backgroundColor: colors.warning + '20', borderColor: colors.warning + '60' }]}>
+                    <Text style={[s.statusPillText, { color: colors.warning }]}>PENDING</Text>
                   </View>
                 </View>
 
@@ -187,7 +191,7 @@ export default function AdminTransfersScreen() {
                   <View style={s.reviewPanel}>
                     {t.notes ? (
                       <View style={s.notesRow}>
-                        <Ionicons name="chatbubble-outline" size={14} color={Colors.textSecondary} />
+                        <Ionicons name="chatbubble-outline" size={14} color={colors.textSecondary} />
                         <Text style={s.notesText}>"{t.notes}"</Text>
                       </View>
                     ) : null}
@@ -197,7 +201,7 @@ export default function AdminTransfersScreen() {
                       value={adminNotesMap[t.id] ?? ''}
                       onChangeText={(v) => setAdminNotesMap((prev) => ({ ...prev, [t.id]: v }))}
                       placeholder="Reason for approval/rejection…"
-                      placeholderTextColor={Colors.textSecondary}
+                      placeholderTextColor={colors.textSecondary}
                       multiline
                     />
                     <View style={s.actionRow}>
@@ -206,7 +210,7 @@ export default function AdminTransfersScreen() {
                         onPress={() => handleReject(t)}
                         disabled={isActioning}
                       >
-                        <Ionicons name="close" size={16} color={Colors.danger} />
+                        <Ionicons name="close" size={16} color={colors.danger} />
                         <Text style={s.rejectText}>Reject</Text>
                       </Pressable>
                       <Pressable
@@ -215,8 +219,8 @@ export default function AdminTransfersScreen() {
                         disabled={isActioning}
                       >
                         {isActioning
-                          ? <ActivityIndicator size="small" color={Colors.bg} />
-                          : <><Ionicons name="checkmark" size={16} color={Colors.bg} /><Text style={s.approveBtnText}>Approve</Text></>
+                          ? <ActivityIndicator size="small" color={colors.bg} />
+                          : <><Ionicons name="checkmark" size={16} color={colors.bg} /><Text style={s.approveBtnText}>Approve</Text></>
                         }
                       </Pressable>
                     </View>
@@ -227,7 +231,7 @@ export default function AdminTransfersScreen() {
                   <Ionicons
                     name={expanded ? 'chevron-up' : 'chevron-down'}
                     size={14}
-                    color={Colors.textSecondary}
+                    color={colors.textSecondary}
                   />
                 </View>
               </Pressable>
@@ -236,7 +240,7 @@ export default function AdminTransfersScreen() {
         </>
       ) : (
         <View style={s.emptyPending}>
-          <Ionicons name="checkmark-circle-outline" size={48} color={Colors.border} />
+          <Ionicons name="checkmark-circle-outline" size={48} color={colors.border} />
           <Text style={s.emptyTitle}>No pending transfers</Text>
           <Text style={s.emptySub}>All transfer requests have been reviewed</Text>
         </View>
@@ -247,7 +251,7 @@ export default function AdminTransfersScreen() {
         <>
           <Text style={[s.sectionTitle, { marginTop: 28, marginBottom: 12 }]}>HISTORY</Text>
           {history.map((t) => {
-            const color = STATUS_COLOR[t.status] ?? Colors.textSecondary;
+            const color = STATUS_COLOR[t.status] ?? colors.textSecondary;
             const dateStr = new Date(t.created_at).toLocaleDateString('en-US', {
               month: 'short', day: 'numeric', year: 'numeric',
             });
@@ -279,67 +283,69 @@ export default function AdminTransfersScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: Colors.bg },
-  content: { padding: 20, paddingBottom: 48 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.bg },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    scroll: { flex: 1, backgroundColor: c.bg },
+    content: { padding: 20, paddingBottom: 48 },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
-  sectionTitle: { ...Typography.label, color: Colors.textSecondary },
-  badge: {
-    backgroundColor: '#FF980020', borderRadius: 10, borderWidth: 1, borderColor: '#FF980060',
-    paddingHorizontal: 8, paddingVertical: 2,
-  },
-  badgeText: { fontSize: 12, fontWeight: '800', color: '#FF9800' },
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+    sectionTitle: { ...Typography.label, color: c.textSecondary },
+    badge: {
+      backgroundColor: c.warning + '20', borderRadius: 10, borderWidth: 1, borderColor: c.warning + '60',
+      paddingHorizontal: 8, paddingVertical: 2,
+    },
+    badgeText: { fontSize: 12, fontWeight: '800', color: c.warning },
 
-  card: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border, padding: 16, marginBottom: 10,
-  },
-  historyCard: { opacity: 0.8 },
-  cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  clientAvatar: {
-    width: 42, height: 42, borderRadius: 21,
-    backgroundColor: Colors.accent + '18', borderWidth: 1, borderColor: Colors.accent + '40',
-    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
-  },
-  clientAvatarText: { fontSize: 14, fontWeight: '800', color: Colors.accent },
-  cardInfo: { flex: 1 },
-  clientName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700', marginBottom: 3 },
-  cardSub: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 2 },
-  cardMeta: { ...Typography.caption, color: Colors.textSecondary },
+    card: {
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border, padding: 16, marginBottom: 10,
+    },
+    historyCard: { opacity: 0.8 },
+    cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+    clientAvatar: {
+      width: 42, height: 42, borderRadius: 21,
+      backgroundColor: c.accent + '18', borderWidth: 1, borderColor: c.accent + '40',
+      justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+    },
+    clientAvatarText: { fontSize: 14, fontWeight: '800', color: c.accent },
+    cardInfo: { flex: 1 },
+    clientName: { ...Typography.body, color: c.textPrimary, fontWeight: '700', marginBottom: 3 },
+    cardSub: { ...Typography.caption, color: c.textSecondary, marginBottom: 2 },
+    cardMeta: { ...Typography.caption, color: c.textSecondary },
 
-  statusPill: {
-    borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, flexShrink: 0,
-  },
-  statusPillText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.4 },
+    statusPill: {
+      borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, flexShrink: 0,
+    },
+    statusPillText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.4 },
 
-  expandHint: { alignItems: 'center', marginTop: 10 },
+    expandHint: { alignItems: 'center', marginTop: 10 },
 
-  reviewPanel: { marginTop: 16, borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: 14 },
-  notesRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 12 },
-  notesText: { ...Typography.caption, color: Colors.textSecondary, flex: 1, fontStyle: 'italic' },
-  adminNotesLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: 6 },
-  adminNotesInput: {
-    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
-    color: Colors.textPrimary, fontSize: 14, minHeight: 52,
-    textAlignVertical: 'top', marginBottom: 12,
-  },
-  actionRow: { flexDirection: 'row', gap: 10 },
-  rejectBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    borderWidth: 1, borderColor: Colors.danger + '50', borderRadius: 10, paddingVertical: 11,
-    backgroundColor: Colors.danger + '0D',
-  },
-  rejectText: { color: Colors.danger, fontWeight: '700', fontSize: 13 },
-  approveBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: Colors.accent, borderRadius: 10, paddingVertical: 11,
-  },
-  approveBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 13 },
+    reviewPanel: { marginTop: 16, borderTopWidth: 1, borderTopColor: c.border, paddingTop: 14, gap: 16 },
+    notesRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 12 },
+    notesText: { ...Typography.caption, color: c.textSecondary, flex: 1, fontStyle: 'italic' },
+    adminNotesLabel: { ...Typography.label, color: c.textSecondary, marginBottom: 6 },
+    adminNotesInput: {
+      backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
+      borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
+      color: c.textPrimary, fontSize: 14, minHeight: 52,
+      textAlignVertical: 'top', marginBottom: 12,
+    },
+    actionRow: { flexDirection: 'row', gap: 10 },
+    rejectBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      borderWidth: 1, borderColor: c.danger + '50', borderRadius: 10, paddingVertical: 11,
+      backgroundColor: c.danger + '0D',
+    },
+    rejectText: { color: c.danger, fontWeight: '700', fontSize: 13 },
+    approveBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      backgroundColor: c.accent, borderRadius: 10, paddingVertical: 11,
+    },
+    approveBtnText: { color: c.bg, fontWeight: '800', fontSize: 13 },
 
-  emptyPending: { alignItems: 'center', paddingVertical: 60, gap: 10 },
-  emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 8 },
-  emptySub: { ...Typography.body, color: Colors.textSecondary },
-});
+    emptyPending: { alignItems: 'center', paddingVertical: 60, gap: 10 },
+    emptyTitle: { ...Typography.subtitle, color: c.textPrimary, marginTop: 8 },
+    emptySub: { ...Typography.body, color: c.textSecondary },
+  });
+}

@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -10,16 +11,20 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useAvailability } from '@/hooks/useAvailability';
 import { useSessions } from '@/hooks/useSessions';
-import { Colors, Typography } from '@/constants/theme';
+import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
+import { Typography, ColorScheme } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 // Defined outside parent to prevent TextInput keyboard flicker
 function BlockForm({
   startDate, endDate, reason,
   onChangeStart, onChangeEnd, onChangeReason,
-  onSave, onCancel,
+  onSave, onCancel, colors, styles,
 }: {
   startDate: string; endDate: string; reason: string;
   onChangeStart: (v: string) => void;
@@ -27,65 +32,185 @@ function BlockForm({
   onChangeReason:(v: string) => void;
   onSave:   () => void;
   onCancel: () => void;
+  colors: ColorScheme;
+  styles: ReturnType<typeof makeStyles>;
 }) {
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
+  const startVal = startDate ? new Date(startDate + 'T00:00:00') : new Date();
+  const endVal = endDate ? new Date(endDate + 'T00:00:00') : new Date();
+  const fmtD = (iso: string) => iso
+    ? new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+
   return (
-    <View style={fs.wrap}>
-      <Text style={fs.lbl}>START DATE</Text>
+    <View style={styles.fsWrap}>
+      <Text style={styles.fsLbl}>START DATE</Text>
+      {Platform.OS === 'ios' ? (
+        <DateTimePicker
+          value={startVal}
+          mode="date"
+          display="compact"
+          onChange={(_, s) => { if (s) onChangeStart(s.toISOString().split('T')[0]); }}
+          style={{ alignSelf: 'flex-start', marginLeft: -8, marginBottom: 12 }}
+        />
+      ) : (
+        <>
+          <Pressable style={styles.datePressable} onPress={() => setShowStartPicker(true)}>
+            <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+            <Text style={styles.datePressableText}>{fmtD(startDate) || 'Select start date'}</Text>
+          </Pressable>
+          {showStartPicker && (
+            <DateTimePicker value={startVal} mode="date" display="default"
+              onChange={(_, s) => { setShowStartPicker(false); if (s) onChangeStart(s.toISOString().split('T')[0]); }}
+            />
+          )}
+        </>
+      )}
+      <Text style={styles.fsLbl}>END DATE</Text>
+      {Platform.OS === 'ios' ? (
+        <DateTimePicker
+          value={endVal}
+          mode="date"
+          display="compact"
+          onChange={(_, s) => { if (s) onChangeEnd(s.toISOString().split('T')[0]); }}
+          style={{ alignSelf: 'flex-start', marginLeft: -8, marginBottom: 12 }}
+        />
+      ) : (
+        <>
+          <Pressable style={styles.datePressable} onPress={() => setShowEndPicker(true)}>
+            <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+            <Text style={styles.datePressableText}>{fmtD(endDate) || 'Select end date'}</Text>
+          </Pressable>
+          {showEndPicker && (
+            <DateTimePicker value={endVal} mode="date" display="default"
+              onChange={(_, s) => { setShowEndPicker(false); if (s) onChangeEnd(s.toISOString().split('T')[0]); }}
+            />
+          )}
+        </>
+      )}
+      <Text style={styles.fsLbl}>REASON (optional)</Text>
       <TextInput
-        style={fs.input}
-        value={startDate}
-        onChangeText={onChangeStart}
-        placeholder="YYYY-MM-DD"
-        placeholderTextColor={Colors.textSecondary}
-        keyboardType="numbers-and-punctuation"
-        maxLength={10}
-        autoFocus
-      />
-      <Text style={fs.lbl}>END DATE</Text>
-      <TextInput
-        style={fs.input}
-        value={endDate}
-        onChangeText={onChangeEnd}
-        placeholder="YYYY-MM-DD"
-        placeholderTextColor={Colors.textSecondary}
-        keyboardType="numbers-and-punctuation"
-        maxLength={10}
-      />
-      <Text style={fs.lbl}>REASON (optional)</Text>
-      <TextInput
-        style={[fs.input, { height: 72, textAlignVertical: 'top', paddingTop: 10 }]}
+        style={[styles.fsInput, { height: 72, textAlignVertical: 'top', paddingTop: 10 }]}
         value={reason}
         onChangeText={onChangeReason}
         placeholder="e.g. Vacation, Holiday, Sick day…"
-        placeholderTextColor={Colors.textSecondary}
+        placeholderTextColor={colors.textSecondary}
         multiline
         autoCapitalize="sentences"
       />
-      <View style={fs.btns}>
-        <Pressable style={fs.cancelBtn} onPress={onCancel}>
-          <Text style={fs.cancelTxt}>Cancel</Text>
+      <View style={styles.fsBtns}>
+        <Pressable style={styles.fsCancelBtn} onPress={onCancel}>
+          <Text style={styles.fsCancelTxt}>Cancel</Text>
         </Pressable>
-        <Pressable style={fs.saveBtn} onPress={onSave}>
-          <Text style={fs.saveTxt}>Block Dates</Text>
+        <Pressable style={styles.fsSaveBtn} onPress={onSave}>
+          <Text style={styles.fsSaveTxt}>Block Dates</Text>
         </Pressable>
       </View>
     </View>
   );
 }
 
-const fs = StyleSheet.create({
-  wrap:      { padding: 20, paddingBottom: 40 },
-  lbl:       { ...Typography.label, color: Colors.textSecondary, marginBottom: 6, marginTop: 14 },
-  input:     { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: Colors.textPrimary, fontSize: 15 },
-  btns:      { flexDirection: 'row', gap: 10, marginTop: 24 },
-  cancelBtn: { flex: 1, borderRadius: 12, borderWidth: 1, borderColor: Colors.border, paddingVertical: 13, alignItems: 'center' },
-  cancelTxt: { color: Colors.textSecondary, fontWeight: '700', fontSize: 14 },
-  saveBtn:   { flex: 1, borderRadius: 12, backgroundColor: Colors.accent, paddingVertical: 13, alignItems: 'center' },
-  saveTxt:   { color: Colors.bg, fontWeight: '800', fontSize: 14 },
-});
+// Defined outside parent to prevent TextInput keyboard flicker
+function TimeBlockForm({
+  date, startTime, endTime, notes,
+  onChangeDate, onChangeStart, onChangeEnd, onChangeNotes,
+  onSave, onCancel, colors, styles,
+}: {
+  date: string; startTime: string; endTime: string; notes: string;
+  onChangeDate:  (v: string) => void;
+  onChangeStart: (v: string) => void;
+  onChangeEnd:   (v: string) => void;
+  onChangeNotes: (v: string) => void;
+  onSave:   () => void;
+  onCancel: () => void;
+  colors: ColorScheme;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const dateVal = date ? new Date(date + 'T00:00:00') : new Date();
+  const fmtD = (iso: string) => iso
+    ? new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+
+  return (
+    <View style={styles.fsWrap}>
+      <Text style={styles.fsLbl}>DATE</Text>
+      {Platform.OS === 'ios' ? (
+        <DateTimePicker
+          value={dateVal}
+          mode="date"
+          display="compact"
+          onChange={(_, s) => { if (s) onChangeDate(s.toISOString().split('T')[0]); }}
+          style={{ alignSelf: 'flex-start', marginLeft: -8, marginBottom: 12 }}
+        />
+      ) : (
+        <>
+          <Pressable style={styles.datePressable} onPress={() => setShowDatePicker(true)}>
+            <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+            <Text style={styles.datePressableText}>{fmtD(date) || 'Select date'}</Text>
+          </Pressable>
+          {showDatePicker && (
+            <DateTimePicker value={dateVal} mode="date" display="default"
+              onChange={(_, s) => { setShowDatePicker(false); if (s) onChangeDate(s.toISOString().split('T')[0]); }}
+            />
+          )}
+        </>
+      )}
+      <Text style={styles.fsLbl}>START TIME</Text>
+      <TextInput
+        style={styles.fsInput}
+        value={startTime}
+        onChangeText={onChangeStart}
+        placeholder="HH:MM (e.g. 09:00)"
+        placeholderTextColor={colors.textSecondary}
+        keyboardType="numbers-and-punctuation"
+        maxLength={5}
+      />
+      <Text style={styles.fsLbl}>END TIME</Text>
+      <TextInput
+        style={styles.fsInput}
+        value={endTime}
+        onChangeText={onChangeEnd}
+        placeholder="HH:MM (e.g. 12:00)"
+        placeholderTextColor={colors.textSecondary}
+        keyboardType="numbers-and-punctuation"
+        maxLength={5}
+      />
+      <Text style={styles.fsLbl}>NOTES (optional)</Text>
+      <TextInput
+        style={[styles.fsInput, { height: 60, textAlignVertical: 'top', paddingTop: 10 }]}
+        value={notes}
+        onChangeText={onChangeNotes}
+        placeholder="e.g. Busy with another commitment…"
+        placeholderTextColor={colors.textSecondary}
+        multiline
+        autoCapitalize="sentences"
+      />
+      <View style={styles.fsBtns}>
+        <Pressable style={styles.fsCancelBtn} onPress={onCancel}>
+          <Text style={styles.fsCancelTxt}>Cancel</Text>
+        </Pressable>
+        <Pressable style={styles.fsSaveBtn} onPress={onSave}>
+          <Text style={styles.fsSaveTxt}>Block Hours</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+type TimeBlock = {
+  id: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  notes: string | null;
+};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^\d{2}:\d{2}$/;
 
 function formatRange(start: string, end: string): string {
   const fmt = (d: string) =>
@@ -93,16 +218,57 @@ function formatRange(start: string, end: string): string {
   return start === end ? fmt(start) : `${fmt(start)} – ${fmt(end)}`;
 }
 
+function formatDate(d: string): string {
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatTime(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12    = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${period}`;
+}
+
 // ── Screen ───────────────────────────────────────────────────────────────────
 export default function BlockedDatesScreen() {
+  const { colors }  = useTheme();
+  const styles      = useMemo(() => makeStyles(colors), [colors]);
+  const { profile } = useAuth();
   const { blockedDates, loading, refetch, addBlockedDate, removeBlockedDate } = useAvailability();
   const { sessions } = useSessions();
 
+  // ── Date-range block form state ──────────────────────────────────────────
   const [showForm, setShowForm] = useState(false);
   const [formKey, setFormKey]   = useState(0);
   const [startDate, setStart]   = useState('');
   const [endDate,   setEnd]     = useState('');
   const [reason,    setReason]  = useState('');
+
+  // ── Hourly time block state ───────────────────────────────────────────────
+  const [timeBlocks,    setTimeBlocks]    = useState<TimeBlock[]>([]);
+  const [tbLoading,     setTbLoading]     = useState(false);
+  const [showTimeForm,  setShowTimeForm]  = useState(false);
+  const [tfKey,         setTfKey]         = useState(0);
+  const [tfDate,        setTfDate]        = useState('');
+  const [tfStart,       setTfStart]       = useState('');
+  const [tfEnd,         setTfEnd]         = useState('');
+  const [tfNotes,       setTfNotes]       = useState('');
+
+  const fetchTimeBlocks = useCallback(async () => {
+    if (!profile?.id) return;
+    setTbLoading(true);
+    const { data } = await supabase
+      .from('coach_blocked_dates')
+      .select('id, date, start_time, end_time, notes')
+      .eq('coach_id', profile.id)
+      .not('start_time', 'is', null)
+      .order('date')
+      .order('start_time');
+    setTimeBlocks((data ?? []) as TimeBlock[]);
+    setTbLoading(false);
+  }, [profile?.id]);
+
+  useEffect(() => { fetchTimeBlocks(); }, [fetchTimeBlocks]);
 
   const openForm = () => {
     const today = new Date().toISOString().split('T')[0];
@@ -153,59 +319,160 @@ export default function BlockedDatesScreen() {
     ]);
   };
 
+  const openTimeForm = () => {
+    setTfDate(new Date().toISOString().split('T')[0]);
+    setTfStart('');
+    setTfEnd('');
+    setTfNotes('');
+    setTfKey((k) => k + 1);
+    setShowTimeForm(true);
+  };
+
+  const handleSaveTimeBlock = async () => {
+    if (!DATE_RE.test(tfDate)) {
+      Alert.alert('Invalid date', 'Use YYYY-MM-DD format (e.g. 2025-12-25).');
+      return;
+    }
+    if (!TIME_RE.test(tfStart) || !TIME_RE.test(tfEnd)) {
+      Alert.alert('Invalid time', 'Use HH:MM format (e.g. 09:00, 14:30).');
+      return;
+    }
+    if (tfStart >= tfEnd) {
+      Alert.alert('Invalid range', 'Start time must be before end time.');
+      return;
+    }
+    await supabase.from('coach_blocked_dates').insert({
+      coach_id:   profile!.id,
+      date:       tfDate,
+      type:       'leave',
+      notes:      tfNotes.trim() || null,
+      created_by: profile!.id,
+      start_time: tfStart,
+      end_time:   tfEnd,
+    });
+    setShowTimeForm(false);
+    fetchTimeBlocks();
+  };
+
+  const handleRemoveTimeBlock = (id: string, label: string) => {
+    Alert.alert('Remove Block', `Remove the hour block for ${label}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove', style: 'destructive',
+        onPress: async () => {
+          await supabase.from('coach_blocked_dates').delete().eq('id', id);
+          setTimeBlocks((prev) => prev.filter((x) => x.id !== id));
+        },
+      },
+    ]);
+  };
+
   const todayISO = new Date().toISOString().split('T')[0];
 
   return (
     <>
       <ScrollView
-        style={st.scroll}
-        contentContainerStyle={st.content}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={Colors.accent} />}
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading || tbLoading}
+            onRefresh={() => { refetch(); fetchTimeBlocks(); }}
+            tintColor={colors.accent}
+          />
+        }
       >
-        {blockedDates.length === 0 ? (
-          <View style={st.empty}>
-            <Ionicons name="ban-outline" size={48} color={Colors.border} />
-            <Text style={st.emptyTitle}>No blocked dates</Text>
-            <Text style={st.emptySub}>Block off holidays, sick days, or vacations using the + button</Text>
+        {/* Full empty state when both sections have nothing */}
+        {blockedDates.length === 0 && timeBlocks.length === 0 && !loading && !tbLoading && (
+          <View style={styles.empty}>
+            <Ionicons name="ban-outline" size={48} color={colors.border} />
+            <Text style={styles.emptyTitle}>No blocks set</Text>
+            <Text style={styles.emptySub}>
+              Use the calendar+ button to block full days, or the clock+ button to block specific hours
+            </Text>
           </View>
-        ) : (
-          blockedDates.map((bd) => {
-            const isPast = bd.end_date < todayISO;
-            const label  = formatRange(bd.start_date, bd.end_date);
-            return (
-              <View
-                key={bd.id}
-                style={[st.card, isPast ? st.cardPast : st.cardActive]}
-              >
-                <View style={[st.cardIcon, { backgroundColor: (isPast ? Colors.textSecondary : Colors.danger) + '15' }]}>
-                  <Ionicons name="ban-outline" size={18} color={isPast ? Colors.textSecondary : Colors.danger} />
+        )}
+
+        {/* ── DATE RANGE BLOCKS ─────────────────────────────── */}
+        {blockedDates.length > 0 && (
+          <>
+            <Text style={styles.sectionHead}>FULL-DAY BLOCKS</Text>
+            {blockedDates.map((bd) => {
+              const isPast = bd.end_date < todayISO;
+              const label  = formatRange(bd.start_date, bd.end_date);
+              return (
+                <View
+                  key={bd.id}
+                  style={[styles.card, isPast ? styles.cardPast : styles.cardActive]}
+                >
+                  <View style={[styles.cardIcon, { backgroundColor: (isPast ? colors.textSecondary : colors.danger) + '15' }]}>
+                    <Ionicons name="ban-outline" size={18} color={isPast ? colors.textSecondary : colors.danger} />
+                  </View>
+                  <View style={styles.cardInfo}>
+                    <Text style={[styles.cardLabel, isPast && { color: colors.textSecondary }]}>{label}</Text>
+                    {bd.reason ? <Text style={styles.cardReason}>{bd.reason}</Text> : null}
+                    {isPast && <Text style={styles.pastTag}>PAST</Text>}
+                  </View>
+                  <Pressable onPress={() => handleRemove(bd.id, label)} hitSlop={10}>
+                    <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                  </Pressable>
                 </View>
-                <View style={st.cardInfo}>
-                  <Text style={[st.cardLabel, isPast && { color: Colors.textSecondary }]}>{label}</Text>
-                  {bd.reason ? <Text style={st.cardReason}>{bd.reason}</Text> : null}
-                  {isPast && <Text style={st.pastTag}>PAST</Text>}
+              );
+            })}
+          </>
+        )}
+
+        {/* ── HOURLY TIME BLOCKS ────────────────────────────── */}
+        {timeBlocks.length > 0 && (
+          <>
+            <Text style={[styles.sectionHead, { marginTop: blockedDates.length > 0 ? 24 : 0 }]}>
+              BLOCKED HOURS
+            </Text>
+            {timeBlocks.map((tb) => {
+              const isPast     = tb.date < todayISO;
+              const dateLabel  = formatDate(tb.date);
+              const timeLabel  = `${formatTime(tb.start_time)} – ${formatTime(tb.end_time)}`;
+              return (
+                <View
+                  key={tb.id}
+                  style={[styles.card, isPast ? styles.cardPast : styles.cardTimeActive]}
+                >
+                  <View style={[styles.cardIcon, { backgroundColor: (isPast ? colors.textSecondary : colors.accent) + '15' }]}>
+                    <Ionicons name="time-outline" size={18} color={isPast ? colors.textSecondary : colors.accent} />
+                  </View>
+                  <View style={styles.cardInfo}>
+                    <Text style={[styles.cardLabel, isPast && { color: colors.textSecondary }]}>{dateLabel}</Text>
+                    <Text style={styles.cardReason}>{timeLabel}</Text>
+                    {tb.notes ? <Text style={styles.cardReason}>{tb.notes}</Text> : null}
+                    {isPast && <Text style={styles.pastTag}>PAST</Text>}
+                  </View>
+                  <Pressable onPress={() => handleRemoveTimeBlock(tb.id, `${dateLabel} (${timeLabel})`)} hitSlop={10}>
+                    <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                  </Pressable>
                 </View>
-                <Pressable onPress={() => handleRemove(bd.id, label)} hitSlop={10}>
-                  <Ionicons name="trash-outline" size={18} color={Colors.danger} />
-                </Pressable>
-              </View>
-            );
-          })
+              );
+            })}
+          </>
         )}
       </ScrollView>
 
-      {/* FAB */}
-      <Pressable style={st.fab} onPress={openForm}>
-        <Ionicons name="add" size={26} color={Colors.bg} />
+      {/* FAB: block specific hours */}
+      <Pressable style={[styles.fab, styles.fabSecond]} onPress={openTimeForm}>
+        <Ionicons name="time-outline" size={22} color={colors.bg} />
       </Pressable>
 
-      {/* Form modal */}
+      {/* FAB: block full days */}
+      <Pressable style={styles.fab} onPress={openForm}>
+        <Ionicons name="calendar-outline" size={22} color={colors.bg} />
+      </Pressable>
+
+      {/* Modal: full-day date range block */}
       <Modal visible={showForm} animationType="slide" presentationStyle="pageSheet">
-        <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-          <View style={st.modalHead}>
-            <Text style={st.modalTitle}>Block Dates</Text>
+        <View style={{ flex: 1, backgroundColor: colors.bg }}>
+          <View style={styles.modalHead}>
+            <Text style={styles.modalTitle}>Block Full Days</Text>
             <Pressable onPress={() => setShowForm(false)} hitSlop={8}>
-              <Ionicons name="close" size={22} color={Colors.textSecondary} />
+              <Ionicons name="close" size={22} color={colors.textSecondary} />
             </Pressable>
           </View>
           <BlockForm
@@ -213,6 +480,26 @@ export default function BlockedDatesScreen() {
             startDate={startDate} endDate={endDate} reason={reason}
             onChangeStart={setStart} onChangeEnd={setEnd} onChangeReason={setReason}
             onSave={handleSave} onCancel={() => setShowForm(false)}
+            colors={colors} styles={styles}
+          />
+        </View>
+      </Modal>
+
+      {/* Modal: hourly time block */}
+      <Modal visible={showTimeForm} animationType="slide" presentationStyle="pageSheet">
+        <View style={{ flex: 1, backgroundColor: colors.bg }}>
+          <View style={styles.modalHead}>
+            <Text style={styles.modalTitle}>Block Specific Hours</Text>
+            <Pressable onPress={() => setShowTimeForm(false)} hitSlop={8}>
+              <Ionicons name="close" size={22} color={colors.textSecondary} />
+            </Pressable>
+          </View>
+          <TimeBlockForm
+            key={tfKey}
+            date={tfDate} startTime={tfStart} endTime={tfEnd} notes={tfNotes}
+            onChangeDate={setTfDate} onChangeStart={setTfStart} onChangeEnd={setTfEnd} onChangeNotes={setTfNotes}
+            onSave={handleSaveTimeBlock} onCancel={() => setShowTimeForm(false)}
+            colors={colors} styles={styles}
           />
         </View>
       </Modal>
@@ -220,30 +507,54 @@ export default function BlockedDatesScreen() {
   );
 }
 
-const st = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: Colors.bg },
-  content: { padding: 20, paddingBottom: 100 },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    // BlockForm styles
+    fsWrap:      { padding: 20, paddingBottom: 40 },
+    fsLbl:       { ...Typography.label, color: c.textSecondary, marginBottom: 6, marginTop: 14 },
+    fsInput:     { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: c.textPrimary, fontSize: 15 },
+    datePressable: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      paddingVertical: 8, paddingHorizontal: 12, marginBottom: 4,
+      borderRadius: 8, borderWidth: 1, borderColor: c.accent + '50',
+      backgroundColor: c.accent + '10', alignSelf: 'flex-start',
+    },
+    datePressableText: { fontSize: 14, fontWeight: '600', color: c.accent },
+    fsBtns:      { flexDirection: 'row', gap: 10, marginTop: 24 },
+    fsCancelBtn: { flex: 1, borderRadius: 12, borderWidth: 1, borderColor: c.border, paddingVertical: 13, alignItems: 'center' },
+    fsCancelTxt: { color: c.textSecondary, fontWeight: '700', fontSize: 14 },
+    fsSaveBtn:   { flex: 1, borderRadius: 12, backgroundColor: c.accent, paddingVertical: 13, alignItems: 'center' },
+    fsSaveTxt:   { color: c.bg, fontWeight: '800', fontSize: 14 },
 
-  empty:      { alignItems: 'center', paddingTop: 80, gap: 8 },
-  emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 12 },
-  emptySub:   { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', paddingHorizontal: 20 },
+    // Screen styles
+    scroll: { flex: 1, backgroundColor: c.bg },
+    content: { padding: 20, paddingBottom: 100 },
 
-  card:       { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.surface, borderRadius: 14, padding: 14, marginBottom: 8, borderWidth: 1 },
-  cardActive: { borderColor: Colors.danger + '30' },
-  cardPast:   { borderColor: Colors.border, opacity: 0.55 },
-  cardIcon:   { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
-  cardInfo:   { flex: 1 },
-  cardLabel:  { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
-  cardReason: { ...Typography.caption, color: Colors.textSecondary },
-  pastTag:    { ...Typography.label, fontSize: 9, color: Colors.textSecondary, marginTop: 3 },
+    empty:      { alignItems: 'center', paddingTop: 80, gap: 8 },
+    emptyTitle: { ...Typography.subtitle, color: c.textPrimary, marginTop: 12 },
+    emptySub:   { ...Typography.body, color: c.textSecondary, textAlign: 'center', paddingHorizontal: 20 },
 
-  fab: {
-    position: 'absolute', bottom: 32, right: 20,
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: Colors.accent, justifyContent: 'center', alignItems: 'center',
-    shadowColor: Colors.accent, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
-  },
-  modalHead:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  modalTitle: { ...Typography.subtitle, color: Colors.textPrimary },
-});
+    sectionHead: { ...Typography.label, color: c.textSecondary, fontWeight: '700', letterSpacing: 1, marginBottom: 10, fontSize: 11 },
+
+    card:           { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.surface, borderRadius: 14, padding: 14, marginBottom: 8, borderWidth: 1 },
+    cardActive:     { borderColor: c.danger + '30' },
+    cardTimeActive: { borderColor: c.accent + '30' },
+    cardPast:       { borderColor: c.border, opacity: 0.55 },
+    cardIcon:   { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+    cardInfo:   { flex: 1 },
+    cardLabel:  { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
+    cardReason: { ...Typography.caption, color: c.textSecondary },
+    pastTag:    { ...Typography.label, fontSize: 9, color: c.textSecondary, marginTop: 3 },
+
+    fab: {
+      position: 'absolute', bottom: 32, right: 20,
+      width: 56, height: 56, borderRadius: 28,
+      backgroundColor: c.accent, justifyContent: 'center', alignItems: 'center',
+      shadowColor: c.accent, shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
+    },
+    fabSecond: { bottom: 100 },
+    modalHead:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: c.border },
+    modalTitle: { ...Typography.subtitle, color: c.textPrimary },
+  });
+}

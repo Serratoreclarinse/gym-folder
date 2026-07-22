@@ -1,10 +1,11 @@
-import { useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+﻿import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Dimensions,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -14,11 +15,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import Svg, { G, Rect, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useClients } from '@/hooks/useClients';
 import { usePayments, Payment, NewPayment, PaymentMethod, PaymentStatus } from '@/hooks/usePayments';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -72,6 +75,7 @@ const METHOD_LABEL: Record<PaymentMethod, string> = {
 // ─── Bar Chart ──────────────────────────────────────────────────────────────
 
 function BarChart({ data }: { data: { label: string; total: number }[] }) {
+  const { colors } = useTheme();
   const chartH = 120;
   const labelH = 18;
   const maxBarH = chartH - labelH - 6;
@@ -83,7 +87,7 @@ function BarChart({ data }: { data: { label: string; total: number }[] }) {
         const h = d.total > 0 ? Math.max(4, (d.total / maxVal) * maxBarH) : 3;
         const x = BAR_GAP + i * (BAR_W + BAR_GAP);
         const y = chartH - labelH - h - 4;
-        const color = d.total > 0 ? Colors.accent : Colors.border;
+        const color = d.total > 0 ? colors.accent : colors.border;
         return (
           <G key={`bar${i}`}>
             <Rect x={x} y={y} width={BAR_W} height={h} rx={4} fill={color} />
@@ -93,7 +97,7 @@ function BarChart({ data }: { data: { label: string; total: number }[] }) {
               textAnchor="middle"
               fontSize={9}
               fontWeight="600"
-              fill={Colors.textSecondary}
+              fill={colors.textSecondary}
             >
               {d.label}
             </SvgText>
@@ -103,7 +107,7 @@ function BarChart({ data }: { data: { label: string; total: number }[] }) {
                 y={y - 3}
                 textAnchor="middle"
                 fontSize={8}
-                fill={Colors.accent}
+                fill={colors.accent}
               >
                 {fmtK(d.total)}
               </SvgText>
@@ -128,6 +132,7 @@ function PaymentRow({
   onPress: () => void;
   onLongPress: () => void;
 }) {
+  const { colors } = useTheme();
   const isPaid = payment.status === 'paid';
   return (
     <Pressable
@@ -148,11 +153,11 @@ function PaymentRow({
         ) : null}
       </View>
       <View style={styles.payRowRight}>
-        <Text style={[styles.payAmount, !isPaid && { color: Colors.textSecondary }]}>
+        <Text style={[styles.payAmount, !isPaid && { color: colors.textSecondary }]}>
           {fmt(payment.amount)}
         </Text>
         <View style={[styles.statusPill, isPaid ? styles.statusPaid : styles.statusPending]}>
-          <Text style={[styles.statusText, { color: isPaid ? '#4CAF50' : '#FFA500' }]}>
+          <Text style={[styles.statusText, { color: isPaid ? colors.success : colors.warning }]}>
             {isPaid ? 'Paid' : 'Pending'}
           </Text>
         </View>
@@ -176,6 +181,7 @@ function CollapseSection({
   onToggle: () => void;
   children: React.ReactNode;
 }) {
+  const { colors } = useTheme();
   return (
     <View style={styles.section}>
       <Pressable style={styles.sectionHeader} onPress={onToggle}>
@@ -186,7 +192,7 @@ function CollapseSection({
         <Ionicons
           name={expanded ? 'chevron-up' : 'chevron-down'}
           size={16}
-          color={Colors.textSecondary}
+          color={colors.textSecondary}
         />
       </Pressable>
       {expanded && <View style={styles.sectionBody}>{children}</View>}
@@ -207,7 +213,7 @@ function buildCSV(payments: Payment[], periodLabel: string): string {
 
   const vatTotal = paidTotal * VAT_RATE;
 
-  const header = `ELEVATE Revenue Report – ${periodLabel}\nGenerated: ${now}\n\n`;
+  const header = `ELEVATƎ Revenue Report – ${periodLabel}\nGenerated: ${now}\n\n`;
   const cols = 'DATE,CLIENT,PACKAGE,AMOUNT (OMR),VAT 5% (OMR),METHOD,STATUS,NOTES\n';
   const rows = payments
     .slice()
@@ -240,6 +246,8 @@ function ReportModal({
   payments: Payment[];
   onClose: () => void;
 }) {
+  const { colors } = useTheme();
+  const rp = useMemo(() => makeRpStyles(colors), [colors]);
   const allMonthKeys = [...new Set(payments.map((p) => p.payment_date.slice(0, 7)))].sort().reverse();
 
   const now = new Date();
@@ -302,18 +310,18 @@ function ReportModal({
             </View>
             <View style={rp.previewRow}>
               <Text style={rp.previewLabel}>Paid Total</Text>
-              <Text style={[rp.previewValue, { color: Colors.accent }]}>{fmt(paidTotal)}</Text>
+              <Text style={[rp.previewValue, { color: colors.accent }]}>{fmt(paidTotal)}</Text>
             </View>
             {paidTotal > 0 && (
               <View style={rp.previewRow}>
                 <Text style={rp.previewLabel}>VAT (5%)</Text>
-                <Text style={[rp.previewValue, { color: Colors.textSecondary }]}>{fmt(paidTotal * VAT_RATE)}</Text>
+                <Text style={[rp.previewValue, { color: colors.textSecondary }]}>{fmt(paidTotal * VAT_RATE)}</Text>
               </View>
             )}
             {pendingCount > 0 && (
               <View style={rp.previewRow}>
                 <Text style={rp.previewLabel}>Pending</Text>
-                <Text style={[rp.previewValue, { color: '#FFA500' }]}>{pendingCount} record{pendingCount !== 1 ? 's' : ''}</Text>
+                <Text style={[rp.previewValue, { color: colors.warning }]}>{pendingCount} record{pendingCount !== 1 ? 's' : ''}</Text>
               </View>
             )}
             <Text style={rp.previewNote}>Exports as CSV — open in Excel, Sheets, or email to accounting.</Text>
@@ -324,7 +332,7 @@ function ReportModal({
             onPress={handleShare}
             disabled={filtered.length === 0}
           >
-            <Ionicons name="share-outline" size={18} color={Colors.bg} />
+            <Ionicons name="share-outline" size={18} color={colors.bg} />
             <Text style={rp.shareBtnText}>Share Report</Text>
           </Pressable>
 
@@ -353,11 +361,14 @@ function PaymentFormModal({ visible, editing, clients, onClose, onSave }: FormPr
   const [clientId, setClientId] = useState('');
   const [packageType, setPackageType] = useState('');
   const [amount, setAmount] = useState('');
+  const { colors } = useTheme();
+  const fm = useMemo(() => makeFmStyles(colors), [colors]);
   const [method, setMethod] = useState<PaymentMethod>('cash');
   const [date, setDate] = useState(todayISO());
   const [status, setStatus] = useState<PaymentStatus>('paid');
   const [notes, setNotes] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -414,10 +425,10 @@ function PaymentFormModal({ visible, editing, clients, onClose, onSave }: FormPr
             {/* Client */}
             <Text style={fm.label}>CLIENT</Text>
             <Pressable style={fm.select} onPress={() => setPickerOpen((v) => !v)}>
-              <Text style={[fm.selectText, !selectedClient && { color: Colors.textSecondary + '80' }]}>
+              <Text style={[fm.selectText, !selectedClient && { color: colors.textSecondary + '80' }]}>
                 {selectedClient ? selectedClient.name : 'Select a client…'}
               </Text>
-              <Ionicons name={pickerOpen ? 'chevron-up' : 'chevron-down'} size={15} color={Colors.textSecondary} />
+              <Ionicons name={pickerOpen ? 'chevron-up' : 'chevron-down'} size={15} color={colors.textSecondary} />
             </Pressable>
             {pickerOpen && (
               <View style={fm.dropdown}>
@@ -430,10 +441,10 @@ function PaymentFormModal({ visible, editing, clients, onClose, onSave }: FormPr
                       style={[fm.dropItem, c.id === clientId && fm.dropItemActive]}
                       onPress={() => { setClientId(c.id); setPickerOpen(false); }}
                     >
-                      <Text style={[fm.dropItemText, c.id === clientId && { color: Colors.accent }]}>
+                      <Text style={[fm.dropItemText, c.id === clientId && { color: colors.accent }]}>
                         {c.name}
                       </Text>
-                      {c.id === clientId && <Ionicons name="checkmark" size={14} color={Colors.accent} />}
+                      {c.id === clientId && <Ionicons name="checkmark" size={14} color={colors.accent} />}
                     </Pressable>
                   )}
                 />
@@ -447,7 +458,7 @@ function PaymentFormModal({ visible, editing, clients, onClose, onSave }: FormPr
               value={packageType}
               onChangeText={setPackageType}
               placeholder="e.g. 20 sessions · 1hr"
-              placeholderTextColor={Colors.textSecondary + '60'}
+              placeholderTextColor={colors.textSecondary + '60'}
               autoCorrect={false}
             />
 
@@ -460,7 +471,7 @@ function PaymentFormModal({ visible, editing, clients, onClose, onSave }: FormPr
                 value={amount}
                 onChangeText={setAmount}
                 placeholder="0.000"
-                placeholderTextColor={Colors.textSecondary + '60'}
+                placeholderTextColor={colors.textSecondary + '60'}
                 keyboardType="decimal-pad"
               />
             </View>
@@ -477,22 +488,42 @@ function PaymentFormModal({ visible, editing, clients, onClose, onSave }: FormPr
                   <Text style={[fm.methodOptionText, method === m && fm.methodOptionTextActive]}>
                     {METHOD_LABEL[m]}
                   </Text>
-                  {method === m && <Ionicons name="checkmark" size={14} color={Colors.accent} />}
+                  {method === m && <Ionicons name="checkmark" size={14} color={colors.accent} />}
                 </Pressable>
               ))}
             </View>
 
             {/* Date */}
-            <Text style={fm.label}>DATE (YYYY-MM-DD)</Text>
-            <TextInput
-              style={fm.input}
-              value={date}
-              onChangeText={setDate}
-              placeholder="2025-06-01"
-              placeholderTextColor={Colors.textSecondary + '60'}
-              keyboardType="numbers-and-punctuation"
-              maxLength={10}
-            />
+            <Text style={fm.label}>DATE</Text>
+            {Platform.OS === 'ios' ? (
+              <DateTimePicker
+                value={new Date(date + 'T00:00:00')}
+                mode="date"
+                display="compact"
+                onChange={(_, selected) => {
+                  if (selected) setDate(selected.toISOString().split('T')[0]);
+                }}
+                style={{ alignSelf: 'flex-start', marginLeft: -8 }}
+              />
+            ) : (
+              <>
+                <Pressable style={fm.datePressable} onPress={() => setShowDatePicker(true)}>
+                  <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+                  <Text style={fm.datePressableText}>{fmtDate(date)}</Text>
+                </Pressable>
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={new Date(date + 'T00:00:00')}
+                    mode="date"
+                    display="default"
+                    onChange={(_, selected) => {
+                      setShowDatePicker(false);
+                      if (selected) setDate(selected.toISOString().split('T')[0]);
+                    }}
+                  />
+                )}
+              </>
+            )}
 
             {/* Status */}
             <Text style={fm.label}>STATUS</Text>
@@ -520,7 +551,7 @@ function PaymentFormModal({ visible, editing, clients, onClose, onSave }: FormPr
               value={notes}
               onChangeText={setNotes}
               placeholder="e.g. BDO transfer, referral discount…"
-              placeholderTextColor={Colors.textSecondary + '60'}
+              placeholderTextColor={colors.textSecondary + '60'}
               multiline
               numberOfLines={3}
               autoCorrect={false}
@@ -545,6 +576,8 @@ function PaymentFormModal({ visible, editing, clients, onClose, onSave }: FormPr
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function RevenueScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { payments, loading, refetch, addPayment, updatePayment, deletePayment, toggleStatus } =
     usePayments();
   const { clients } = useClients();
@@ -555,7 +588,7 @@ export default function RevenueScreen() {
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [showReport, setShowReport] = useState(false);
 
-  useFocusEffect(useCallback(() => { refetch(); }, []));
+  useFocusEffect(useCallback(() => { refetch(); }, [refetch]));
 
   const toggleExpand = (key: string) =>
     setExpandedKeys((prev) => {
@@ -633,7 +666,7 @@ export default function RevenueScreen() {
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={Colors.accent} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={colors.accent} />}
       >
         {/* ── Summary cards ──────────────────────────────────────── */}
         <View style={styles.grid}>
@@ -656,7 +689,7 @@ export default function RevenueScreen() {
             <Text style={styles.cardLabel}>Packages This Month</Text>
           </View>
           <View style={styles.card}>
-            <Text style={[styles.cardValue, pendingCount > 0 && { color: '#FFA500' }]}>
+            <Text style={[styles.cardValue, pendingCount > 0 && { color: colors.warning }]}>
               {pendingCount > 0 ? `⚠ ${pendingCount}` : activeClientCount}
             </Text>
             <Text style={styles.cardLabel}>
@@ -670,7 +703,7 @@ export default function RevenueScreen() {
           <View style={styles.chartHeader}>
             <Text style={styles.chartTitle}>EARNINGS — LAST 6 MONTHS</Text>
             <Pressable style={styles.reportBtn} onPress={() => setShowReport(true)}>
-              <Ionicons name="document-text-outline" size={15} color={Colors.accent} />
+              <Ionicons name="document-text-outline" size={15} color={colors.accent} />
               <Text style={styles.reportBtnText}>Report</Text>
             </Pressable>
           </View>
@@ -699,7 +732,7 @@ export default function RevenueScreen() {
         {/* ── Empty state ────────────────────────────────────────── */}
         {payments.length === 0 && !loading ? (
           <View style={styles.empty}>
-            <Ionicons name="bar-chart-outline" size={52} color={Colors.border} />
+            <Ionicons name="bar-chart-outline" size={52} color={colors.border} />
             <Text style={styles.emptyTitle}>No revenue recorded yet</Text>
             <Text style={styles.emptySub}>Tap + to add your first payment</Text>
           </View>
@@ -761,7 +794,7 @@ export default function RevenueScreen() {
 
       {/* ── FAB ── */}
       <Pressable style={styles.fab} onPress={openAdd}>
-        <Ionicons name="add" size={28} color={Colors.bg} />
+        <Ionicons name="add" size={28} color={colors.bg} />
       </Pressable>
 
       {/* ── Add / Edit Modal ── */}
@@ -785,235 +818,248 @@ export default function RevenueScreen() {
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.bg },
-  scroll: { flex: 1 },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+  root: { flex: 1, backgroundColor: c.bg },
+  scroll: { flex: 1, backgroundColor: c.bg },
   content: { padding: 20, paddingBottom: 32 },
 
   // Summary grid
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
   card: {
     flex: 1, minWidth: '44%',
-    backgroundColor: Colors.surface, borderRadius: 16,
-    padding: 16, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: c.surface, borderRadius: 16,
+    padding: 16, borderWidth: 1, borderColor: c.border,
   },
-  cardAccent: { backgroundColor: Colors.accent + '12', borderColor: Colors.accent + '40' },
-  cardValue: { ...Typography.subtitle, color: Colors.accent, fontWeight: '800', marginBottom: 2 },
-  cardVat: { fontSize: 11, color: Colors.textSecondary, marginBottom: 4 },
-  cardLabel: { ...Typography.caption, color: Colors.textSecondary },
+  cardAccent: { backgroundColor: c.accent + '12', borderColor: c.accent + '40' },
+  cardValue: { ...Typography.subtitle, color: c.accent, fontWeight: '800', marginBottom: 2 },
+  cardVat: { fontSize: 11, color: c.textSecondary, marginBottom: 4 },
+  cardLabel: { ...Typography.caption, color: c.textSecondary },
 
   // Chart
   chartCard: {
-    backgroundColor: Colors.surface, borderRadius: 16,
-    borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: c.surface, borderRadius: 16,
+    borderWidth: 1, borderColor: c.border,
     padding: 16, marginBottom: 16, overflow: 'hidden',
   },
   chartHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
-  chartTitle: { ...Typography.label, color: Colors.textSecondary },
+  chartTitle: { ...Typography.label, color: c.textSecondary },
   reportBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: Colors.accent + '18', borderRadius: 8,
+    backgroundColor: c.accent + '18', borderRadius: 8,
     paddingHorizontal: 10, paddingVertical: 5,
-    borderWidth: 1, borderColor: Colors.accent + '40',
+    borderWidth: 1, borderColor: c.accent + '40',
   },
-  reportBtnText: { fontSize: 12, fontWeight: '700', color: Colors.accent },
-  chartEmpty: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', paddingVertical: 24 },
+  reportBtnText: { fontSize: 12, fontWeight: '700', color: c.accent },
+  chartEmpty: { ...Typography.body, color: c.textSecondary, textAlign: 'center', paddingVertical: 24 },
 
   // Tabs
   tabRow: {
-    flexDirection: 'row', backgroundColor: Colors.surface,
-    borderRadius: 12, borderWidth: 1, borderColor: Colors.border,
+    flexDirection: 'row', backgroundColor: c.surface,
+    borderRadius: 12, borderWidth: 1, borderColor: c.border,
     padding: 4, marginBottom: 14,
   },
   tabBtn: { flex: 1, borderRadius: 9, paddingVertical: 8, alignItems: 'center' },
-  tabBtnActive: { backgroundColor: Colors.accent },
-  tabText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
-  tabTextActive: { color: Colors.bg },
+  tabBtnActive: { backgroundColor: c.accent },
+  tabText: { fontSize: 13, fontWeight: '700', color: c.textSecondary },
+  tabTextActive: { color: c.bg },
 
   // Collapsible section
   section: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border, marginBottom: 10, overflow: 'hidden',
+    backgroundColor: c.surface, borderRadius: 14,
+    borderWidth: 1, borderColor: c.border, marginBottom: 10, overflow: 'hidden',
   },
   sectionHeader: {
     flexDirection: 'row', alignItems: 'center',
     justifyContent: 'space-between', padding: 14,
   },
   sectionHeaderLeft: { flex: 1 },
-  sectionTitle: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
-  sectionSub: { ...Typography.caption, color: Colors.textSecondary },
-  sectionBody: { borderTopWidth: 1, borderTopColor: Colors.border },
+  sectionTitle: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
+  sectionSub: { ...Typography.caption, color: c.textSecondary },
+  sectionBody: { borderTopWidth: 1, borderTopColor: c.border },
 
   // Payment row
   payRow: {
     flexDirection: 'row', alignItems: 'flex-start',
     paddingHorizontal: 14, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
+    borderBottomWidth: 1, borderBottomColor: c.border,
   },
   payRowLeft: { flex: 1, marginRight: 10 },
-  payClientName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 1 },
-  payPackage: { ...Typography.body, color: Colors.textPrimary, marginBottom: 2 },
-  payMeta: { ...Typography.caption, color: Colors.textSecondary },
-  payNotes: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic', marginTop: 2 },
+  payClientName: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 1 },
+  payPackage: { ...Typography.body, color: c.textPrimary, marginBottom: 2 },
+  payMeta: { ...Typography.caption, color: c.textSecondary },
+  payNotes: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic', marginTop: 2 },
   payRowRight: { alignItems: 'flex-end', gap: 6 },
-  payAmount: { ...Typography.body, color: Colors.accent, fontWeight: '700' },
+  payAmount: { ...Typography.body, color: c.accent, fontWeight: '700' },
   statusPill: {
     borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1,
   },
-  statusPaid: { backgroundColor: '#4CAF5015', borderColor: '#4CAF5040' },
-  statusPending: { backgroundColor: '#FFA50015', borderColor: '#FFA50040' },
+  statusPaid: { backgroundColor: c.success + '15', borderColor: c.success + '40' },
+  statusPending: { backgroundColor: c.warning + '15', borderColor: c.warning + '40' },
   statusText: { fontSize: 11, fontWeight: '700' },
 
   // Empty state
   empty: { alignItems: 'center', paddingTop: 60, gap: 8 },
-  emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 12 },
-  emptySub: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center' },
+  emptyTitle: { ...Typography.subtitle, color: c.textPrimary, marginTop: 12 },
+  emptySub: { ...Typography.body, color: c.textSecondary, textAlign: 'center' },
 
   // FAB
   fab: {
     position: 'absolute', bottom: 24, right: 20,
     width: 56, height: 56, borderRadius: 28,
-    backgroundColor: Colors.accent,
+    backgroundColor: c.accent,
     justifyContent: 'center', alignItems: 'center',
-    shadowColor: Colors.accent, shadowOffset: { width: 0, height: 4 },
+    shadowColor: c.accent, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
   },
 });
+}
 
 // Form modal styles (separate namespace to keep clean)
-const fm = StyleSheet.create({
+function makeFmStyles(colors: ColorScheme) {
+  return StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
   sheet: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 22, borderTopRightRadius: 22,
-    borderWidth: 1, borderBottomWidth: 0, borderColor: Colors.border,
+    borderWidth: 1, borderBottomWidth: 0, borderColor: colors.border,
     paddingHorizontal: 20, paddingTop: 12,
     maxHeight: '88%',
   },
   handle: {
     width: 36, height: 4, borderRadius: 2,
-    backgroundColor: Colors.border, alignSelf: 'center', marginBottom: 20,
+    backgroundColor: colors.border, alignSelf: 'center', marginBottom: 20,
   },
-  title: { ...Typography.label, color: Colors.textPrimary, fontWeight: '800', letterSpacing: 1.5, marginBottom: 20 },
-  label: { ...Typography.label, color: Colors.textSecondary, marginBottom: 6, marginTop: 16 },
+  title: { ...Typography.label, color: colors.textPrimary, fontWeight: '800', letterSpacing: 1.5, marginBottom: 20 },
+  label: { ...Typography.label, color: colors.textSecondary, marginBottom: 6, marginTop: 16 },
 
   // Client dropdown
   select: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: Colors.surfaceRaised, borderRadius: 10,
-    borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: colors.surfaceRaised, borderRadius: 10,
+    borderWidth: 1, borderColor: colors.border,
     paddingHorizontal: 14, paddingVertical: 12,
   },
-  selectText: { ...Typography.body, color: Colors.textPrimary, flex: 1 },
+  selectText: { ...Typography.body, color: colors.textPrimary, flex: 1 },
   dropdown: {
-    backgroundColor: Colors.surfaceRaised, borderRadius: 10,
-    borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: colors.surfaceRaised, borderRadius: 10,
+    borderWidth: 1, borderColor: colors.border,
     marginTop: 4, maxHeight: 200, overflow: 'hidden',
   },
   dropItem: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 14, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  dropItemActive: { backgroundColor: Colors.accent + '10' },
-  dropItemText: { ...Typography.body, color: Colors.textPrimary },
+  dropItemActive: { backgroundColor: colors.accent + '10' },
+  dropItemText: { ...Typography.body, color: colors.textPrimary },
 
   // Inputs
   input: {
-    backgroundColor: Colors.surfaceRaised, borderRadius: 10,
-    borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: colors.surfaceRaised, borderRadius: 10,
+    borderWidth: 1, borderColor: colors.border,
     paddingHorizontal: 14, paddingVertical: 12,
-    color: Colors.textPrimary, fontSize: 15,
+    color: colors.textPrimary, fontSize: 15,
   },
+  datePressable: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: colors.surfaceRaised, borderRadius: 10,
+    borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: 14, paddingVertical: 12,
+  },
+  datePressableText: { ...Typography.body, color: colors.textPrimary },
   inputMulti: { height: 80, textAlignVertical: 'top' },
   amountWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  peso: { ...Typography.body, color: Colors.accent, fontWeight: '800' },
+  peso: { ...Typography.body, color: colors.accent, fontWeight: '800' },
   amountInput: { flex: 1, fontSize: 20, fontWeight: '700' },
 
   // Segment controls (status only)
   segRow: { flexDirection: 'row', gap: 8 },
   seg: {
     flex: 1, paddingVertical: 10, borderRadius: 10,
-    backgroundColor: Colors.surfaceRaised,
-    borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1, borderColor: colors.border,
     alignItems: 'center',
   },
-  segActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  segPending: { backgroundColor: '#FFA50020', borderColor: '#FFA50060' },
-  segText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
-  segTextActive: { color: Colors.bg },
+  segActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  segPending: { backgroundColor: colors.warning + '20', borderColor: colors.warning + '60' },
+  segText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
+  segTextActive: { color: colors.bg },
 
   // Payment method list
   methodList: { gap: 4 },
   methodOption: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: Colors.surfaceRaised, borderRadius: 10,
-    borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: colors.surfaceRaised, borderRadius: 10,
+    borderWidth: 1, borderColor: colors.border,
     paddingHorizontal: 14, paddingVertical: 10,
   },
-  methodOptionActive: { backgroundColor: Colors.accent + '15', borderColor: Colors.accent },
-  methodOptionText: { fontSize: 14, color: Colors.textSecondary, fontWeight: '600' },
-  methodOptionTextActive: { color: Colors.accent, fontWeight: '700' },
+  methodOptionActive: { backgroundColor: colors.accent + '15', borderColor: colors.accent },
+  methodOptionText: { fontSize: 14, color: colors.textSecondary, fontWeight: '600' },
+  methodOptionTextActive: { color: colors.accent, fontWeight: '700' },
 
   // Buttons
   btnRow: { flexDirection: 'row', gap: 10, marginTop: 24 },
   cancelBtn: {
-    flex: 1, borderRadius: 12, borderWidth: 1, borderColor: Colors.border,
+    flex: 1, borderRadius: 12, borderWidth: 1, borderColor: colors.border,
     paddingVertical: 13, alignItems: 'center',
   },
-  cancelText: { color: Colors.textSecondary, fontWeight: '700', fontSize: 15 },
+  cancelText: { color: colors.textSecondary, fontWeight: '700', fontSize: 15 },
   saveBtn: {
-    flex: 1, borderRadius: 12, backgroundColor: Colors.accent,
+    flex: 1, borderRadius: 12, backgroundColor: colors.accent,
     paddingVertical: 13, alignItems: 'center',
   },
-  saveText: { color: Colors.bg, fontWeight: '800', fontSize: 15 },
+  saveText: { color: colors.bg, fontWeight: '800', fontSize: 15 },
 });
+}
 
 // Report modal styles
-const rp = StyleSheet.create({
+function makeRpStyles(colors: ColorScheme) {
+  return StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
   sheet: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 22, borderTopRightRadius: 22,
-    borderWidth: 1, borderBottomWidth: 0, borderColor: Colors.border,
+    borderWidth: 1, borderBottomWidth: 0, borderColor: colors.border,
     paddingHorizontal: 20, paddingTop: 12,
   },
   handle: {
     width: 36, height: 4, borderRadius: 2,
-    backgroundColor: Colors.border, alignSelf: 'center', marginBottom: 20,
+    backgroundColor: colors.border, alignSelf: 'center', marginBottom: 20,
   },
-  title: { ...Typography.label, color: Colors.textPrimary, fontWeight: '800', letterSpacing: 1.5, marginBottom: 20 },
-  label: { ...Typography.label, color: Colors.textSecondary, marginBottom: 10 },
+  title: { ...Typography.label, color: colors.textPrimary, fontWeight: '800', letterSpacing: 1.5, marginBottom: 20 },
+  label: { ...Typography.label, color: colors.textSecondary, marginBottom: 10 },
 
   chip: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border,
   },
-  chipActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  chipText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
-  chipTextActive: { color: Colors.bg },
+  chipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  chipText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
+  chipTextActive: { color: colors.bg },
 
   preview: {
-    backgroundColor: Colors.bg, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: colors.bg, borderRadius: 14,
+    borderWidth: 1, borderColor: colors.border,
     padding: 16, marginBottom: 20, gap: 10,
   },
   previewRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  previewLabel: { ...Typography.body, color: Colors.textSecondary },
-  previewValue: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700' },
-  previewNote: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic', marginTop: 4 },
+  previewLabel: { ...Typography.body, color: colors.textSecondary },
+  previewValue: { ...Typography.body, color: colors.textPrimary, fontWeight: '700' },
+  previewNote: { ...Typography.caption, color: colors.textSecondary, fontStyle: 'italic', marginTop: 4 },
 
   shareBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: Colors.accent, borderRadius: 14,
+    backgroundColor: colors.accent, borderRadius: 14,
     paddingVertical: 14, marginBottom: 10,
   },
-  shareBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 15 },
+  shareBtnText: { color: colors.bg, fontWeight: '800', fontSize: 15 },
   cancelBtn: {
-    borderRadius: 14, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 14, borderWidth: 1, borderColor: colors.border,
     paddingVertical: 13, alignItems: 'center',
   },
-  cancelText: { color: Colors.textSecondary, fontWeight: '700', fontSize: 15 },
+  cancelText: { color: colors.textSecondary, fontWeight: '700', fontSize: 15 },
 });
+}

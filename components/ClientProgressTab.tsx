@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -12,10 +13,13 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import Svg, { Circle, G, Line, Path, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '@/lib/supabase';
 import { useProgress, ProgressEntry, NewProgressEntry } from '@/hooks/useProgress';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,6 +103,8 @@ function LineChart({
   yMin: number;
   yMax: number;
 }) {
+  const { colors } = useTheme();
+
   const drawW = width - CHART_L - CHART_R;
   const drawH = CHART_HEIGHT - CHART_T - CHART_B;
 
@@ -131,7 +137,7 @@ function LineChart({
           <Line
             x1={CHART_L} y1={toY(val)}
             x2={width - CHART_R} y2={toY(val)}
-            stroke={Colors.border}
+            stroke={colors.border}
             strokeWidth={1}
           />
           <SvgText
@@ -139,7 +145,7 @@ function LineChart({
             y={toY(val) + 4}
             textAnchor="end"
             fontSize={9}
-            fill={Colors.textSecondary}
+            fill={colors.textSecondary}
           >
             {fmtY(val)}
           </SvgText>
@@ -149,7 +155,7 @@ function LineChart({
       {/* Connecting line */}
       <Path
         d={linePath}
-        stroke={Colors.accent}
+        stroke={colors.accent}
         strokeWidth={2.5}
         fill="none"
         strokeLinecap="round"
@@ -159,7 +165,7 @@ function LineChart({
       {/* Area fill */}
       <Path
         d={`${linePath} L${toX(data.length - 1).toFixed(1)},${(CHART_T + drawH).toFixed(1)} L${CHART_L.toFixed(1)},${(CHART_T + drawH).toFixed(1)} Z`}
-        fill={Colors.accent}
+        fill={colors.accent}
         fillOpacity={0.08}
       />
 
@@ -170,8 +176,8 @@ function LineChart({
           cx={toX(i)}
           cy={toY(d.value)}
           r={4.5}
-          fill={Colors.accent}
-          stroke={Colors.bg}
+          fill={colors.accent}
+          stroke={colors.bg}
           strokeWidth={2}
         />
       ))}
@@ -188,7 +194,7 @@ function LineChart({
             y={CHART_HEIGHT - 4}
             textAnchor={anchor}
             fontSize={9}
-            fill={Colors.textSecondary}
+            fill={colors.textSecondary}
           >
             {`${mm}/${dd}`}
           </SvgText>
@@ -198,7 +204,7 @@ function LineChart({
   );
 }
 
-// ─── Measurement Form (OUTSIDE parent — has TextInputs, prevents keyboard flicker) ─────
+// ─── Measurement Form ─────────────────────────────────────────────────────────
 
 function MeasurementForm({
   entry,
@@ -209,7 +215,11 @@ function MeasurementForm({
   onSave: (data: FormState) => void;
   onCancel: () => void;
 }) {
+  const { colors } = useTheme();
+  const fm = useMemo(() => makeFmStyles(colors), [colors]);
+
   const [form, setForm] = useState<FormState>(entry ? entryToForm(entry) : blankForm());
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const set = (field: keyof FormState) => (v: string) =>
     setForm((prev) => ({ ...prev, [field]: v }));
@@ -225,7 +235,7 @@ function MeasurementForm({
       <View style={fm.header}>
         <Text style={fm.title}>{entry ? 'EDIT MEASUREMENT' : 'LOG MEASUREMENT'}</Text>
         <Pressable onPress={onCancel} hitSlop={12}>
-          <Ionicons name="close" size={22} color={Colors.textSecondary} />
+          <Ionicons name="close" size={22} color={colors.textSecondary} />
         </Pressable>
       </View>
 
@@ -237,14 +247,35 @@ function MeasurementForm({
       >
         {/* Date */}
         <Text style={fm.label}>DATE</Text>
-        <TextInput
-          style={fm.input}
-          value={form.date}
-          onChangeText={set('date')}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor={Colors.textSecondary}
-          keyboardType="numbers-and-punctuation"
-        />
+        {Platform.OS === 'ios' ? (
+          <DateTimePicker
+            value={new Date(form.date + 'T00:00:00')}
+            mode="date"
+            display="compact"
+            onChange={(_, selected) => {
+              if (selected) setForm((p) => ({ ...p, date: selected.toISOString().split('T')[0] }));
+            }}
+            style={{ alignSelf: 'flex-start', marginLeft: -8, marginBottom: 12 }}
+          />
+        ) : (
+          <>
+            <Pressable style={fm.datePressable} onPress={() => setShowDatePicker(true)}>
+              <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+              <Text style={fm.datePressableText}>{fmtDate(form.date)}</Text>
+            </Pressable>
+            {showDatePicker && (
+              <DateTimePicker
+                value={new Date(form.date + 'T00:00:00')}
+                mode="date"
+                display="default"
+                onChange={(_, selected) => {
+                  setShowDatePicker(false);
+                  if (selected) setForm((p) => ({ ...p, date: selected.toISOString().split('T')[0] }));
+                }}
+              />
+            )}
+          </>
+        )}
 
         {/* Main stats */}
         <Text style={[fm.label, { marginTop: 16 }]}>MAIN STATS</Text>
@@ -252,33 +283,33 @@ function MeasurementForm({
           <View style={fm.halfField}>
             <Text style={fm.subLabel}>Weight (kg)</Text>
             <TextInput
-              style={fm.input}
+              style={[fm.input, { color: colors.textPrimary }]}
               value={form.weight}
               onChangeText={numericSet('weight')}
               placeholder="70.5"
-              placeholderTextColor={Colors.textSecondary}
+              placeholderTextColor={colors.textSecondary}
               keyboardType="decimal-pad"
             />
           </View>
           <View style={fm.halfField}>
             <Text style={fm.subLabel}>Body Fat (%)</Text>
             <TextInput
-              style={fm.input}
+              style={[fm.input, { color: colors.textPrimary }]}
               value={form.body_fat}
               onChangeText={numericSet('body_fat')}
               placeholder="18.5"
-              placeholderTextColor={Colors.textSecondary}
+              placeholderTextColor={colors.textSecondary}
               keyboardType="decimal-pad"
             />
           </View>
         </View>
         <Text style={fm.subLabel}>Muscle Mass (kg)</Text>
         <TextInput
-          style={fm.input}
+          style={[fm.input, { color: colors.textPrimary }]}
           value={form.muscle_mass}
           onChangeText={numericSet('muscle_mass')}
           placeholder="35.0"
-          placeholderTextColor={Colors.textSecondary}
+          placeholderTextColor={colors.textSecondary}
           keyboardType="decimal-pad"
         />
 
@@ -288,22 +319,22 @@ function MeasurementForm({
           <View style={fm.halfField}>
             <Text style={fm.subLabel}>Waist</Text>
             <TextInput
-              style={fm.input}
+              style={[fm.input, { color: colors.textPrimary }]}
               value={form.waist}
               onChangeText={numericSet('waist')}
               placeholder="80"
-              placeholderTextColor={Colors.textSecondary}
+              placeholderTextColor={colors.textSecondary}
               keyboardType="decimal-pad"
             />
           </View>
           <View style={fm.halfField}>
             <Text style={fm.subLabel}>Hip</Text>
             <TextInput
-              style={fm.input}
+              style={[fm.input, { color: colors.textPrimary }]}
               value={form.hip}
               onChangeText={numericSet('hip')}
               placeholder="95"
-              placeholderTextColor={Colors.textSecondary}
+              placeholderTextColor={colors.textSecondary}
               keyboardType="decimal-pad"
             />
           </View>
@@ -312,22 +343,22 @@ function MeasurementForm({
           <View style={fm.halfField}>
             <Text style={fm.subLabel}>Chest</Text>
             <TextInput
-              style={fm.input}
+              style={[fm.input, { color: colors.textPrimary }]}
               value={form.chest}
               onChangeText={numericSet('chest')}
               placeholder="100"
-              placeholderTextColor={Colors.textSecondary}
+              placeholderTextColor={colors.textSecondary}
               keyboardType="decimal-pad"
             />
           </View>
           <View style={fm.halfField}>
             <Text style={fm.subLabel}>Arms</Text>
             <TextInput
-              style={fm.input}
+              style={[fm.input, { color: colors.textPrimary }]}
               value={form.arms}
               onChangeText={numericSet('arms')}
               placeholder="35"
-              placeholderTextColor={Colors.textSecondary}
+              placeholderTextColor={colors.textSecondary}
               keyboardType="decimal-pad"
             />
           </View>
@@ -336,11 +367,11 @@ function MeasurementForm({
         {/* Notes */}
         <Text style={[fm.label, { marginTop: 16 }]}>NOTES</Text>
         <TextInput
-          style={[fm.input, fm.notesInput]}
+          style={[fm.input, fm.notesInput, { color: colors.textPrimary }]}
           value={form.notes}
           onChangeText={set('notes')}
           placeholder="Any observations…"
-          placeholderTextColor={Colors.textSecondary}
+          placeholderTextColor={colors.textSecondary}
           multiline
           numberOfLines={3}
         />
@@ -360,6 +391,9 @@ function MeasurementForm({
 // ─── Main Progress Tab ─────────────────────────────────────────────────────────
 
 export function ClientProgressTab({ clientId }: { clientId: string }) {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+
   const { entries, loading, addEntry, updateEntry, deleteEntry } = useProgress(clientId);
   const { width: screenWidth } = useWindowDimensions();
 
@@ -369,13 +403,86 @@ export function ClientProgressTab({ clientId }: { clientId: string }) {
   const [editEntry, setEditEntry] = useState<ProgressEntry | null>(null);
   const [formKey, setFormKey] = useState(0);
 
+  // ── Strength chart state ──────────────────────────────────────────────────
+  type StrengthSession = { date: string; exercises: Array<{ exercise_name: string; weight: string | null }> };
+  const [strengthSessions, setStrengthSessions] = useState<StrengthSession[]>([]);
+  const [selectedExercise, setSelectedExercise] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('workout_sessions')
+        .select('session_date, exercises')
+        .eq('client_id', clientId)
+        .order('session_date', { ascending: true })
+        .limit(500);
+      if (cancelled) return;
+      const parsed: StrengthSession[] = (data ?? []).map((row: any) => ({
+        date: row.session_date,
+        exercises: Array.isArray(row.exercises) ? row.exercises
+          : typeof row.exercises === 'string'
+            ? (() => { try { return JSON.parse(row.exercises); } catch { return []; } })()
+            : [],
+      }));
+      setStrengthSessions(parsed);
+      const names = new Set<string>();
+      for (const sess of parsed) {
+        for (const ex of sess.exercises) {
+          if (ex.exercise_name && !isNaN(parseFloat(ex.weight ?? ''))) names.add(ex.exercise_name);
+        }
+      }
+      const first = [...names][0];
+      if (first && !cancelled) setSelectedExercise(first);
+    })();
+    return () => { cancelled = true; };
+  }, [clientId]);
+
+  const exerciseNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const sess of strengthSessions) {
+      for (const ex of sess.exercises) {
+        if (ex.exercise_name && !isNaN(parseFloat(ex.weight ?? ''))) names.add(ex.exercise_name);
+      }
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [strengthSessions]);
+
+  const strengthChartData = useMemo(() => {
+    if (!selectedExercise) return [];
+    const byDate = new Map<string, number>();
+    for (const sess of strengthSessions) {
+      for (const ex of sess.exercises) {
+        if (ex.exercise_name !== selectedExercise) continue;
+        const w = parseFloat(ex.weight ?? '');
+        if (isNaN(w) || w <= 0) continue;
+        const prev = byDate.get(sess.date) ?? 0;
+        if (w > prev) byDate.set(sess.date, w);
+      }
+    }
+    return [...byDate.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, value]) => ({ date, value }));
+  }, [strengthSessions, selectedExercise]);
+
+  const strengthPR = strengthChartData.length > 0
+    ? strengthChartData.reduce((best, d) => d.value > best.value ? d : best)
+    : null;
+
+  // ─────────────────────────────────────────────────────────────────────────
+
   const openForm = (entry: ProgressEntry | null) => {
     setEditEntry(entry);
     setFormKey((k) => k + 1);
     setShowForm(true);
   };
 
-  // ── Data derivations ────────────────────────────────────────────────────────
+  const closeForm = () => {
+    Keyboard.dismiss();
+    setShowForm(false);
+  };
+
+  // ── Data derivations ──────────────────────────────────────────────────────
 
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - 90);
@@ -404,7 +511,6 @@ export function ClientProgressTab({ clientId }: { clientId: string }) {
   const yMin = rawMin - pad;
   const yMax = rawMax + pad;
 
-  // Summary calculations (always use all entries, weight-based)
   const weightEntries = entries.filter((e) => e.weight != null);
   const startWeight = weightEntries.length > 0 ? (weightEntries[0].weight as number) : null;
   const currentWeight = weightEntries.length > 0 ? (weightEntries[weightEntries.length - 1].weight as number) : null;
@@ -415,13 +521,12 @@ export function ClientProgressTab({ clientId }: { clientId: string }) {
     ? Math.max(0, Math.floor((Date.now() - firstDate.getTime()) / (7 * 24 * 60 * 60 * 1000)))
     : 0;
 
-  // Chart width: screenWidth - 40 (scroll padding) - 32 (card padding)
   const chartWidth = screenWidth - 72;
 
-  // ── Form save handler ───────────────────────────────────────────────────────
+  // ── Form save handler ─────────────────────────────────────────────────────
 
   const handleFormSave = (form: FormState) => {
-    setShowForm(false);
+    closeForm();
     const data: NewProgressEntry = {
       client_id: clientId,
       date: form.date,
@@ -461,32 +566,6 @@ export function ClientProgressTab({ clientId }: { clientId: string }) {
     ]);
   };
 
-  // ── Empty state ─────────────────────────────────────────────────────────────
-
-  if (!loading && entries.length === 0) {
-    return (
-      <View style={s.emptyWrap}>
-        <Ionicons name="trending-up-outline" size={52} color={Colors.border} />
-        <Text style={s.emptyTitle}>No Progress Logged Yet</Text>
-        <Text style={s.emptySub}>Start tracking measurements to see this client's progress over time</Text>
-        <Pressable style={s.emptyBtn} onPress={() => openForm(null)}>
-          <Ionicons name="add" size={18} color={Colors.bg} />
-          <Text style={s.emptyBtnText}>LOG FIRST MEASUREMENT</Text>
-        </Pressable>
-
-        <Modal visible={showForm} animationType="slide" transparent onRequestClose={() => setShowForm(false)}>
-          <Pressable style={s.overlay} onPress={() => setShowForm(false)}>
-            <Pressable style={s.sheet} onPress={() => {}}>
-              <MeasurementForm key={formKey} entry={editEntry} onSave={handleFormSave} onCancel={() => setShowForm(false)} />
-            </Pressable>
-          </Pressable>
-        </Modal>
-      </View>
-    );
-  }
-
-  // ── Main render ─────────────────────────────────────────────────────────────
-
   const fmtW = (w: number | null) => w != null ? `${w} kg` : '—';
   const fmtDelta = (d: number | null) => {
     if (d === null) return '—';
@@ -494,10 +573,44 @@ export function ClientProgressTab({ clientId }: { clientId: string }) {
     const sign = d > 0 ? '+' : '';
     return `${sign}${d.toFixed(1)} kg`;
   };
-  const deltaColor = weightDelta == null ? Colors.textSecondary
+  const deltaColor = weightDelta == null ? colors.textSecondary
     : weightDelta < 0 ? '#4CAF50'
-    : weightDelta > 0 ? Colors.danger
-    : Colors.textSecondary;
+    : weightDelta > 0 ? colors.danger
+    : colors.textSecondary;
+
+  const FormModal = (
+    <Modal visible={showForm} animationType="slide" transparent onRequestClose={closeForm}>
+      <Pressable style={s.overlay} onPress={closeForm}>
+        <Pressable style={[s.sheet, { backgroundColor: colors.surface }]} onPress={() => {}}>
+          <MeasurementForm
+            key={formKey}
+            entry={editEntry}
+            onSave={handleFormSave}
+            onCancel={closeForm}
+          />
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+
+  // ── Empty state ───────────────────────────────────────────────────────────
+
+  if (!loading && entries.length === 0) {
+    return (
+      <View style={s.emptyWrap}>
+        <Ionicons name="trending-up-outline" size={52} color={colors.border} />
+        <Text style={s.emptyTitle}>No Progress Logged Yet</Text>
+        <Text style={s.emptySub}>Start tracking measurements to see this client's progress over time</Text>
+        <Pressable style={s.emptyBtn} onPress={() => openForm(null)}>
+          <Ionicons name="add" size={18} color="#fff" />
+          <Text style={s.emptyBtnText}>LOG FIRST MEASUREMENT</Text>
+        </Pressable>
+        {FormModal}
+      </View>
+    );
+  }
+
+  // ── Main render ───────────────────────────────────────────────────────────
 
   return (
     <>
@@ -523,7 +636,7 @@ export function ClientProgressTab({ clientId }: { clientId: string }) {
 
       {/* Add measurement button */}
       <Pressable style={s.addBtn} onPress={() => openForm(null)}>
-        <Ionicons name="add-circle-outline" size={18} color={Colors.accent} />
+        <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
         <Text style={s.addBtnText}>ADD MEASUREMENT</Text>
       </Pressable>
 
@@ -548,7 +661,6 @@ export function ClientProgressTab({ clientId }: { clientId: string }) {
             );
           })}
           <View style={s.metricSpacer} />
-          {/* Time range toggle */}
           <Pressable
             style={[s.rangeBtn, timeRange === '3m' && s.rangeBtnActive]}
             onPress={() => setTimeRange('3m')}
@@ -566,7 +678,7 @@ export function ClientProgressTab({ clientId }: { clientId: string }) {
         {/* Graph area */}
         {chartData.length < 2 ? (
           <View style={s.chartPlaceholder}>
-            <Ionicons name="stats-chart-outline" size={32} color={Colors.border} />
+            <Ionicons name="stats-chart-outline" size={32} color={colors.border} />
             <Text style={s.chartPlaceholderText}>
               {chartData.length === 0
                 ? 'No data in this time range'
@@ -575,18 +687,81 @@ export function ClientProgressTab({ clientId }: { clientId: string }) {
           </View>
         ) : (
           <View style={s.chartWrap}>
-            <LineChart
-              data={chartData}
-              width={chartWidth}
-              yMin={yMin}
-              yMax={yMax}
-            />
+            <LineChart data={chartData} width={chartWidth} yMin={yMin} yMax={yMax} />
           </View>
         )}
 
-        {/* Unit label */}
         <Text style={s.unitLabel}>{currentMetric.label} ({currentMetric.unit})</Text>
       </View>
+
+      {/* ── Strength Progress Chart ── */}
+      {exerciseNames.length > 0 && (
+        <>
+          <Text style={s.sectionTitle}>STRENGTH PROGRESS</Text>
+          <View style={s.chartCard}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginBottom: 12 }}
+              contentContainerStyle={{ gap: 6, paddingRight: 8 }}
+            >
+              {exerciseNames.map((name) => (
+                <Pressable
+                  key={name}
+                  style={[s.metricBtn, selectedExercise === name && s.metricBtnActive]}
+                  onPress={() => setSelectedExercise(name)}
+                >
+                  <Text style={[s.metricBtnText, selectedExercise === name && s.metricBtnTextActive]}
+                    numberOfLines={1}
+                  >
+                    {name}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+
+            {strengthPR && (
+              <View style={s.prRow}>
+                <Text style={s.prLabel}>🏆 Personal Record</Text>
+                <Text style={s.prValue}>{strengthPR.value} kg</Text>
+                <Text style={s.prDate}>
+                  {(() => {
+                    const [, mm, dd] = strengthPR.date.split('-');
+                    return `${mm}/${dd}`;
+                  })()}
+                </Text>
+              </View>
+            )}
+
+            {strengthChartData.length < 2 ? (
+              <View style={s.chartPlaceholder}>
+                <Ionicons name="barbell-outline" size={32} color={colors.border} />
+                <Text style={s.chartPlaceholderText}>
+                  {strengthChartData.length === 0
+                    ? 'No weight data for this exercise'
+                    : 'Log more sessions to see strength trend'}
+                </Text>
+              </View>
+            ) : (() => {
+              const vals = strengthChartData.map((d) => d.value);
+              const sMin = Math.min(...vals);
+              const sMax = Math.max(...vals);
+              const sPad = (sMax - sMin) < 1 ? 2 : (sMax - sMin) * 0.2;
+              return (
+                <View style={s.chartWrap}>
+                  <LineChart
+                    data={strengthChartData}
+                    width={chartWidth}
+                    yMin={sMin - sPad}
+                    yMax={sMax + sPad}
+                  />
+                </View>
+              );
+            })()}
+            <Text style={s.unitLabel}>Max weight per session (kg)</Text>
+          </View>
+        </>
+      )}
 
       {/* History list */}
       <Text style={s.sectionTitle}>MEASUREMENT HISTORY</Text>
@@ -610,7 +785,7 @@ export function ClientProgressTab({ clientId }: { clientId: string }) {
           >
             <View style={s.historyTop}>
               <Text style={s.historyDate}>{fmtDate(entry.date)}</Text>
-              <Ionicons name="pencil-outline" size={14} color={Colors.textSecondary} />
+              <Ionicons name="pencil-outline" size={14} color={colors.textSecondary} />
             </View>
             {parts.length > 0 && (
               <Text style={s.historyStats}>{parts.join('  ·  ')}</Text>
@@ -625,182 +800,189 @@ export function ClientProgressTab({ clientId }: { clientId: string }) {
         );
       })}
 
-      {/* Measurement form modal */}
-      <Modal visible={showForm} animationType="slide" transparent onRequestClose={() => setShowForm(false)}>
-        <Pressable style={s.overlay} onPress={() => setShowForm(false)}>
-          <Pressable style={s.sheet} onPress={() => {}}>
-            <MeasurementForm
-              key={formKey}
-              entry={editEntry}
-              onSave={handleFormSave}
-              onCancel={() => setShowForm(false)}
-            />
-          </Pressable>
-        </Pressable>
-      </Modal>
+      {FormModal}
     </>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ─── Style factories ──────────────────────────────────────────────────────────
 
-const s = StyleSheet.create({
-  // Empty state
-  emptyWrap: { alignItems: 'center', paddingTop: 48, gap: 8 },
-  emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 12 },
-  emptySub: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', paddingHorizontal: 16 },
-  emptyBtn: {
-    marginTop: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: Colors.accent,
-    borderRadius: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 13,
-  },
-  emptyBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 13, letterSpacing: 1 },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    emptyWrap: { alignItems: 'center', paddingTop: 48, gap: 8 },
+    emptyTitle: { ...Typography.subtitle, color: c.textPrimary, marginTop: 12 },
+    emptySub: { ...Typography.body, color: c.textSecondary, textAlign: 'center', paddingHorizontal: 16 },
+    emptyBtn: {
+      marginTop: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: c.accent,
+      borderRadius: 12,
+      paddingHorizontal: 20,
+      paddingVertical: 13,
+    },
+    emptyBtnText: { color: '#fff', fontWeight: '800', fontSize: 13, letterSpacing: 1 },
 
-  // Summary grid
-  summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
-  summaryCard: {
-    flex: 1,
-    minWidth: '44%',
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  summaryLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: 6, fontSize: 10 },
-  summaryValue: { ...Typography.subtitle, color: Colors.textPrimary, fontSize: 17 },
+    summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
+    summaryCard: {
+      flex: 1,
+      minWidth: '44%',
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    summaryLabel: { ...Typography.label, color: c.textSecondary, marginBottom: 6, fontSize: 10 },
+    summaryValue: { ...Typography.subtitle, color: c.textPrimary, fontSize: 17 },
 
-  // Add button
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderWidth: 1.5,
-    borderColor: Colors.accent + '60',
-    borderRadius: 12,
-    paddingVertical: 12,
-    marginBottom: 16,
-    backgroundColor: Colors.accent + '10',
-  },
-  addBtnText: { color: Colors.accent, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+    addBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      borderWidth: 1.5,
+      borderColor: c.accent + '60',
+      borderRadius: 12,
+      paddingVertical: 12,
+      marginBottom: 16,
+      backgroundColor: c.accent + '10',
+    },
+    addBtnText: { color: c.accent, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
 
-  // Chart card
-  chartCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: 20,
-  },
-  metricRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16 },
-  metricBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.bg,
-  },
-  metricBtnActive: { borderColor: Colors.accent, backgroundColor: Colors.accent },
-  metricBtnDisabled: { opacity: 0.35 },
-  metricBtnText: { fontSize: 11, fontWeight: '700', color: Colors.textSecondary },
-  metricBtnTextActive: { color: Colors.bg },
-  metricBtnTextDisabled: { color: Colors.border },
-  metricSpacer: { flex: 1 },
-  rangeBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 7,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  rangeBtnActive: { borderColor: Colors.accent, backgroundColor: Colors.accent + '18' },
-  rangeBtnText: { fontSize: 10, fontWeight: '800', color: Colors.textSecondary },
-  rangeBtnTextActive: { color: Colors.accent },
-  chartWrap: { marginHorizontal: -2 },
-  chartPlaceholder: {
-    height: 140,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  chartPlaceholderText: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center' },
-  unitLabel: { ...Typography.label, color: Colors.textSecondary, textAlign: 'center', marginTop: 8, fontSize: 10 },
+    chartCard: {
+      backgroundColor: c.surface,
+      borderRadius: 16,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: c.border,
+      marginBottom: 20,
+    },
+    metricRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16 },
+    metricBtn: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.bg,
+    },
+    metricBtnActive: { borderColor: c.accent, backgroundColor: c.accent },
+    metricBtnDisabled: { opacity: 0.35 },
+    metricBtnText: { fontSize: 11, fontWeight: '700', color: c.textSecondary },
+    metricBtnTextActive: { color: '#fff' },
+    metricBtnTextDisabled: { color: c.border },
+    metricSpacer: { flex: 1 },
+    rangeBtn: {
+      paddingHorizontal: 8,
+      paddingVertical: 5,
+      borderRadius: 7,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    rangeBtnActive: { borderColor: c.accent, backgroundColor: c.accent + '18' },
+    rangeBtnText: { fontSize: 10, fontWeight: '800', color: c.textSecondary },
+    rangeBtnTextActive: { color: c.accent },
+    chartWrap: { marginHorizontal: -2 },
+    chartPlaceholder: {
+      height: 140,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    chartPlaceholderText: { ...Typography.caption, color: c.textSecondary, textAlign: 'center' },
+    unitLabel: { ...Typography.label, color: c.textSecondary, textAlign: 'center', marginTop: 8, fontSize: 10 },
 
-  // History
-  sectionTitle: { ...Typography.label, color: Colors.textSecondary, marginBottom: 12 },
-  historyCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  historyTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  historyDate: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
-  historyStats: { ...Typography.body, color: Colors.accent, fontWeight: '600', marginBottom: 2 },
-  historyMeasurements: { ...Typography.caption, color: Colors.textSecondary, marginBottom: 2 },
-  historyNotes: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic', marginTop: 4 },
+    prRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: c.accent + '12',
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: c.accent + '40',
+    },
+    prLabel: { fontSize: 11, fontWeight: '700', color: c.accent, flex: 1 },
+    prValue: { fontSize: 16, fontWeight: '800', color: c.accent },
+    prDate: { fontSize: 10, fontWeight: '600', color: c.textSecondary },
 
-  // Modal
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: Colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '90%',
-    paddingBottom: 32,
-  },
-});
+    sectionTitle: { ...Typography.label, color: c.textSecondary, marginBottom: 12 },
+    historyCard: {
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      padding: 14,
+      marginBottom: 8,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    historyTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+    historyDate: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    historyStats: { ...Typography.body, color: c.accent, fontWeight: '600', marginBottom: 2 },
+    historyMeasurements: { ...Typography.caption, color: c.textSecondary, marginBottom: 2 },
+    historyNotes: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic', marginTop: 4 },
 
-const fm = StyleSheet.create({
-  handle: {
-    width: 40, height: 4, borderRadius: 2,
-    backgroundColor: Colors.border,
-    alignSelf: 'center',
-    marginTop: 12, marginBottom: 12,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 4,
-  },
-  title: { ...Typography.label, color: Colors.textPrimary, fontSize: 14 },
-  scroll: { flexGrow: 0 },
-  scrollContent: { padding: 20, paddingTop: 8 },
-  label: { ...Typography.label, color: Colors.textSecondary, marginBottom: 8 },
-  subLabel: { ...Typography.label, color: Colors.textSecondary, fontSize: 11, marginBottom: 6 },
-  row: { flexDirection: 'row', gap: 10, marginBottom: 12 },
-  halfField: { flex: 1 },
-  input: {
-    backgroundColor: Colors.bg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    color: Colors.textPrimary,
-    fontSize: 15,
-    marginBottom: 10,
-  },
-  notesInput: { minHeight: 72, textAlignVertical: 'top' },
-  saveBtn: {
-    backgroundColor: Colors.accent,
-    borderRadius: 13,
-    paddingVertical: 15,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  saveBtnDisabled: { opacity: 0.35 },
-  saveBtnText: { color: Colors.bg, fontWeight: '800', fontSize: 14, letterSpacing: 1.2 },
-});
+    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
+    sheet: {
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      maxHeight: '90%',
+      paddingBottom: 32,
+    },
+  });
+}
+
+function makeFmStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    handle: {
+      width: 40, height: 4, borderRadius: 2,
+      backgroundColor: c.border,
+      alignSelf: 'center',
+      marginTop: 12, marginBottom: 12,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      marginBottom: 4,
+    },
+    title: { ...Typography.label, color: c.textPrimary, fontSize: 14 },
+    scroll: { flexGrow: 0 },
+    scrollContent: { padding: 20, paddingTop: 8 },
+    label: { ...Typography.label, color: c.textSecondary, marginBottom: 8 },
+    subLabel: { ...Typography.label, color: c.textSecondary, fontSize: 11, marginBottom: 6 },
+    row: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+    halfField: { flex: 1 },
+    input: {
+      backgroundColor: c.bg,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 11,
+      fontSize: 15,
+      marginBottom: 10,
+    },
+    notesInput: { minHeight: 72, textAlignVertical: 'top' },
+    datePressable: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      paddingVertical: 8, paddingHorizontal: 12,
+      borderRadius: 8, borderWidth: 1, borderColor: c.accent + '50',
+      backgroundColor: c.accent + '10', alignSelf: 'flex-start', marginBottom: 12,
+    },
+    datePressableText: { fontSize: 14, fontWeight: '600', color: c.accent },
+    saveBtn: {
+      backgroundColor: c.accent,
+      borderRadius: 13,
+      paddingVertical: 15,
+      alignItems: 'center',
+      marginTop: 4,
+    },
+    saveBtnDisabled: { opacity: 0.35 },
+    saveBtnText: { color: '#fff', fontWeight: '800', fontSize: 14, letterSpacing: 1.2 },
+  });
+}

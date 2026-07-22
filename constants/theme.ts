@@ -10,6 +10,12 @@ export type ColorScheme = {
   textPrimary: string;
   textSecondary: string;
   danger: string;
+  dangerDim: string;
+  warning: string;
+  warningDim: string;
+  success: string;
+  successDim: string;
+  overlay: string;
 };
 
 export const darkColors: ColorScheme = {
@@ -22,18 +28,30 @@ export const darkColors: ColorScheme = {
   textPrimary: '#FFFFFF',
   textSecondary: '#888888',
   danger: '#FF4D4D',
+  dangerDim: '#FF4D4D22',
+  warning: '#FF9800',
+  warningDim: '#FF980025',
+  success: '#4CAF50',
+  successDim: '#4CAF5025',
+  overlay: 'rgba(0,0,0,0.72)',
 };
 
 export const lightColors: ColorScheme = {
-  accent: '#E8001D',
-  accentDim: '#E8001D18',
-  bg: '#F2F2F7',
-  surface: '#FFFFFF',
-  surfaceRaised: '#F8F8F8',
-  border: '#E0E0E0',
-  textPrimary: '#0A0A0A',
-  textSecondary: '#666666',
-  danger: '#D32F2F',
+  accent: '#C8001A',
+  accentDim: '#C8001A18',
+  bg: '#EAEAEF',
+  surface: '#F8F8FC',
+  surfaceRaised: '#FFFFFF',
+  border: '#D4D4DC',
+  textPrimary: '#111111',
+  textSecondary: '#5A5A6E',
+  danger: '#C62828',
+  dangerDim: '#C8282822',
+  warning: '#E65100',
+  warningDim: '#E6510020',
+  success: '#2E7D32',
+  successDim: '#2E7D3220',
+  overlay: 'rgba(0,0,0,0.55)',
 };
 
 // Static fallback — screens not yet migrated to useTheme() will keep using this (always dark)

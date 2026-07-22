@@ -24,6 +24,7 @@ export type ClientSession = {
   coach_name: string;
   coach_id: string;
   status: string | null;
+  rating: number | null;
 };
 
 export type CoachInfo = {
@@ -80,7 +81,7 @@ export function useClientData() {
           coach:profiles!packages_coach_id_fkey ( id, name, phone, whatsapp, instagram )
         `)
         .eq('client_id', user.id)
-        .eq('status', 'active')
+        .order('status', { ascending: true })   // 'active' sorts before 'expired'
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
@@ -95,7 +96,8 @@ export function useClientData() {
           exercises,
           notes,
           status,
-          coach:profiles!workout_sessions_coach_id_fkey ( name )
+          coach:profiles!workout_sessions_coach_id_fkey ( name ),
+          session_ratings ( rating )
         `)
         .eq('client_id', user.id)
         .lte('session_date', new Date().toISOString().split('T')[0])
@@ -140,6 +142,8 @@ export function useClientData() {
     }
 
     if (!sessionsResult.error) {
+      // Fallback to package coach name when the join returns null (dual-FK ambiguity)
+      const pkgCoachName = (pkgResult.data as any)?.coach?.name as string | undefined;
       setSessions(
         (sessionsResult.data ?? []).map((row) => ({
           id: row.id,
@@ -148,8 +152,9 @@ export function useClientData() {
           duration_minutes: row.duration_minutes,
           exercises: row.exercises as Exercise[],
           notes: row.notes,
-          coach_name: (row.coach as { name: string } | null)?.name ?? 'Your coach',
+          coach_name: (row.coach as { name: string } | null)?.name ?? pkgCoachName ?? 'Your coach',
           status: row.status ?? null,
+          rating: (row as any).session_ratings?.[0]?.rating ?? null,
         })),
       );
     }
@@ -177,6 +182,18 @@ export function useClientData() {
   }, [user?.id]);
 
   useEffect(() => { fetch(); }, [fetch]);
+
+  // Real-time: re-fetch when package or sessions change for this client
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel(`client-data-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'packages', filter: `client_id=eq.${user.id}` }, () => fetch())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'workout_sessions', filter: `client_id=eq.${user.id}` }, () => fetch())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'scheduled_sessions', filter: `client_id=eq.${user.id}` }, () => fetch())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id, fetch]);
 
   return { pkg, sessions, coachInfo, nextScheduled, upcomingScheduled, loading, error, refetch: fetch };
 }

@@ -2,6 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 
+export type SetRow = {
+  reps: number | null;
+  weight: string | null;
+};
+
 export type TemplateExercise = {
   id: string;
   template_id: string;
@@ -11,6 +16,7 @@ export type TemplateExercise = {
   weight: string | null;
   notes: string | null;
   order_index: number;
+  set_rows: SetRow[];
 };
 
 export type Template = {
@@ -37,7 +43,7 @@ export function useTemplates() {
       .from('session_templates')
       .select(`
         id, coach_id, name, created_at, last_used_at,
-        exercises:template_exercises(id, template_id, exercise_name, sets, reps, weight, notes, order_index)
+        exercises:template_exercises(id, template_id, exercise_name, sets, reps, weight, notes, order_index, set_rows)
       `)
       .eq('coach_id', profile.id)
       .order('last_used_at', { ascending: false, nullsFirst: false });
@@ -49,7 +55,12 @@ export function useTemplates() {
         name: t.name,
         created_at: t.created_at,
         last_used_at: t.last_used_at,
-        exercises: ((t.exercises as TemplateExercise[]) ?? []).sort((a, b) => a.order_index - b.order_index),
+        exercises: ((t.exercises as any[]) ?? [])
+          .sort((a, b) => a.order_index - b.order_index)
+          .map((e) => ({
+            ...e,
+            set_rows: (e.set_rows as SetRow[] | null) ?? [],
+          })),
       }))
     );
     setLoading(false);
@@ -103,6 +114,7 @@ export function useTemplates() {
         weight: e.weight,
         notes: e.notes,
         order_index: e.order_index,
+        set_rows: e.set_rows,
       }))
     );
   };

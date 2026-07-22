@@ -23,6 +23,13 @@ export async function sendPushNotification(
   userId: string,
   { title, body, data }: { title: string; body: string; data?: Record<string, unknown> },
 ): Promise<void> {
+  // Log to in-app notification inbox regardless of push token
+  supabase.from('notifications').insert({
+    user_id: userId, title, body, data: data ?? {},
+  }).then(({ error }) => {
+    if (error) console.warn('[notif insert]', error.code, error.message);
+  });
+
   try {
     const { data: row } = await supabase
       .from('push_tokens')

@@ -1,12 +1,14 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, Vibration, View } from 'react-native';
+﻿import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Keyboard, Pressable, StyleSheet, Text, TextInput, Vibration, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
-import { Colors, Typography } from '@/constants/theme';
+import { sendPushNotification } from '@/lib/pushNotifications';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 const WORKOUT_KEY = '@elevat3/paused_workout';
 
@@ -43,6 +45,8 @@ function buildGroups(exs: Exercise[]): number[][] {
 }
 
 export default function GuidedWorkoutScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     exercises: string;
@@ -53,6 +57,7 @@ export default function GuidedWorkoutScreen() {
     durationMinutes: string;
     sessionNotes: string;
     clientName: string;
+    sessionId?: string;
     resume?: string;
     alreadySaved?: string;
   }>();
@@ -63,6 +68,13 @@ export default function GuidedWorkoutScreen() {
   const [exIdx, setExIdx] = useState(0);
   const [setIdx, setSetIdx] = useState(0);
   const [phase, setPhase] = useState<Phase>('set');
+  // Per-set actual weights and notes: [exercise_index][set_index]
+  const [setWeights, setSetWeights] = useState<string[][]>(
+    () => exercises.map((ex) => Array.from({ length: Math.max(1, ex.sets ?? 1) }, () => ex.weight ?? '')),
+  );
+  const [setNotes, setSetNotes] = useState<string[][]>(
+    () => exercises.map((ex) => Array.from({ length: Math.max(1, ex.sets ?? 1) }, () => '')),
+  );
   const [restRemaining, setRestRemaining] = useState(60);
   const [defaultRest, setDefaultRest] = useState(60);
   const [restRunning, setRestRunning] = useState(false);
@@ -70,6 +82,7 @@ export default function GuidedWorkoutScreen() {
   const [startTime] = useState(() => Date.now());
   const [sessionAlreadySaved, setSessionAlreadySaved] = useState(params.alreadySaved === 'true');
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const setNotesRef = useRef<TextInput>(null);
 
   const saveProgress = async (currentExIdx: number, currentSetIdx: number) => {
     try {
@@ -165,6 +178,24 @@ export default function GuidedWorkoutScreen() {
             router.replace('/(coach)');
           },
         },
+        {
+          text: 'Cancel Workout',
+          style: 'destructive',
+          onPress: async () => {
+            // Stop the active session timer
+            await supabase
+              .from('active_sessions')
+              .update({ is_active: false, ended_at: new Date().toISOString() })
+              .eq('coach_id', params.coachId)
+              .eq('is_active', true);
+            // Delete the workout_sessions row so session isn't deducted
+            if (params.sessionId) {
+              await supabase.from('workout_sessions').delete().eq('id', params.sessionId);
+            }
+            await AsyncStorage.removeItem(WORKOUT_KEY);
+            router.replace('/(coach)');
+          },
+        },
       ],
     );
   };
@@ -219,7 +250,42 @@ export default function GuidedWorkoutScreen() {
   const handleFinish = async () => {
     setPhase('saving');
     try {
-      if (!sessionAlreadySaved) {
+      // Merge per-set weights and notes back into exercises
+      const finalExercises = exercises.map((ex, i) => {
+        const weights = (setWeights[i] ?? []).map((w) => w.trim()).filter(Boolean);
+        const unique = [...new Set(weights)];
+        const finalWeight = weights.length === 0 ? ex.weight : (unique.length === 1 ? unique[0] : weights.join(' / '));
+
+        const perSetNotes = (setNotes[i] ?? [])
+          .map((n, si) => n.trim() ? `S${si + 1}: ${n.trim()}` : '')
+          .filter(Boolean)
+          .join(' · ');
+        const finalNotes = perSetNotes
+          ? (ex.notes ? `${ex.notes} | ${perSetNotes}` : perSetNotes)
+          : (ex.notes ?? null);
+
+        return { ...ex, weight: finalWeight, notes: finalNotes };
+      });
+
+      if (sessionAlreadySaved) {
+        // Session already exists — just update the exercises with actual weights
+        if (params.sessionId) {
+          const { error } = await supabase
+            .from('workout_sessions')
+            .update({ exercises: finalExercises })
+            .eq('id', params.sessionId);
+          if (error) throw error;
+        }
+        // Mark scheduled_sessions completed (session was pre-logged, now it's done)
+        const schedDateAlready = params.sessionDate || new Date().toISOString().slice(0, 10);
+        await supabase
+          .from('scheduled_sessions')
+          .update({ status: 'completed' })
+          .eq('client_id', params.clientId)
+          .gte('scheduled_at', schedDateAlready + 'T00:00:00.000Z')
+          .lte('scheduled_at', schedDateAlready + 'T23:59:59.999Z')
+          .in('status', ['pending', 'client_confirmed', 'reschedule_pending']);
+      } else {
         const elapsed = Math.round((Date.now() - startTime) / 60000);
         const finalDuration = Math.max(Number(params.durationMinutes) || elapsed, elapsed);
         const { error } = await supabase.from('workout_sessions').insert({
@@ -228,17 +294,70 @@ export default function GuidedWorkoutScreen() {
           coach_id: params.coachId,
           session_date: params.sessionDate,
           duration_minutes: finalDuration,
-          exercises,
+          exercises: finalExercises,
           notes: params.sessionNotes || null,
+          status: 'completed',
         });
         if (error) throw error;
+
+        // Mark any pending scheduled_sessions for this client on this date as completed
+        const schedDate = params.sessionDate || new Date().toISOString().slice(0, 10);
+        await supabase
+          .from('scheduled_sessions')
+          .update({ status: 'completed' })
+          .eq('client_id', params.clientId)
+          .gte('scheduled_at', schedDate + 'T00:00:00.000Z')
+          .lte('scheduled_at', schedDate + 'T23:59:59.999Z')
+          .in('status', ['pending', 'client_confirmed', 'reschedule_pending']);
+
+        // Send sessions-remaining notifications (only on fresh save, not update)
+        const { data: pkgData } = await supabase
+          .from('client_packages')
+          .select('sessions_remaining')
+          .eq('client_id', params.clientId)
+          .eq('status', 'active')
+          .maybeSingle();
+        const { data: adminRow } = await supabase.from('profiles').select('id').eq('role', 'admin').limit(1).maybeSingle();
+        const sessLeft = pkgData?.sessions_remaining ?? null;
+        if (sessLeft !== null && sessLeft <= 3 && sessLeft > 0) {
+          await sendPushNotification(params.clientId, {
+            title: '⚠️ Package Almost Empty',
+            body: `Only ${sessLeft} session${sessLeft !== 1 ? 's' : ''} left in your package. Contact your coach to renew soon!`,
+          });
+          if (params.coachId) await sendPushNotification(params.coachId, {
+            title: '⚠️ Client Running Low',
+            body: `Your client has ${sessLeft} session${sessLeft !== 1 ? 's' : ''} left.`,
+            data: { type: 'low_sessions' },
+          });
+          if (adminRow?.id) await sendPushNotification(adminRow.id, {
+            title: '⚠️ Client Running Low',
+            body: `A client has ${sessLeft} session${sessLeft !== 1 ? 's' : ''} left.`,
+            data: { type: 'low_sessions' },
+          });
+        }
+        if (sessLeft === 0) {
+          await sendPushNotification(params.clientId, {
+            title: '🔴 Last Session Used',
+            body: 'You have no sessions left. Contact your coach to renew your package.',
+          });
+          if (params.coachId) await sendPushNotification(params.coachId, {
+            title: '🔴 Client Out of Sessions',
+            body: 'Your client just used their last session.',
+            data: { type: 'no_sessions' },
+          });
+          if (adminRow?.id) await sendPushNotification(adminRow.id, {
+            title: '🔴 Client Out of Sessions',
+            body: 'A client just used their last session.',
+            data: { type: 'no_sessions' },
+          });
+        }
       }
       await AsyncStorage.removeItem(WORKOUT_KEY);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setPhase('summary');
     } catch (err: unknown) {
       setPhase('done');
-      Alert.alert('Error saving', err instanceof Error ? err.message : 'Unknown error');
+      Alert.alert('Error saving', err instanceof Error ? err.message : (err as any)?.message ?? JSON.stringify(err));
     }
   };
 
@@ -252,7 +371,7 @@ export default function GuidedWorkoutScreen() {
       {phase !== 'saving' && (
         <View style={styles.wHeader}>
           <Pressable style={styles.exitBtn} onPress={handleExit} hitSlop={12}>
-            <Ionicons name="close-outline" size={22} color={Colors.textSecondary} />
+            <Ionicons name="close-outline" size={22} color={colors.textSecondary} />
             <Text style={styles.exitBtnText}>EXIT</Text>
           </Pressable>
 
@@ -273,64 +392,113 @@ export default function GuidedWorkoutScreen() {
 
       {/* SET phase */}
       {phase === 'set' && (
-        <View style={styles.phase}>
-          <Text style={styles.progressLabel}>
-            {isSupersetGroup
-              ? `SUPERSET ${currentGroup.indexOf(exIdx) + 1}/${currentGroup.length}  ·  Group ${currentGroupIdx + 1} of ${groups.length}`
-              : `Exercise ${currentGroupIdx + 1} of ${groups.length}`}
-          </Text>
+        <View style={styles.phaseSet}>
 
-          <Text style={styles.exName}>{currentEx?.exercise_name}</Text>
-
-          <View style={styles.setChip}>
-            <Text style={styles.setChipText}>SET {setIdx + 1} OF {totalSets}</Text>
-          </View>
-
-          {(currentEx?.reps || currentEx?.weight) ? (
-            <Text style={styles.targetText}>
-              {[
-                currentEx.reps ? `${currentEx.reps} reps` : null,
-                currentEx.weight ?? null,
-              ].filter(Boolean).join('  ·  ')}
-            </Text>
-          ) : null}
-
-          {currentEx?.notes ? (
-            <Text style={styles.notesText}>{currentEx.notes}</Text>
-          ) : null}
-
-          <Pressable style={styles.primaryBtn} onPress={handleSetDone}>
-            <Ionicons name="checkmark-circle" size={26} color={Colors.bg} />
-            <Text style={styles.primaryBtnText}>SET DONE</Text>
-          </Pressable>
-
-          <View style={styles.dotsRow}>
-            {Array.from({ length: totalSets }).map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.dot,
-                  i < setIdx && styles.dotDone,
-                  i === setIdx && styles.dotCurrent,
-                ]}
-              />
-            ))}
-          </View>
-
-          <View style={styles.exerciseList}>
+          {/* TOP: Exercise overview strip */}
+          <View style={styles.exStrip}>
             {exercises.map((ex, i) => (
-              <View key={i} style={styles.exerciseListRow}>
+              <View key={i} style={[styles.exStripRow, i === exIdx && styles.exStripRowActive]}>
                 <Ionicons
                   name={i < exIdx ? 'checkmark-circle' : i === exIdx ? 'ellipse' : 'ellipse-outline'}
-                  size={14}
-                  color={i < exIdx ? Colors.accent : i === exIdx ? Colors.accent : Colors.border}
+                  size={12}
+                  color={i < exIdx ? colors.accent : i === exIdx ? colors.accent : colors.border}
                 />
-                <Text style={[styles.exerciseListName, i === exIdx && { color: Colors.textPrimary }]}>
+                <Text
+                  style={[styles.exStripName, i === exIdx && { color: colors.textPrimary, fontWeight: '700' }]}
+                  numberOfLines={1}
+                >
                   {ex.exercise_name}
                 </Text>
+                {i === exIdx && (
+                  <Text style={styles.exStripBadge}>S{setIdx + 1}/{totalSets}</Text>
+                )}
               </View>
             ))}
           </View>
+
+          {/* MIDDLE: Current exercise info */}
+          <View style={styles.phaseCenter}>
+            <Text style={styles.progressLabel}>
+              {isSupersetGroup
+                ? `SUPERSET ${currentGroup.indexOf(exIdx) + 1}/${currentGroup.length}  ·  Group ${currentGroupIdx + 1} of ${groups.length}`
+                : `Exercise ${currentGroupIdx + 1} of ${groups.length}`}
+            </Text>
+
+            <Text style={styles.exName}>{currentEx?.exercise_name}</Text>
+
+            <View style={styles.setChip}>
+              <Text style={styles.setChipText}>SET {setIdx + 1} OF {totalSets}</Text>
+            </View>
+
+            {currentEx?.reps ? (
+              <Text style={styles.targetText}>{currentEx.reps} reps</Text>
+            ) : null}
+
+            {currentEx?.notes ? (
+              <Text style={styles.notesText}>{currentEx.notes}</Text>
+            ) : null}
+          </View>
+
+          {/* BOTTOM: Per-set weight + notes + SET DONE */}
+          <View style={styles.phaseBottom}>
+            {/* Weight */}
+            <View style={styles.weightRow}>
+              <Text style={styles.weightRowLabel}>
+                WEIGHT{setIdx > 0 && setWeights[exIdx]?.[setIdx - 1] ? `  ·  prev: ${setWeights[exIdx][setIdx - 1]}` : ''}
+              </Text>
+              <TextInput
+                style={styles.weightInput}
+                value={setWeights[exIdx]?.[setIdx] ?? ''}
+                onChangeText={(v) => setSetWeights((prev) => {
+                  const next = prev.map((arr) => [...arr]);
+                  if (next[exIdx]) next[exIdx][setIdx] = v;
+                  return next;
+                })}
+                placeholder={currentEx?.weight ?? 'e.g. 60kg'}
+                placeholderTextColor={colors.textSecondary + '60'}
+                returnKeyType="next"
+                onSubmitEditing={() => setNotesRef.current?.focus()}
+                blurOnSubmit={false}
+              />
+            </View>
+
+            {/* Per-set notes */}
+            <TextInput
+              ref={setNotesRef}
+              style={styles.setNotesInput}
+              value={setNotes[exIdx]?.[setIdx] ?? ''}
+              onChangeText={(v) => setSetNotes((prev) => {
+                const next = prev.map((arr) => [...arr]);
+                if (next[exIdx]) next[exIdx][setIdx] = v;
+                return next;
+              })}
+              placeholder="Set notes (optional)…"
+              placeholderTextColor={colors.textSecondary + '60'}
+              returnKeyType="done"
+              onSubmitEditing={() => Keyboard.dismiss()}
+            />
+
+            {/* Progress dots */}
+            <View style={styles.dotsRow}>
+              {Array.from({ length: totalSets }).map((_, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.dot,
+                    i < setIdx && styles.dotDone,
+                    i === setIdx && styles.dotCurrent,
+                  ]}
+                />
+              ))}
+            </View>
+
+            {/* SET DONE */}
+            <Pressable style={styles.setDoneBtn} onPress={() => { Keyboard.dismiss(); handleSetDone(); }}>
+              <Ionicons name="checkmark-circle" size={26} color={colors.bg} />
+              <Text style={styles.primaryBtnText}>SET DONE</Text>
+            </Pressable>
+          </View>
+
         </View>
       )}
 
@@ -339,7 +507,7 @@ export default function GuidedWorkoutScreen() {
         <View style={styles.phase}>
           <Text style={styles.progressLabel}>REST</Text>
 
-          <Text style={[styles.timerDisplay, restRemaining === 0 && { color: Colors.accent }]}>
+          <Text style={[styles.timerDisplay, restRemaining === 0 && { color: colors.accent }]}>
             {pad(Math.floor(restRemaining / 60))}:{pad(restRemaining % 60)}
           </Text>
           {restRemaining === 0 && <Text style={styles.timerDoneLabel}>REST DONE!</Text>}
@@ -363,7 +531,7 @@ export default function GuidedWorkoutScreen() {
                 <Ionicons
                   name={restRunning ? 'pause' : 'play'}
                   size={20}
-                  color={Colors.textPrimary}
+                  color={colors.textPrimary}
                 />
                 <Text style={styles.secondaryBtnText}>
                   {restRunning ? 'PAUSE' : 'RESUME'}
@@ -371,7 +539,7 @@ export default function GuidedWorkoutScreen() {
               </Pressable>
 
               <Pressable style={styles.secondaryBtn} onPress={handleSkipRest}>
-                <Ionicons name="play-skip-forward" size={20} color={Colors.textPrimary} />
+                <Ionicons name="play-skip-forward" size={20} color={colors.textPrimary} />
                 <Text style={styles.secondaryBtnText}>SKIP</Text>
               </Pressable>
             </View>
@@ -395,7 +563,7 @@ export default function GuidedWorkoutScreen() {
       {phase === 'between' && (
         <View style={styles.phase}>
           <View style={styles.bigIcon}>
-            <Ionicons name="checkmark-circle" size={80} color={Colors.accent} />
+            <Ionicons name="checkmark-circle" size={80} color={colors.accent} />
           </View>
           <Text style={styles.exName}>
             {isSupersetGroup
@@ -434,14 +602,14 @@ export default function GuidedWorkoutScreen() {
       {phase === 'done' && (
         <View style={styles.phase}>
           <View style={styles.bigIcon}>
-            <Ionicons name="trophy" size={80} color={Colors.accent} />
+            <Ionicons name="trophy" size={80} color={colors.accent} />
           </View>
           <Text style={styles.exName}>Workout Complete!</Text>
           <Text style={styles.progressLabel}>
             {totalExercises} exercises · {Math.round((Date.now() - startTime) / 60000)} min
           </Text>
           <Pressable style={styles.primaryBtn} onPress={handleFinish}>
-            <Ionicons name={sessionAlreadySaved ? 'checkmark-circle-outline' : 'save-outline'} size={22} color={Colors.bg} />
+            <Ionicons name={sessionAlreadySaved ? 'checkmark-circle-outline' : 'save-outline'} size={22} color={colors.bg} />
             <Text style={styles.primaryBtnText}>{sessionAlreadySaved ? 'DONE' : 'FINISH & SAVE'}</Text>
           </Pressable>
         </View>
@@ -458,7 +626,7 @@ export default function GuidedWorkoutScreen() {
       {phase === 'summary' && (
         <View style={styles.phase}>
           <View style={styles.bigIcon}>
-            <Ionicons name="checkmark-done-circle" size={84} color={Colors.accent} />
+            <Ionicons name="checkmark-done-circle" size={84} color={colors.accent} />
           </View>
           <Text style={styles.exName}>Session Saved!</Text>
           <Text style={styles.progressLabel}>{params.clientName}'s session is logged</Text>
@@ -475,7 +643,7 @@ export default function GuidedWorkoutScreen() {
           </View>
 
           <Pressable style={styles.primaryBtn} onPress={() => router.replace('/(coach)')}>
-            <Ionicons name="home-outline" size={20} color={Colors.bg} />
+            <Ionicons name="home-outline" size={20} color={colors.bg} />
             <Text style={styles.primaryBtnText}>BACK TO DASHBOARD</Text>
           </Pressable>
         </View>
@@ -485,10 +653,10 @@ export default function GuidedWorkoutScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: Colors.bg,
   },
 
   // ── Persistent header ────────────────────────────────────────
@@ -499,7 +667,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: c.border,
   },
   exitBtn: {
     flexDirection: 'row',
@@ -510,25 +678,25 @@ const styles = StyleSheet.create({
     minWidth: 60,
   },
   exitBtnText: {
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     fontSize: 13,
     fontWeight: '700',
   },
   wHeaderCenter: { alignItems: 'center', flex: 1 },
   wClientName: {
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     fontSize: 14,
     fontWeight: '800',
     marginBottom: 2,
   },
   wElapsed: {
-    color: Colors.accent,
+    color: c.accent,
     fontSize: 12,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
   wProgress: {
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     fontSize: 13,
     fontWeight: '600',
     minWidth: 60,
@@ -546,42 +714,42 @@ const styles = StyleSheet.create({
 
   progressLabel: {
     ...Typography.label,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     marginBottom: 12,
     textAlign: 'center',
   },
   exName: {
     fontSize: 30,
     fontWeight: '800',
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     textAlign: 'center',
     marginBottom: 18,
     letterSpacing: -0.5,
   },
   setChip: {
-    backgroundColor: Colors.accent + '18',
+    backgroundColor: c.accent + '18',
     borderWidth: 1,
-    borderColor: Colors.accent + '50',
+    borderColor: c.accent + '50',
     borderRadius: 20,
     paddingHorizontal: 20,
     paddingVertical: 8,
     marginBottom: 16,
   },
   setChipText: {
-    color: Colors.accent,
+    color: c.accent,
     fontSize: 14,
     fontWeight: '800',
     letterSpacing: 1.2,
   },
   targetText: {
     ...Typography.subtitle,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     textAlign: 'center',
     marginBottom: 8,
   },
   notesText: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     fontStyle: 'italic',
     textAlign: 'center',
     marginBottom: 16,
@@ -591,7 +759,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    backgroundColor: Colors.accent,
+    backgroundColor: c.accent,
     borderRadius: 18,
     paddingVertical: 18,
     paddingHorizontal: 32,
@@ -599,7 +767,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   primaryBtnText: {
-    color: Colors.bg,
+    color: c.bg,
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: 1.2,
@@ -609,16 +777,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 24,
     flex: 1,
   },
   secondaryBtnText: {
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.8,
@@ -633,18 +801,18 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     borderWidth: 1.5,
-    borderColor: Colors.border,
+    borderColor: c.border,
     backgroundColor: 'transparent',
   },
-  dotDone: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  dotCurrent: { borderColor: Colors.accent },
+  dotDone: { backgroundColor: c.accent, borderColor: c.accent },
+  dotCurrent: { borderColor: c.accent },
   exerciseList: {
     marginTop: 28,
     alignSelf: 'stretch',
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     padding: 12,
     gap: 8,
   },
@@ -655,19 +823,19 @@ const styles = StyleSheet.create({
   },
   exerciseListName: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
   },
   timerDisplay: {
     fontSize: 88,
     fontWeight: '800',
-    color: Colors.textPrimary,
+    color: c.textPrimary,
     letterSpacing: -2,
     lineHeight: 96,
     marginBottom: 8,
   },
   timerDoneLabel: {
     ...Typography.label,
-    color: Colors.accent,
+    color: c.accent,
     letterSpacing: 3,
     marginBottom: 8,
   },
@@ -679,15 +847,15 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   adjustBtn: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     borderRadius: 10,
     paddingHorizontal: 18,
     paddingVertical: 10,
   },
-  adjustBtnText: { color: Colors.textPrimary, fontSize: 14, fontWeight: '700' },
-  adjustDefault: { ...Typography.body, color: Colors.textSecondary, minWidth: 44, textAlign: 'center' },
+  adjustBtnText: { color: c.textPrimary, fontSize: 14, fontWeight: '700' },
+  adjustDefault: { ...Typography.body, color: c.textSecondary, minWidth: 44, textAlign: 'center' },
   restBtns: {
     flexDirection: 'row',
     gap: 10,
@@ -696,31 +864,31 @@ const styles = StyleSheet.create({
   },
   upNextLabel: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: c.textSecondary,
     textAlign: 'center',
     marginTop: 28,
   },
   bigIcon: { marginBottom: 16 },
   upNextCard: {
     alignSelf: 'stretch',
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: Colors.accent + '30',
+    borderColor: c.accent + '30',
     padding: 18,
     marginTop: 24,
     alignItems: 'center',
     gap: 4,
   },
-  upNextCardLabel: { ...Typography.label, color: Colors.accent },
-  upNextCardName: { ...Typography.subtitle, color: Colors.textPrimary, textAlign: 'center' },
-  upNextCardMeta: { ...Typography.caption, color: Colors.textSecondary },
+  upNextCardLabel: { ...Typography.label, color: c.accent },
+  upNextCardName: { ...Typography.subtitle, color: c.textPrimary, textAlign: 'center' },
+  upNextCardMeta: { ...Typography.caption, color: c.textSecondary },
   summaryCard: {
     alignSelf: 'stretch',
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     marginTop: 28,
     overflow: 'hidden',
   },
@@ -730,8 +898,93 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: c.border,
   },
-  summaryLabel: { ...Typography.body, color: Colors.textSecondary },
-  summaryValue: { ...Typography.body, color: Colors.textPrimary, fontWeight: '700' },
+  summaryLabel: { ...Typography.body, color: c.textSecondary },
+  summaryValue: { ...Typography.body, color: c.textPrimary, fontWeight: '700' },
+
+  // ── SET phase layout ──────────────────────────────────────────
+  phaseSet: {
+    flex: 1,
+  },
+  exStrip: {
+    backgroundColor: c.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: c.border,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 7,
+  },
+  exStripRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  exStripRowActive: {},
+  exStripName: {
+    ...Typography.caption,
+    color: c.textSecondary,
+    flex: 1,
+  },
+  exStripBadge: {
+    color: c.accent,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  phaseCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    paddingBottom: 8,
+  },
+  phaseBottom: {
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    gap: 8,
+  },
+  weightRow: {
+    backgroundColor: c.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: c.border,
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    paddingBottom: 10,
+  },
+  weightRowLabel: {
+    ...Typography.label,
+    color: c.textSecondary,
+    fontSize: 10,
+    marginBottom: 2,
+  },
+  weightInput: {
+    color: c.textPrimary,
+    fontSize: 22,
+    fontWeight: '800',
+    paddingVertical: 2,
+    letterSpacing: 0.3,
+  },
+  setNotesInput: {
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: c.textPrimary,
+    fontSize: 14,
+  },
+  setDoneBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: c.accent,
+    borderRadius: 18,
+    paddingVertical: 18,
+    alignSelf: 'stretch',
+  },
 });
+}

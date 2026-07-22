@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,7 +14,8 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useClients, ClientWithPackage } from '@/hooks/useClients';
 import { sendPushNotification } from '@/lib/pushNotifications';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 const NO_SHOW_ORANGE = '#FFA500';
 
@@ -34,6 +34,9 @@ function ClientRow({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+
   const initials = client.name
     .split(' ')
     .map((w) => w[0])
@@ -61,7 +64,7 @@ function ClientRow({
           s.avatar,
           selected
             ? { backgroundColor: NO_SHOW_ORANGE + '20', borderColor: NO_SHOW_ORANGE }
-            : { backgroundColor: Colors.surface, borderColor: Colors.border },
+            : { backgroundColor: colors.surface, borderColor: colors.border },
         ]}
       >
         <Text style={[s.avatarText, selected && { color: NO_SHOW_ORANGE }]}>
@@ -69,7 +72,7 @@ function ClientRow({
         </Text>
       </View>
       <View style={s.clientInfo}>
-        <Text style={[s.clientName, !hasSession && { color: Colors.textSecondary }]}>
+        <Text style={[s.clientName, !hasSession && { color: colors.textSecondary }]}>
           {client.name}
         </Text>
         <Text style={s.clientSub}>
@@ -94,9 +97,10 @@ export function NoShowModal({
 }) {
   const { profile } = useAuth();
   const { clients, loading: clientsLoading } = useClients();
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
-  // 0 = today, -1 = yesterday
   const [dayOffset, setDayOffset] = useState<0 | -1>(0);
   const [loading, setLoading] = useState(false);
 
@@ -174,7 +178,6 @@ export function NoShowModal({
     );
   };
 
-  const dateLabel = dayOffset === 0 ? 'Today' : 'Yesterday';
   const dateDisplay = getDateOffset(dayOffset);
 
   return (
@@ -185,10 +188,9 @@ export function NoShowModal({
       onRequestClose={handleClose}
     >
       <View style={s.root}>
-        {/* Header */}
         <View style={s.header}>
           <Pressable onPress={handleClose} hitSlop={12} style={s.closeBtn}>
-            <Ionicons name="close" size={22} color={Colors.textSecondary} />
+            <Ionicons name="close" size={22} color={colors.textSecondary} />
           </Pressable>
           <View style={s.headerCenter}>
             <Ionicons name="person-remove-outline" size={16} color={NO_SHOW_ORANGE} />
@@ -197,7 +199,6 @@ export function NoShowModal({
           <View style={{ width: 36 }} />
         </View>
 
-        {/* Warning banner */}
         <View style={s.warningBanner}>
           <Ionicons name="information-circle-outline" size={16} color={NO_SHOW_ORANGE} />
           <Text style={s.warningText}>
@@ -210,13 +211,12 @@ export function NoShowModal({
           contentContainerStyle={s.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Client picker */}
           <Text style={s.label}>SELECT CLIENT</Text>
           {clientsLoading ? (
             <ActivityIndicator color={NO_SHOW_ORANGE} style={{ marginVertical: 20 }} />
           ) : activeClients.length === 0 ? (
             <View style={s.emptyClients}>
-              <Ionicons name="people-outline" size={32} color={Colors.border} />
+              <Ionicons name="people-outline" size={32} color={colors.border} />
               <Text style={s.emptyText}>No clients with active packages</Text>
             </View>
           ) : (
@@ -232,7 +232,6 @@ export function NoShowModal({
             </View>
           )}
 
-          {/* Date */}
           <Text style={[s.label, { marginTop: 24 }]}>DATE</Text>
           <View style={s.dateRow}>
             {([0, -1] as const).map((offset) => (
@@ -252,12 +251,11 @@ export function NoShowModal({
           </View>
         </ScrollView>
 
-        {/* Footer */}
         <View style={s.footer}>
           {selectedClient && (
             <View style={s.summaryRow}>
               <Text style={s.summaryText}>
-                {selectedClient.name}  ·  {dateLabel}  ({dateDisplay})
+                {selectedClient.name}  ·  {dayOffset === 0 ? 'Today' : 'Yesterday'}  ({dateDisplay})
               </Text>
               <Text style={s.summaryBadge}>
                 {selectedClient.activePackage!.sessions_remaining - 1} left after
@@ -288,99 +286,101 @@ export function NoShowModal({
   );
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.bg },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: c.bg },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  closeBtn: { padding: 4, width: 36 },
-  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  headerTitle: { ...Typography.label, color: Colors.textPrimary, fontSize: 14 },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 14,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    closeBtn: { padding: 4, width: 36 },
+    headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    headerTitle: { ...Typography.label, color: c.textPrimary, fontSize: 14 },
 
-  warningBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: NO_SHOW_ORANGE + '12',
-    borderBottomWidth: 1,
-    borderBottomColor: NO_SHOW_ORANGE + '30',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  warningText: { ...Typography.caption, color: NO_SHOW_ORANGE, flex: 1 },
+    warningBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: NO_SHOW_ORANGE + '12',
+      borderBottomWidth: 1,
+      borderBottomColor: NO_SHOW_ORANGE + '30',
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+    },
+    warningText: { ...Typography.caption, color: NO_SHOW_ORANGE, flex: 1 },
 
-  scrollContent: { padding: 20, paddingBottom: 16 },
+    scrollContent: { padding: 20, paddingBottom: 16 },
 
-  label: { ...Typography.label, color: Colors.textSecondary, marginBottom: 10 },
+    label: { ...Typography.label, color: c.textSecondary, marginBottom: 10 },
 
-  clientList: { gap: 8 },
-  clientRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-  },
-  clientRowSelected: { borderColor: NO_SHOW_ORANGE, backgroundColor: NO_SHOW_ORANGE + '08' },
-  clientRowDisabled: { opacity: 0.45 },
-  avatar: {
-    width: 42, height: 42, borderRadius: 21,
-    borderWidth: 1.5, justifyContent: 'center', alignItems: 'center',
-  },
-  avatarText: { fontSize: 14, fontWeight: '800', color: Colors.textSecondary },
-  clientInfo: { flex: 1 },
-  clientName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
-  clientSub: { ...Typography.caption, color: Colors.textSecondary },
+    clientList: { gap: 8 },
+    clientRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      padding: 12,
+      borderWidth: 1.5,
+      borderColor: c.border,
+    },
+    clientRowSelected: { borderColor: NO_SHOW_ORANGE, backgroundColor: NO_SHOW_ORANGE + '08' },
+    clientRowDisabled: { opacity: 0.45 },
+    avatar: {
+      width: 42, height: 42, borderRadius: 21,
+      borderWidth: 1.5, justifyContent: 'center', alignItems: 'center',
+    },
+    avatarText: { fontSize: 14, fontWeight: '800', color: c.textSecondary },
+    clientInfo: { flex: 1 },
+    clientName: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
+    clientSub: { ...Typography.caption, color: c.textSecondary },
 
-  emptyClients: {
-    alignItems: 'center', paddingVertical: 28, gap: 8,
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border,
-  },
-  emptyText: { ...Typography.body, color: Colors.textSecondary },
+    emptyClients: {
+      alignItems: 'center', paddingVertical: 28, gap: 8,
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border,
+    },
+    emptyText: { ...Typography.body, color: c.textSecondary },
 
-  dateRow: { flexDirection: 'row', gap: 10 },
-  dateChip: {
-    flex: 1, alignItems: 'center', paddingVertical: 14,
-    borderRadius: 14, borderWidth: 1.5, borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-  },
-  dateChipActive: { backgroundColor: NO_SHOW_ORANGE + '12', borderColor: NO_SHOW_ORANGE },
-  dateChipLabel: { color: Colors.textSecondary, fontWeight: '700', fontSize: 14 },
-  dateChipLabelActive: { color: NO_SHOW_ORANGE },
-  dateChipSub: { color: Colors.textSecondary, fontSize: 11, marginTop: 3 },
-  dateChipSubActive: { color: NO_SHOW_ORANGE + 'CC' },
+    dateRow: { flexDirection: 'row', gap: 10 },
+    dateChip: {
+      flex: 1, alignItems: 'center', paddingVertical: 14,
+      borderRadius: 14, borderWidth: 1.5, borderColor: c.border,
+      backgroundColor: c.surface,
+    },
+    dateChipActive: { backgroundColor: NO_SHOW_ORANGE + '12', borderColor: NO_SHOW_ORANGE },
+    dateChipLabel: { color: c.textSecondary, fontWeight: '700', fontSize: 14 },
+    dateChipLabelActive: { color: NO_SHOW_ORANGE },
+    dateChipSub: { color: c.textSecondary, fontSize: 11, marginTop: 3 },
+    dateChipSubActive: { color: NO_SHOW_ORANGE + 'CC' },
 
-  footer: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    gap: 10,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 4,
-  },
-  summaryText: { ...Typography.caption, color: Colors.textSecondary, flex: 1 },
-  summaryBadge: { ...Typography.caption, color: NO_SHOW_ORANGE, fontWeight: '700' },
+    footer: {
+      padding: 16,
+      borderTopWidth: 1,
+      borderTopColor: c.border,
+      gap: 10,
+    },
+    summaryRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 4,
+    },
+    summaryText: { ...Typography.caption, color: c.textSecondary, flex: 1 },
+    summaryBadge: { ...Typography.caption, color: NO_SHOW_ORANGE, fontWeight: '700' },
 
-  logBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: NO_SHOW_ORANGE, borderRadius: 14, paddingVertical: 16,
-  },
-  logBtnDisabled: { opacity: 0.45 },
-  logBtnText: { color: '#fff', fontSize: 15, fontWeight: '800', letterSpacing: 1 },
-});
+    logBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+      backgroundColor: NO_SHOW_ORANGE, borderRadius: 14, paddingVertical: 16,
+    },
+    logBtnDisabled: { opacity: 0.45 },
+    logBtnText: { color: '#fff', fontSize: 15, fontWeight: '800', letterSpacing: 1 },
+  });
+}

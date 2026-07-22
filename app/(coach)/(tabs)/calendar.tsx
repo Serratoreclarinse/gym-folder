@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,6 +16,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -24,7 +25,8 @@ import { useSessions } from '@/hooks/useSessions';
 import { useWaitlist, WaitlistEntry } from '@/hooks/useWaitlist';
 import { addStrikeForClient } from '@/hooks/useStrikes';
 import { useAvailability } from '@/hooks/useAvailability';
-import { Colors, Typography } from '@/constants/theme';
+import { ColorScheme, Typography } from '@/constants/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 const DAY_ABBR = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -55,6 +57,18 @@ function addDays(date: Date, n: number): Date {
   return d;
 }
 
+function buildMonthGrid(firstOfMonth: Date): (Date | null)[] {
+  const year = firstOfMonth.getFullYear();
+  const month = firstOfMonth.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDay = firstOfMonth.getDay(); // 0=Sun
+  const startOffset = firstDay === 0 ? 6 : firstDay - 1; // shift to Mon=0
+  const cells: (Date | null)[] = Array(startOffset).fill(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, month, d));
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
+
 function initials(name: string): string {
   return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
 }
@@ -67,11 +81,11 @@ function formatTime(time: string | null): string | null {
   return `${hour}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-const STATUS_CONFIG = {
-  confirmed: { label: 'Confirmed', color: Colors.accent },
-  pending:   { label: 'Pending',   color: '#FFA500' },
-  absent:    { label: 'Absent',    color: '#FF4D4D' },
-} as const;
+const STATUS_CONFIG = (colors: ColorScheme) => ({
+  confirmed: { label: 'Confirmed', color: colors.accent },
+  pending:   { label: 'Pending',   color: colors.warning },
+  absent:    { label: 'Absent',    color: colors.danger },
+} as const);
 
 function isWithin3Hours(sessionDate: string, scheduledTime: string | null): boolean {
   if (!scheduledTime) return false;
@@ -105,6 +119,8 @@ type ScheduledSession = {
 export default function CalendarScreen() {
   const todayISO = toISO(new Date());
   const { profile } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()));
   const [selectedDate, setSelectedDate] = useState(todayISO);
@@ -121,6 +137,7 @@ export default function CalendarScreen() {
   const [rescheduleTime, setRescheduleTime] = useState('');
   const [rescheduleReason, setRescheduleReason] = useState('');
   const [rescheduling, setRescheduling] = useState(false);
+  const [showRescheduleDatePicker, setShowRescheduleDatePicker] = useState(false);
 
   // Blocked dates / leave state
   type BlockedDate = { id: string; date: string; type: string; notes: string | null };
@@ -129,7 +146,15 @@ export default function CalendarScreen() {
   const [leaveDate, setLeaveDate] = useState('');
   const [leaveType, setLeaveType] = useState<'leave' | 'meeting' | 'other'>('leave');
   const [leaveNotes, setLeaveNotes] = useState('');
+  const [showLeaveDatePicker, setShowLeaveDatePicker] = useState(false);
   const [addingLeave, setAddingLeave] = useState(false);
+
+  // Month picker dropdown
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
 
   const { sessions, loading, refetch } = useSessions();
   const {
@@ -142,7 +167,7 @@ export default function CalendarScreen() {
     refetch: refetchWaitlist,
   } = useWaitlist(profile?.id);
   const { clients } = useClients();
-  const { isDateBlocked } = useAvailability();
+  const { isDateBlocked, availability } = useAvailability();
 
   const mapRow = (row: any): ScheduledSession => ({
     id: row.id,
@@ -354,6 +379,44 @@ export default function CalendarScreen() {
     if (isNaN(proposed.getTime()) || proposed <= new Date()) {
       Alert.alert('Invalid time', 'Please pick a future date and time.'); return;
     }
+
+    // Availability checks — collect soft warnings, hard-block on blocked dates
+    const proposedDateStr = `${dateMatch[1]}-${String(parseInt(dateMatch[2])).padStart(2, '0')}-${String(parseInt(dateMatch[3])).padStart(2, '0')}`;
+    if (isDateBlocked(proposedDateStr)) {
+      Alert.alert('Date Unavailable', 'That date is blocked in your schedule. Choose a different date.');
+      return;
+    }
+    const warnings: string[] = [];
+    const dow = proposed.getDay(); // 0=Sun
+    const dayInfo = availability.find((d) => d.day_of_week === dow);
+    if (!dayInfo || !dayInfo.is_active) {
+      warnings.push('That day is not in your working schedule.');
+    } else {
+      const [sh, sm] = dayInfo.start_time.split(':').map(Number);
+      const [eh, em] = dayInfo.end_time.split(':').map(Number);
+      const startMins = h * 60 + m;
+      if (startMins < sh * 60 + sm || startMins >= eh * 60 + em) {
+        warnings.push(`Time is outside your ${dayInfo.start_time}–${dayInfo.end_time} working hours.`);
+      }
+    }
+    const proposedEnd = proposed.getTime() + (rescheduleTarget.duration_minutes * 60000);
+    const conflict = scheduledSessions.find((ss) => {
+      if (ss.id === rescheduleTarget.id) return false;
+      const ssStart = new Date(ss.scheduled_at).getTime();
+      return proposed.getTime() < ssStart + ss.duration_minutes * 60000 && proposedEnd > ssStart;
+    });
+    if (conflict) warnings.push(`Conflicts with ${conflict.client_name}'s existing session.`);
+
+    if (warnings.length > 0) {
+      const proceed = await new Promise<boolean>((resolve) =>
+        Alert.alert('Availability Warning', warnings.join('\n\n') + '\n\nProceed anyway?', [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Proceed', onPress: () => resolve(true) },
+        ])
+      );
+      if (!proceed) return;
+    }
+
     setRescheduling(true);
     const { error } = await supabase
       .from('scheduled_sessions')
@@ -394,15 +457,41 @@ export default function CalendarScreen() {
   const handleAddLeave = async () => {
     if (!leaveDate.trim() || !profile?.id) return;
     setAddingLeave(true);
+    const dayDate = leaveDate.trim();
     const { error } = await supabase.from('coach_blocked_dates').insert({
       coach_id: profile.id,
-      date: leaveDate.trim(),
+      date: dayDate,
       type: leaveType,
       notes: leaveNotes.trim() || null,
       created_by: profile.id,
     });
     setAddingLeave(false);
     if (error) { Alert.alert('Error', error.message); return; }
+
+    // Notify clients who have sessions on this now-blocked day
+    const { data: affectedSessions } = await supabase
+      .from('scheduled_sessions')
+      .select('id, client_id')
+      .eq('coach_id', profile.id)
+      .gte('scheduled_at', `${dayDate}T00:00:00`)
+      .lte('scheduled_at', `${dayDate}T23:59:59`)
+      .in('status', ['pending', 'client_confirmed']);
+
+    if (affectedSessions && affectedSessions.length > 0) {
+      const { sendPushNotification } = await import('@/lib/pushNotifications');
+      const leaveLabel = ({ leave: 'Leave', meeting: 'Meeting', other: 'Day off' } as Record<string, string>)[leaveType] ?? 'Day off';
+      for (const session of affectedSessions) {
+        await sendPushNotification(session.client_id, {
+          title: '⚠️ Coach Unavailable',
+          body: `Your coach marked ${dayDate} as ${leaveLabel}. Your scheduled session may need to be rescheduled.`,
+        });
+      }
+      Alert.alert(
+        'Clients Notified',
+        `${affectedSessions.length} client${affectedSessions.length !== 1 ? 's' : ''} with sessions on this day ${affectedSessions.length !== 1 ? 'have' : 'has'} been notified.`,
+      );
+    }
+
     setShowLeaveModal(false);
     setLeaveDate('');
     setLeaveNotes('');
@@ -433,7 +522,14 @@ export default function CalendarScreen() {
     scheduledByDate[date].push(ss);
   }
 
-  const selectedScheduled = scheduledByDate[selectedDate] ?? [];
+  const selectedSessions = byDate[selectedDate] ?? [];
+
+  // Exclude scheduled_sessions entries where client already has a logged workout_session on the same day
+  const selectedScheduled = (scheduledByDate[selectedDate] ?? []).filter(
+    (ss) => !selectedSessions.some((s) => s.client_id === ss.client_id),
+  );
+
+  const selectedBlocked = myBlockedDates.find((bd) => bd.date === selectedDate) ?? null;
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
@@ -442,8 +538,6 @@ export default function CalendarScreen() {
     const e = addDays(weekStart, 6).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     return `${s} – ${e}`;
   })();
-
-  const selectedSessions = byDate[selectedDate] ?? [];
 
   const selectedDateDisplay = parseLocalDate(selectedDate).toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric',
@@ -457,13 +551,15 @@ export default function CalendarScreen() {
     (c) => c.id !== waitlistSession?.client_id && !existingWLIds.has(c.id)
   );
 
+  const statusConfig = STATUS_CONFIG(colors);
+
   return (
     <View style={styles.root}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={refetch} tintColor={Colors.accent} />
+          <RefreshControl refreshing={loading} onRefresh={refetch} tintColor={colors.accent} />
         }
       >
         {/* ── My Blocked Dates ── */}
@@ -476,7 +572,7 @@ export default function CalendarScreen() {
             setLeaveNotes('');
             setShowLeaveModal(true);
           }}>
-            <Ionicons name="add" size={13} color={Colors.bg} />
+            <Ionicons name="add" size={13} color={colors.bg} />
             <Text style={styles.addLeaveBtnText}>Add</Text>
           </Pressable>
         </View>
@@ -487,9 +583,9 @@ export default function CalendarScreen() {
         ) : (
           <View style={styles.blockedList}>
             {myBlockedDates.map((bd, i) => {
-              const BLK_COLOR: Record<string, string> = { leave: Colors.danger, meeting: '#2196F3', other: Colors.textSecondary };
+              const BLK_COLOR: Record<string, string> = { leave: colors.danger, meeting: '#2196F3', other: colors.textSecondary };
               const BLK_LABEL: Record<string, string> = { leave: 'Leave', meeting: 'Meeting', other: 'Other' };
-              const color = BLK_COLOR[bd.type] ?? Colors.textSecondary;
+              const color = BLK_COLOR[bd.type] ?? colors.textSecondary;
               return (
                 <View key={bd.id} style={[styles.blockedRow, i === myBlockedDates.length - 1 && { borderBottomWidth: 0 }]}>
                   <View style={[styles.blockTypeTag, { backgroundColor: color + '18', borderColor: color + '50' }]}>
@@ -504,7 +600,7 @@ export default function CalendarScreen() {
                     {bd.notes ? <Text style={styles.blockedNotes}>{bd.notes}</Text> : null}
                   </View>
                   <Pressable onPress={() => handleRemoveLeave(bd)}>
-                    <Ionicons name="close-circle-outline" size={22} color={Colors.danger + '80'} />
+                    <Ionicons name="close-circle-outline" size={22} color={colors.danger + '80'} />
                   </Pressable>
                 </View>
               );
@@ -512,26 +608,137 @@ export default function CalendarScreen() {
           </View>
         )}
 
-        <View style={{ height: 1, backgroundColor: Colors.border, marginVertical: 20 }} />
+        <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 20 }} />
 
         {/* ── Week navigation ─────────────────────────────────── */}
         <View style={styles.weekNav}>
           <Pressable
             style={styles.navBtn}
             hitSlop={12}
-            onPress={() => setWeekStart((w) => addDays(w, -7))}
+            onPress={() => {
+              const newW = addDays(weekStart, -7);
+              setWeekStart(newW);
+              if (showMonthPicker) setCalendarMonth(new Date(newW.getFullYear(), newW.getMonth(), 1));
+            }}
           >
-            <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />
+            <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
           </Pressable>
-          <Text style={styles.weekLabel}>{weekLabel}</Text>
+          <Pressable
+            style={styles.weekLabelBtn}
+            onPress={() => {
+              setCalendarMonth(new Date(weekStart.getFullYear(), weekStart.getMonth(), 1));
+              setShowMonthPicker(v => !v);
+            }}
+          >
+            <Text style={styles.weekLabel}>{weekLabel}</Text>
+            <Ionicons
+              name={showMonthPicker ? 'chevron-up' : 'chevron-down'}
+              size={13}
+              color={colors.accent}
+            />
+          </Pressable>
           <Pressable
             style={styles.navBtn}
             hitSlop={12}
-            onPress={() => setWeekStart((w) => addDays(w, 7))}
+            onPress={() => {
+              const newW = addDays(weekStart, 7);
+              setWeekStart(newW);
+              if (showMonthPicker) setCalendarMonth(new Date(newW.getFullYear(), newW.getMonth(), 1));
+            }}
           >
-            <Ionicons name="chevron-forward" size={22} color={Colors.textPrimary} />
+            <Ionicons name="chevron-forward" size={22} color={colors.textPrimary} />
           </Pressable>
         </View>
+
+        {/* ── Month picker dropdown ────────────────────────────── */}
+        {showMonthPicker && (() => {
+          const cells = buildMonthGrid(calendarMonth);
+          const rows: (Date | null)[][] = [];
+          for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
+          const weekEndISO = toISO(addDays(weekStart, 6));
+          return (
+            <View style={styles.calDropdown}>
+              {/* Month header */}
+              <View style={styles.calMonthNav}>
+                <Pressable
+                  hitSlop={12}
+                  onPress={() => setCalendarMonth(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+                >
+                  <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
+                </Pressable>
+                <Text style={styles.calMonthLabel}>
+                  {calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                </Text>
+                <Pressable
+                  hitSlop={12}
+                  onPress={() => setCalendarMonth(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+                >
+                  <Ionicons name="chevron-forward" size={20} color={colors.textPrimary} />
+                </Pressable>
+              </View>
+
+              {/* Day-of-week headers */}
+              <View style={styles.calDayHeaders}>
+                {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(d => (
+                  <Text key={d} style={styles.calDayHeader}>{d}</Text>
+                ))}
+              </View>
+
+              {/* Grid rows */}
+              {rows.map((row, rowIdx) => {
+                const isCurrentWeek = row.some(d => {
+                  if (!d) return false;
+                  const iso = toISO(d);
+                  return iso >= toISO(weekStart) && iso <= weekEndISO;
+                });
+                return (
+                  <View key={rowIdx} style={[styles.calRow, isCurrentWeek && styles.calRowHighlight]}>
+                    {row.map((date, cellIdx) => {
+                      if (!date) return <View key={cellIdx} style={styles.calCell} />;
+                      const iso = toISO(date);
+                      const isSelected = iso === selectedDate;
+                      const isToday = iso === todayISO;
+                      const isBlocked = isDateBlocked(iso);
+                      const hasSession = ((byDate[iso]?.length ?? 0) + (scheduledByDate[iso]?.length ?? 0)) > 0;
+                      return (
+                        <Pressable
+                          key={cellIdx}
+                          style={styles.calCell}
+                          onPress={() => {
+                            setSelectedDate(iso);
+                            setWeekStart(getMonday(date));
+                            setShowMonthPicker(false);
+                          }}
+                        >
+                          <View style={[
+                            styles.calDayBubble,
+                            isSelected && { backgroundColor: colors.accent },
+                            isToday && !isSelected && styles.calDayBubbleToday,
+                          ]}>
+                            <Text style={[
+                              styles.calCellNum,
+                              isSelected && { color: colors.bg, fontWeight: '800' },
+                              isToday && !isSelected && { color: colors.accent, fontWeight: '800' },
+                              isBlocked && !isSelected && { color: colors.danger },
+                            ]}>
+                              {date.getDate()}
+                            </Text>
+                          </View>
+                          {(hasSession || isBlocked) && (
+                            <View style={[
+                              styles.calDot,
+                              { backgroundColor: isBlocked ? colors.danger : colors.accent, opacity: isSelected ? 0 : 1 },
+                            ]} />
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                );
+              })}
+            </View>
+          );
+        })()}
 
         {/* ── Day strip ───────────────────────────────────────── */}
         <View style={styles.dayStrip}>
@@ -550,14 +757,14 @@ export default function CalendarScreen() {
                   styles.dayNumWrap,
                   isSelected && styles.dayNumWrapSelected,
                   isToday && !isSelected && styles.dayNumWrapToday,
-                  isBlocked && !isSelected && { backgroundColor: Colors.danger + '18' },
+                  isBlocked && !isSelected && { backgroundColor: colors.danger + '18' },
                 ]}>
-                  <Text style={[styles.dayNum, isSelected && styles.dayNumSelected, isBlocked && !isSelected && { color: Colors.danger }]}>
+                  <Text style={[styles.dayNum, isSelected && styles.dayNumSelected, isBlocked && !isSelected && { color: colors.danger }]}>
                     {day.getDate()}
                   </Text>
                 </View>
                 {isBlocked ? (
-                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.danger }} />
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.danger }} />
                 ) : count > 0 ? (
                   <View style={[styles.dot, isSelected && styles.dotSelected]} />
                 ) : (
@@ -579,16 +786,25 @@ export default function CalendarScreen() {
               {selectedScheduled.length > 0 ? `  ·  ${selectedScheduled.length} scheduled` : ''}
             </Text>
           </View>
-          <Pressable
-            style={styles.scheduleBtn}
-            onPress={() =>
-              router.push({ pathname: '/(coach)/schedule-session' as any, params: { date: selectedDate } })
-            }
-          >
-            <Ionicons name="calendar-outline" size={13} color={Colors.accent} />
-            <Text style={styles.scheduleBtnText}>Schedule</Text>
-          </Pressable>
         </View>
+
+        {/* ── Blocked day banner ───────────────────────────────── */}
+        {selectedBlocked && (() => {
+          const BLK_LABEL: Record<string, string> = { leave: 'Leave', meeting: 'Meeting', other: 'Other' };
+          return (
+            <View style={styles.blockedDayBanner}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="ban-outline" size={16} color={colors.danger} />
+                <Text style={styles.blockedDayBannerTitle}>
+                  {BLK_LABEL[selectedBlocked.type] ?? selectedBlocked.type} — Day Off
+                </Text>
+              </View>
+              {selectedBlocked.notes ? (
+                <Text style={styles.blockedDayBannerNotes}>{selectedBlocked.notes}</Text>
+              ) : null}
+            </View>
+          );
+        })()}
 
         {/* ── Scheduled sessions ─────────────────────────────── */}
         {selectedScheduled.map((ss) => {
@@ -599,8 +815,8 @@ export default function CalendarScreen() {
           return (
             <View key={ss.id} style={styles.scheduledCard}>
               <View style={styles.scheduledCardMain}>
-                <View style={[styles.avatar, { backgroundColor: '#4CAF5018', borderColor: '#4CAF5040' }]}>
-                  <Text style={[styles.avatarText, { color: '#4CAF50' }]}>{initials(ss.client_name)}</Text>
+                <View style={[styles.avatar, { backgroundColor: colors.success + '18', borderColor: colors.success + '40' }]}>
+                  <Text style={[styles.avatarText, { color: colors.success }]}>{initials(ss.client_name)}</Text>
                 </View>
                 <View style={styles.sessionInfo}>
                   <Text style={styles.clientName}>{ss.client_name}</Text>
@@ -611,12 +827,12 @@ export default function CalendarScreen() {
                 </View>
                 {ss.status === 'reschedule_pending' ? (
                   <View style={styles.awaitingRescheduleBadge}>
-                    <Ionicons name="time-outline" size={11} color="#FFA500" />
+                    <Ionicons name="time-outline" size={11} color={colors.warning} />
                     <Text style={styles.awaitingRescheduleText}>Pending</Text>
                   </View>
                 ) : isConfirmed ? (
                   <View style={styles.clientConfirmedBadge}>
-                    <Ionicons name="checkmark-circle" size={13} color="#4CAF50" />
+                    <Ionicons name="checkmark-circle" size={13} color={colors.success} />
                     <Text style={styles.clientConfirmedText}>Confirmed</Text>
                   </View>
                 ) : (
@@ -627,7 +843,7 @@ export default function CalendarScreen() {
               </View>
               {ss.status === 'reschedule_pending' && ss.reschedule_proposed_at ? (
                 <View style={styles.rescheduledToRow}>
-                  <Ionicons name="arrow-forward-outline" size={12} color="#FFA500" />
+                  <Ionicons name="arrow-forward-outline" size={12} color={colors.warning} />
                   <Text style={styles.rescheduledToText}>
                     Proposed: {new Date(ss.reschedule_proposed_at).toLocaleString('en-US', {
                       month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
@@ -645,7 +861,7 @@ export default function CalendarScreen() {
                     })
                   }
                 >
-                  <Ionicons name="barbell-outline" size={12} color={Colors.bg} />
+                  <Ionicons name="barbell-outline" size={12} color={colors.bg} />
                   <Text style={styles.scheduledActionLogText}>Log Session</Text>
                 </Pressable>
                 {ss.status !== 'reschedule_pending' && (
@@ -653,7 +869,7 @@ export default function CalendarScreen() {
                     style={styles.scheduledActionReschedule}
                     onPress={() => openRescheduleModal(ss)}
                   >
-                    <Ionicons name="calendar-outline" size={12} color={Colors.accent} />
+                    <Ionicons name="calendar-outline" size={12} color={colors.accent} />
                     <Text style={styles.scheduledActionRescheduleText}>Reschedule</Text>
                   </Pressable>
                 )}
@@ -672,7 +888,7 @@ export default function CalendarScreen() {
                     ])
                   }
                 >
-                  <Ionicons name="close" size={12} color="#FF4D4D" />
+                  <Ionicons name="close" size={12} color={colors.danger} />
                   <Text style={styles.scheduledActionCancelText}>Cancel</Text>
                 </Pressable>
               </View>
@@ -683,7 +899,7 @@ export default function CalendarScreen() {
         {/* ── Open slots banner ──────────────────────────────── */}
         {selectedSessions.some((s) => s.status === 'absent') && (
           <View style={styles.openSlotBanner}>
-            <Ionicons name="alert-circle-outline" size={16} color="#FFA500" />
+            <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
             <Text style={styles.openSlotText}>
               {selectedSessions.filter((s) => s.status === 'absent').length} open slot(s) — tap + to assign another client
             </Text>
@@ -692,14 +908,25 @@ export default function CalendarScreen() {
 
         {/* ── Session cards ────────────────────────────────────── */}
         {selectedSessions.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="calendar-outline" size={52} color={Colors.border} />
-            <Text style={styles.emptyTitle}>No sessions scheduled</Text>
-            <Text style={styles.emptySub}>Tap + to log a session for this day</Text>
-          </View>
+          selectedBlocked ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="moon-outline" size={52} color={colors.danger + '60'} />
+              <Text style={[styles.emptyTitle, { color: colors.danger + 'cc' }]}>Day Off</Text>
+              <Text style={styles.emptySub}>
+                {({ leave: 'Leave', meeting: 'Meeting', other: 'Other' } as Record<string, string>)[selectedBlocked.type] ?? selectedBlocked.type}
+                {selectedBlocked.notes ? ` · ${selectedBlocked.notes}` : ''}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Ionicons name="calendar-outline" size={52} color={colors.border} />
+              <Text style={styles.emptyTitle}>No sessions scheduled</Text>
+              <Text style={styles.emptySub}>Tap + to log a session for this day</Text>
+            </View>
+          )
         ) : (
           selectedSessions.map((s) => {
-            const cfg = STATUS_CONFIG[s.status] ?? STATUS_CONFIG.confirmed;
+            const cfg = statusConfig[s.status] ?? statusConfig.confirmed;
             const urgent = s.status === 'pending' && isWithin3Hours(s.session_date, s.scheduled_time);
             const wlCount = countBySession[s.id] ?? 0;
             return (
@@ -734,22 +961,22 @@ export default function CalendarScreen() {
                       style={styles.actionBtnConfirm}
                       onPress={() => handleConfirm(s.id)}
                     >
-                      <Ionicons name="checkmark" size={13} color={Colors.bg} />
+                      <Ionicons name="checkmark" size={13} color={colors.bg} />
                       <Text style={styles.actionBtnConfirmText}>Confirm</Text>
                     </Pressable>
                     <Pressable
                       style={styles.actionBtnAbsent}
                       onPress={() => handleMarkAbsent(s.id, s.client_id, s.client_name, s.scheduled_time, s.session_date)}
                     >
-                      <Ionicons name="close" size={13} color="#FF4D4D" />
+                      <Ionicons name="close" size={13} color={colors.danger} />
                       <Text style={styles.actionBtnAbsentText}>Absent</Text>
                     </Pressable>
                     <Pressable
                       style={[styles.actionBtnWhatsapp, urgent && styles.actionBtnWhatsappUrgent]}
                       onPress={() => handleWhatsApp(s.client_phone, s.client_name, s.session_date, s.scheduled_time)}
                     >
-                      <Ionicons name="logo-whatsapp" size={13} color={urgent ? Colors.bg : '#25D366'} />
-                      <Text style={[styles.actionBtnWhatsappText, urgent && { color: Colors.bg }]}>
+                      <Ionicons name="logo-whatsapp" size={13} color={urgent ? colors.bg : '#25D366'} />
+                      <Text style={[styles.actionBtnWhatsappText, urgent && { color: colors.bg }]}>
                         {urgent ? 'Remind NOW' : 'Remind'}
                       </Text>
                     </Pressable>
@@ -759,7 +986,7 @@ export default function CalendarScreen() {
                 {/* Open slot notice — absent sessions */}
                 {s.status === 'absent' && (
                   <View style={styles.openSlotRow}>
-                    <Ionicons name="lock-open-outline" size={12} color="#FFA500" />
+                    <Ionicons name="lock-open-outline" size={12} color={colors.warning} />
                     <Text style={styles.openSlotRowText}>Slot open — assign another client via +</Text>
                   </View>
                 )}
@@ -769,9 +996,9 @@ export default function CalendarScreen() {
                   <Ionicons
                     name="people-outline"
                     size={13}
-                    color={wlCount > 0 ? Colors.accent : Colors.textSecondary}
+                    color={wlCount > 0 ? colors.accent : colors.textSecondary}
                   />
-                  <Text style={[styles.waitlistRowText, wlCount > 0 && { color: Colors.accent }]}>
+                  <Text style={[styles.waitlistRowText, wlCount > 0 && { color: colors.accent }]}>
                     {wlCount > 0 ? `Waitlist · ${wlCount} waiting` : 'Waitlist · none'}
                   </Text>
                   {wlCount > 0 && (
@@ -779,7 +1006,7 @@ export default function CalendarScreen() {
                       <Text style={styles.wlCountPillText}>{wlCount}</Text>
                     </View>
                   )}
-                  <Ionicons name="chevron-forward" size={12} color={Colors.textSecondary} />
+                  <Ionicons name="chevron-forward" size={12} color={colors.textSecondary} />
                 </Pressable>
               </View>
             );
@@ -799,7 +1026,7 @@ export default function CalendarScreen() {
           })
         }
       >
-        <Ionicons name="add" size={28} color={Colors.bg} />
+        <Ionicons name="add" size={28} color={colors.bg} />
       </Pressable>
 
       {/* ── Waitlist Modal ── */}
@@ -830,16 +1057,16 @@ export default function CalendarScreen() {
                     )}
                   </View>
                   <Pressable style={styles.addToWLBtn} onPress={() => setWlModalMode('add')}>
-                    <Ionicons name="person-add-outline" size={14} color={Colors.bg} />
+                    <Ionicons name="person-add-outline" size={14} color={colors.bg} />
                     <Text style={styles.addToWLBtnText}>Add</Text>
                   </Pressable>
                 </View>
 
                 {wlLoading ? (
-                  <ActivityIndicator color={Colors.accent} style={{ padding: 32 }} />
+                  <ActivityIndicator color={colors.accent} style={{ padding: 32 }} />
                 ) : sessionWaitlist.length === 0 ? (
                   <View style={styles.wlEmpty}>
-                    <Ionicons name="people-outline" size={40} color={Colors.border} />
+                    <Ionicons name="people-outline" size={40} color={colors.border} />
                     <Text style={styles.wlEmptyText}>No one on the waitlist</Text>
                     <Text style={styles.wlEmptySub}>Tap Add to put a client on standby</Text>
                   </View>
@@ -885,7 +1112,7 @@ export default function CalendarScreen() {
                               )
                             }
                           >
-                            <Ionicons name="close" size={14} color={Colors.textSecondary} />
+                            <Ionicons name="close" size={14} color={colors.textSecondary} />
                           </Pressable>
                         </View>
                       </View>
@@ -900,7 +1127,7 @@ export default function CalendarScreen() {
             {wlModalMode === 'add' && (
               <>
                 <Pressable style={styles.backBtn} onPress={() => setWlModalMode('view')}>
-                  <Ionicons name="chevron-back" size={16} color={Colors.textSecondary} />
+                  <Ionicons name="chevron-back" size={16} color={colors.textSecondary} />
                   <Text style={styles.backBtnText}>Back to Waitlist</Text>
                 </Pressable>
                 <Text style={styles.modalTitle}>ADD TO WAITLIST</Text>
@@ -925,7 +1152,8 @@ export default function CalendarScreen() {
                         style={({ pressed }) => [styles.clientPickRow, pressed && { opacity: 0.7 }]}
                         onPress={async () => {
                           if (!waitlistSessionId) return;
-                          await addToWaitlist(waitlistSessionId, item.id);
+                          const { error } = await addToWaitlist(waitlistSessionId, item.id);
+                          if (error) { Alert.alert('Error', error); return; }
                           setWlModalMode('view');
                         }}
                       >
@@ -942,7 +1170,7 @@ export default function CalendarScreen() {
                             </Text>
                           )}
                         </View>
-                        <Ionicons name="add-circle-outline" size={22} color={Colors.accent} />
+                        <Ionicons name="add-circle-outline" size={22} color={colors.accent} />
                       </Pressable>
                     )}
                   />
@@ -972,16 +1200,40 @@ export default function CalendarScreen() {
               </Text>
             )}
 
-            <Text style={styles.rsLabel}>NEW DATE (YYYY-MM-DD)</Text>
-            <TextInput
-              style={styles.rsInput}
-              value={rescheduleDate}
-              onChangeText={setRescheduleDate}
-              placeholder="e.g. 2025-08-10"
-              placeholderTextColor={Colors.textSecondary + '60'}
-              keyboardType="numbers-and-punctuation"
-              autoCorrect={false}
-            />
+            <Text style={styles.rsLabel}>NEW DATE</Text>
+            {Platform.OS === 'ios' ? (
+              <DateTimePicker
+                value={rescheduleDate ? new Date(rescheduleDate + 'T00:00:00') : new Date()}
+                mode="date"
+                display="compact"
+                onChange={(_, selected) => {
+                  if (selected) setRescheduleDate(selected.toISOString().split('T')[0]);
+                }}
+                style={{ alignSelf: 'flex-start', marginLeft: -8, marginBottom: 12 }}
+              />
+            ) : (
+              <>
+                <Pressable style={styles.datePressable} onPress={() => setShowRescheduleDatePicker(true)}>
+                  <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+                  <Text style={styles.datePressableText}>
+                    {rescheduleDate
+                      ? new Date(rescheduleDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                      : 'Select new date'}
+                  </Text>
+                </Pressable>
+                {showRescheduleDatePicker && (
+                  <DateTimePicker
+                    value={rescheduleDate ? new Date(rescheduleDate + 'T00:00:00') : new Date()}
+                    mode="date"
+                    display="default"
+                    onChange={(_, selected) => {
+                      setShowRescheduleDatePicker(false);
+                      if (selected) setRescheduleDate(selected.toISOString().split('T')[0]);
+                    }}
+                  />
+                )}
+              </>
+            )}
 
             <Text style={styles.rsLabel}>NEW TIME</Text>
             <TextInput
@@ -989,7 +1241,7 @@ export default function CalendarScreen() {
               value={rescheduleTime}
               onChangeText={setRescheduleTime}
               placeholder="e.g. 9:00 AM or 14:30"
-              placeholderTextColor={Colors.textSecondary + '60'}
+              placeholderTextColor={colors.textSecondary + '60'}
               autoCorrect={false}
             />
 
@@ -999,7 +1251,7 @@ export default function CalendarScreen() {
               value={rescheduleReason}
               onChangeText={setRescheduleReason}
               placeholder="e.g. Coach unavailable due to personal reason"
-              placeholderTextColor={Colors.textSecondary + '60'}
+              placeholderTextColor={colors.textSecondary + '60'}
               multiline
               autoCorrect={false}
             />
@@ -1009,7 +1261,7 @@ export default function CalendarScreen() {
               onPress={handleReschedule}
               disabled={rescheduling}
             >
-              <Ionicons name="calendar-outline" size={16} color={Colors.bg} />
+              <Ionicons name="calendar-outline" size={16} color={colors.bg} />
               <Text style={styles.rsSubmitText}>
                 {rescheduling ? 'SENDING…' : 'PROPOSE RESCHEDULE'}
               </Text>
@@ -1034,17 +1286,40 @@ export default function CalendarScreen() {
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>BLOCK A DATE</Text>
 
-            <Text style={styles.rsLabel}>DATE (YYYY-MM-DD)</Text>
-            <TextInput
-              style={styles.rsInput}
-              value={leaveDate}
-              onChangeText={setLeaveDate}
-              placeholder="e.g. 2026-07-20"
-              placeholderTextColor={Colors.textSecondary + '60'}
-              keyboardType="numbers-and-punctuation"
-              autoCorrect={false}
-              autoFocus
-            />
+            <Text style={styles.rsLabel}>DATE</Text>
+            {Platform.OS === 'ios' ? (
+              <DateTimePicker
+                value={leaveDate ? new Date(leaveDate + 'T00:00:00') : new Date()}
+                mode="date"
+                display="compact"
+                onChange={(_, selected) => {
+                  if (selected) setLeaveDate(selected.toISOString().split('T')[0]);
+                }}
+                style={{ alignSelf: 'flex-start', marginLeft: -8, marginBottom: 12 }}
+              />
+            ) : (
+              <>
+                <Pressable style={styles.datePressable} onPress={() => setShowLeaveDatePicker(true)}>
+                  <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+                  <Text style={styles.datePressableText}>
+                    {leaveDate
+                      ? new Date(leaveDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                      : 'Select date'}
+                  </Text>
+                </Pressable>
+                {showLeaveDatePicker && (
+                  <DateTimePicker
+                    value={leaveDate ? new Date(leaveDate + 'T00:00:00') : new Date()}
+                    mode="date"
+                    display="default"
+                    onChange={(_, selected) => {
+                      setShowLeaveDatePicker(false);
+                      if (selected) setLeaveDate(selected.toISOString().split('T')[0]);
+                    }}
+                  />
+                )}
+              </>
+            )}
 
             <Text style={styles.rsLabel}>TYPE</Text>
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 4 }}>
@@ -1053,11 +1328,11 @@ export default function CalendarScreen() {
                   key={t}
                   style={[
                     styles.leaveTypeBtn,
-                    leaveType === t && { backgroundColor: Colors.accent, borderColor: Colors.accent },
+                    leaveType === t && { backgroundColor: colors.accent, borderColor: colors.accent },
                   ]}
                   onPress={() => setLeaveType(t)}
                 >
-                  <Text style={[styles.leaveTypeBtnText, leaveType === t && { color: Colors.bg }]}>
+                  <Text style={[styles.leaveTypeBtnText, leaveType === t && { color: colors.bg }]}>
                     {t === 'leave' ? 'Leave' : t === 'meeting' ? 'Meeting' : 'Other'}
                   </Text>
                 </Pressable>
@@ -1070,7 +1345,7 @@ export default function CalendarScreen() {
               value={leaveNotes}
               onChangeText={setLeaveNotes}
               placeholder="e.g. Out of town, Staff meeting 10am…"
-              placeholderTextColor={Colors.textSecondary + '60'}
+              placeholderTextColor={colors.textSecondary + '60'}
               multiline
             />
 
@@ -1079,7 +1354,7 @@ export default function CalendarScreen() {
               onPress={handleAddLeave}
               disabled={addingLeave}
             >
-              <Ionicons name="calendar-outline" size={16} color={Colors.bg} />
+              <Ionicons name="calendar-outline" size={16} color={colors.bg} />
               <Text style={styles.rsSubmitText}>{addingLeave ? 'SAVING…' : 'BLOCK DATE'}</Text>
             </Pressable>
             <Pressable style={styles.rsCancelBtn} onPress={() => setShowLeaveModal(false)}>
@@ -1094,323 +1369,431 @@ export default function CalendarScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.bg },
-  scroll: { flex: 1 },
-  content: { padding: 16, paddingBottom: 24 },
+function makeStyles(c: ColorScheme) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: c.bg },
+    scroll: { flex: 1, backgroundColor: c.bg },
+    content: { padding: 16, paddingBottom: 24 },
 
-  // Week navigation
-  weekNav: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', marginBottom: 16,
-  },
-  navBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  weekLabel: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
+    // Week navigation
+    weekNav: {
+      flexDirection: 'row', alignItems: 'center',
+      justifyContent: 'space-between', marginBottom: 16,
+    },
+    navBtn: {
+      width: 36, height: 36, borderRadius: 18,
+      backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
+      justifyContent: 'center', alignItems: 'center',
+    },
+    weekLabel: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    weekLabelBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      paddingVertical: 6,
+    },
 
-  // Day strip
-  dayStrip: {
-    flexDirection: 'row', backgroundColor: Colors.surface,
-    borderRadius: 16, borderWidth: 1, borderColor: Colors.border,
-    padding: 10, marginBottom: 24,
-  },
-  dayCol: { flex: 1, alignItems: 'center', gap: 4 },
-  dayAbbr: { fontSize: 10, fontWeight: '700', color: Colors.textSecondary, letterSpacing: 0.5 },
-  dayAbbrActive: { color: Colors.accent },
-  dayNumWrap: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  dayNumWrapSelected: { backgroundColor: Colors.accent },
-  dayNumWrapToday: { borderWidth: 1.5, borderColor: Colors.accent },
-  dayNum: { fontSize: 13, fontWeight: '700', color: Colors.textPrimary },
-  dayNumSelected: { color: Colors.bg },
-  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: Colors.textSecondary },
-  dotSelected: { backgroundColor: Colors.accent },
-  dotPlaceholder: { width: 5, height: 5 },
+    // Month picker dropdown
+    calDropdown: {
+      backgroundColor: c.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: c.border,
+      marginBottom: 16,
+      padding: 12,
+    },
+    calMonthNav: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 10,
+      paddingHorizontal: 2,
+    },
+    calMonthLabel: {
+      ...Typography.body,
+      color: c.textPrimary,
+      fontWeight: '700',
+    },
+    calDayHeaders: {
+      flexDirection: 'row',
+      marginBottom: 4,
+    },
+    calDayHeader: {
+      flex: 1,
+      textAlign: 'center',
+      fontSize: 10,
+      fontWeight: '700',
+      color: c.textSecondary,
+      letterSpacing: 0.3,
+    },
+    calRow: {
+      flexDirection: 'row',
+      marginBottom: 2,
+    },
+    calRowHighlight: {
+      backgroundColor: c.accent + '16',
+      borderRadius: 10,
+    },
+    calCell: {
+      flex: 1,
+      alignItems: 'center',
+      paddingVertical: 2,
+    },
+    calDayBubble: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    calDayBubbleToday: {
+      borderWidth: 1.5,
+      borderColor: c.accent,
+    },
+    calCellNum: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: c.textPrimary,
+    },
+    calDot: {
+      width: 4,
+      height: 4,
+      borderRadius: 2,
+      marginTop: 2,
+    },
 
-  // Day header
-  dayHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 14,
-  },
-  dayHeaderText: { ...Typography.subtitle, color: Colors.textPrimary },
-  sessionCount: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
+    // Day strip
+    dayStrip: {
+      flexDirection: 'row', backgroundColor: c.surface,
+      borderRadius: 16, borderWidth: 1, borderColor: c.border,
+      padding: 10, marginBottom: 24,
+    },
+    dayCol: { flex: 1, alignItems: 'center', gap: 4 },
+    dayAbbr: { fontSize: 10, fontWeight: '700', color: c.textSecondary, letterSpacing: 0.5 },
+    dayAbbrActive: { color: c.accent },
+    dayNumWrap: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+    dayNumWrapSelected: { backgroundColor: c.accent },
+    dayNumWrapToday: { borderWidth: 1.5, borderColor: c.accent },
+    dayNum: { fontSize: 13, fontWeight: '700', color: c.textPrimary },
+    dayNumSelected: { color: c.bg },
+    dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: c.textSecondary },
+    dotSelected: { backgroundColor: c.accent },
+    dotPlaceholder: { width: 5, height: 5 },
 
-  // Schedule button
-  scheduleBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: Colors.accent + '18', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 6,
-    borderWidth: 1, borderColor: Colors.accent + '40',
-  },
-  scheduleBtnText: { fontSize: 12, fontWeight: '700', color: Colors.accent },
+    // Day header
+    dayHeader: {
+      flexDirection: 'row', justifyContent: 'space-between',
+      alignItems: 'center', marginBottom: 14,
+    },
+    dayHeaderText: { ...Typography.subtitle, color: c.textPrimary },
+    sessionCount: { ...Typography.caption, color: c.textSecondary, marginTop: 2 },
 
-  // Scheduled session card
-  scheduledCard: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    marginBottom: 10, borderWidth: 1, borderColor: '#4CAF5030', overflow: 'hidden',
-  },
-  scheduledCardMain: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
-  },
-  clientConfirmedBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#4CAF5015', borderRadius: 8,
-    paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#4CAF5040',
-  },
-  clientConfirmedText: { fontSize: 10, fontWeight: '700', color: '#4CAF50' },
-  awaitingBadge: {
-    backgroundColor: '#FFA50015', borderRadius: 8,
-    paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#FFA50040',
-  },
-  awaitingText: { fontSize: 10, fontWeight: '700', color: '#FFA500' },
-  scheduledActions: {
-    flexDirection: 'row', gap: 8,
-    paddingHorizontal: 14, paddingBottom: 12,
-  },
-  scheduledActionLog: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    backgroundColor: Colors.accent, borderRadius: 8, paddingVertical: 7,
-  },
-  scheduledActionLogText: { color: Colors.bg, fontSize: 12, fontWeight: '700' },
-  scheduledActionCancel: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    backgroundColor: '#FF4D4D15', borderRadius: 8, paddingVertical: 7,
-    borderWidth: 1, borderColor: '#FF4D4D40',
-  },
-  scheduledActionCancelText: { color: '#FF4D4D', fontSize: 12, fontWeight: '700' },
-  scheduledActionReschedule: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    backgroundColor: Colors.accent + '15', borderRadius: 8, paddingVertical: 7,
-    borderWidth: 1, borderColor: Colors.accent + '40',
-  },
-  scheduledActionRescheduleText: { color: Colors.accent, fontSize: 12, fontWeight: '700' },
-  awaitingRescheduleBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#FFA50015', borderRadius: 8,
-    paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#FFA50050',
-  },
-  awaitingRescheduleText: { fontSize: 10, fontWeight: '700', color: '#FFA500' },
-  rescheduledToRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 14, paddingBottom: 6,
-  },
-  rescheduledToText: { fontSize: 12, color: '#FFA500', fontWeight: '600' },
+    // Schedule button
+    scheduleBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      backgroundColor: c.accent + '18', borderRadius: 8,
+      paddingHorizontal: 10, paddingVertical: 6,
+      borderWidth: 1, borderColor: c.accent + '40',
+    },
+    scheduleBtnText: { fontSize: 12, fontWeight: '700', color: c.accent },
 
-  // Reschedule modal inputs
-  rsLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: 6, marginTop: 14 },
-  rsInput: {
-    backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11,
-    color: Colors.textPrimary, fontSize: 14,
-  },
-  rsSubmitBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: Colors.accent, borderRadius: 12, paddingVertical: 14, marginTop: 20,
-  },
-  rsSubmitText: { color: Colors.bg, fontSize: 14, fontWeight: '800', letterSpacing: 0.8 },
-  rsCancelBtn: { alignItems: 'center', paddingVertical: 14 },
-  rsCancelText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '600' },
+    // Scheduled session card
+    scheduledCard: {
+      backgroundColor: c.surface, borderRadius: 14,
+      marginBottom: 10, borderWidth: 1, borderColor: c.success + '30', overflow: 'hidden',
+    },
+    scheduledCardMain: {
+      flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
+    },
+    clientConfirmedBadge: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      backgroundColor: c.success + '15', borderRadius: 8,
+      paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: c.success + '40',
+    },
+    clientConfirmedText: { fontSize: 10, fontWeight: '700', color: c.success },
+    awaitingBadge: {
+      backgroundColor: c.warning + '15', borderRadius: 8,
+      paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: c.warning + '40',
+    },
+    awaitingText: { fontSize: 10, fontWeight: '700', color: c.warning },
+    scheduledActions: {
+      flexDirection: 'row', gap: 8,
+      paddingHorizontal: 14, paddingBottom: 12,
+    },
+    scheduledActionLog: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+      backgroundColor: c.accent, borderRadius: 8, paddingVertical: 7,
+    },
+    scheduledActionLogText: { color: c.bg, fontSize: 12, fontWeight: '700' },
+    scheduledActionCancel: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+      backgroundColor: c.danger + '15', borderRadius: 8, paddingVertical: 7,
+      borderWidth: 1, borderColor: c.danger + '40',
+    },
+    scheduledActionCancelText: { color: c.danger, fontSize: 12, fontWeight: '700' },
+    scheduledActionReschedule: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+      backgroundColor: c.accent + '15', borderRadius: 8, paddingVertical: 7,
+      borderWidth: 1, borderColor: c.accent + '40',
+    },
+    scheduledActionRescheduleText: { color: c.accent, fontSize: 12, fontWeight: '700' },
+    awaitingRescheduleBadge: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      backgroundColor: c.warning + '15', borderRadius: 8,
+      paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: c.warning + '50',
+    },
+    awaitingRescheduleText: { fontSize: 10, fontWeight: '700', color: c.warning },
+    rescheduledToRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      paddingHorizontal: 14, paddingBottom: 6,
+    },
+    rescheduledToText: { fontSize: 12, color: c.warning, fontWeight: '600' },
 
-  // Open slot banner
-  openSlotBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#FFA50015', borderRadius: 10, padding: 12,
-    marginBottom: 14, borderWidth: 1, borderColor: '#FFA50040',
-  },
-  openSlotText: { ...Typography.caption, color: '#FFA500', flex: 1 },
+    // Reschedule modal inputs
+    rsLabel: { ...Typography.label, color: c.textSecondary, marginBottom: 6, marginTop: 14 },
+    rsInput: {
+      backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
+      borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11,
+      color: c.textPrimary, fontSize: 14,
+    },
+    datePressable: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      paddingVertical: 8, paddingHorizontal: 12, marginBottom: 4,
+      borderRadius: 8, borderWidth: 1, borderColor: c.accent + '50',
+      backgroundColor: c.accent + '10', alignSelf: 'flex-start',
+    },
+    datePressableText: { fontSize: 14, fontWeight: '600', color: c.accent },
+    rsSubmitBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+      backgroundColor: c.accent, borderRadius: 12, paddingVertical: 14, marginTop: 20,
+    },
+    rsSubmitText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 0.8 },
+    rsCancelBtn: { alignItems: 'center', paddingVertical: 14 },
+    rsCancelText: { color: c.textSecondary, fontSize: 14, fontWeight: '600' },
 
-  // Session card
-  sessionCard: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    marginBottom: 10, borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
-  },
-  sessionCardUrgent: { borderColor: '#FFA50060' },
-  sessionCardMain: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
-  },
-  avatar: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: Colors.accent + '18', borderWidth: 1.5, borderColor: Colors.accent + '40',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  avatarText: { fontSize: 14, fontWeight: '800', color: Colors.accent },
-  sessionInfo: { flex: 1 },
-  clientName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
-  sessionMeta: { ...Typography.caption, color: Colors.textSecondary },
-  statusBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5, borderWidth: 1,
-  },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusText: { fontSize: 11, fontWeight: '700' },
+    // Open slot banner
+    openSlotBanner: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      backgroundColor: c.warning + '15', borderRadius: 10, padding: 12,
+      marginBottom: 14, borderWidth: 1, borderColor: c.warning + '40',
+    },
+    openSlotText: { ...Typography.caption, color: c.warning, flex: 1 },
 
-  // Action row
-  actionRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingBottom: 12 },
-  actionBtnConfirm: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    backgroundColor: Colors.accent, borderRadius: 8, paddingVertical: 7,
-  },
-  actionBtnConfirmText: { color: Colors.bg, fontSize: 12, fontWeight: '700' },
-  actionBtnAbsent: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    backgroundColor: '#FF4D4D15', borderRadius: 8, paddingVertical: 7,
-    borderWidth: 1, borderColor: '#FF4D4D40',
-  },
-  actionBtnAbsentText: { color: '#FF4D4D', fontSize: 12, fontWeight: '700' },
-  actionBtnWhatsapp: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    backgroundColor: '#25D36615', borderRadius: 8, paddingVertical: 7,
-    borderWidth: 1, borderColor: '#25D36640',
-  },
-  actionBtnWhatsappUrgent: { backgroundColor: '#25D366', borderColor: '#25D366' },
-  actionBtnWhatsappText: { color: '#25D366', fontSize: 12, fontWeight: '700' },
-  openSlotRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 14, paddingBottom: 8,
-  },
-  openSlotRowText: { ...Typography.caption, color: '#FFA500' },
+    // Session card
+    sessionCard: {
+      backgroundColor: c.surface, borderRadius: 14,
+      marginBottom: 10, borderWidth: 1, borderColor: c.border, overflow: 'hidden',
+    },
+    sessionCardUrgent: { borderColor: c.warning + '60' },
+    sessionCardMain: {
+      flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
+    },
+    avatar: {
+      width: 44, height: 44, borderRadius: 22,
+      backgroundColor: c.accent + '18', borderWidth: 1.5, borderColor: c.accent + '40',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    avatarText: { fontSize: 14, fontWeight: '800', color: c.accent },
+    sessionInfo: { flex: 1 },
+    clientName: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
+    sessionMeta: { ...Typography.caption, color: c.textSecondary },
+    statusBadge: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5, borderWidth: 1,
+    },
+    statusDot: { width: 6, height: 6, borderRadius: 3 },
+    statusText: { fontSize: 11, fontWeight: '700' },
 
-  // Waitlist row on each card
-  waitlistRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 14, paddingVertical: 9,
-    borderTopWidth: 1, borderTopColor: Colors.border,
-  },
-  waitlistRowText: { ...Typography.caption, color: Colors.textSecondary, flex: 1 },
-  wlCountPill: {
-    backgroundColor: Colors.accent + '22', borderRadius: 8,
-    paddingHorizontal: 6, paddingVertical: 2,
-    borderWidth: 1, borderColor: Colors.accent + '50',
-  },
-  wlCountPillText: { color: Colors.accent, fontSize: 10, fontWeight: '800' },
+    // Action row
+    actionRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingBottom: 12 },
+    actionBtnConfirm: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+      backgroundColor: c.accent, borderRadius: 8, paddingVertical: 7,
+    },
+    actionBtnConfirmText: { color: c.bg, fontSize: 12, fontWeight: '700' },
+    actionBtnAbsent: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+      backgroundColor: '#FF4D4D15', borderRadius: 8, paddingVertical: 7,
+      borderWidth: 1, borderColor: '#FF4D4D40',
+    },
+    actionBtnAbsentText: { color: '#FF4D4D', fontSize: 12, fontWeight: '700' },
+    actionBtnWhatsapp: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+      backgroundColor: '#25D36615', borderRadius: 8, paddingVertical: 7,
+      borderWidth: 1, borderColor: '#25D36640',
+    },
+    actionBtnWhatsappUrgent: { backgroundColor: '#25D366', borderColor: '#25D366' },
+    actionBtnWhatsappText: { color: '#25D366', fontSize: 12, fontWeight: '700' },
+    openSlotRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      paddingHorizontal: 14, paddingBottom: 8,
+    },
+    openSlotRowText: { ...Typography.caption, color: c.warning },
 
-  // Empty state
-  emptyState: { alignItems: 'center', paddingTop: 60, gap: 8 },
-  emptyTitle: { ...Typography.subtitle, color: Colors.textPrimary, marginTop: 12 },
-  emptySub: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center' },
+    // Waitlist row on each card
+    waitlistRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      paddingHorizontal: 14, paddingVertical: 9,
+      borderTopWidth: 1, borderTopColor: c.border,
+    },
+    waitlistRowText: { ...Typography.caption, color: c.textSecondary, flex: 1 },
+    wlCountPill: {
+      backgroundColor: c.accent + '22', borderRadius: 8,
+      paddingHorizontal: 6, paddingVertical: 2,
+      borderWidth: 1, borderColor: c.accent + '50',
+    },
+    wlCountPillText: { color: c.accent, fontSize: 10, fontWeight: '800' },
 
-  // FAB
-  fab: {
-    position: 'absolute', bottom: 24, right: 20,
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: Colors.accent,
-    justifyContent: 'center', alignItems: 'center',
-    shadowColor: Colors.accent, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
-  },
+    // Empty state
+    emptyState: { alignItems: 'center', paddingTop: 60, gap: 8 },
+    emptyTitle: { ...Typography.subtitle, color: c.textPrimary, marginTop: 12 },
+    emptySub: { ...Typography.body, color: c.textSecondary, textAlign: 'center' },
 
-  // Modal
-  modalRoot: { flex: 1, justifyContent: 'flex-end' },
-  modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
-  modalSheet: {
-    backgroundColor: Colors.surface,
-    borderTopLeftRadius: 22, borderTopRightRadius: 22,
-    borderWidth: 1, borderBottomWidth: 0, borderColor: Colors.border,
-    paddingHorizontal: 20, paddingTop: 12,
-    maxHeight: '72%',
-  },
-  modalHandle: {
-    width: 36, height: 4, borderRadius: 2,
-    backgroundColor: Colors.border, alignSelf: 'center', marginBottom: 18,
-  },
-  modalHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'flex-start', marginBottom: 16,
-  },
-  modalTitle: { ...Typography.label, color: Colors.textPrimary, fontWeight: '800', letterSpacing: 1.5 },
-  modalSub: { ...Typography.caption, color: Colors.textSecondary, marginTop: 3 },
-  addToWLBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: Colors.accent, borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 7,
-  },
-  addToWLBtnText: { color: Colors.bg, fontSize: 12, fontWeight: '700' },
+    // FAB
+    fab: {
+      position: 'absolute', bottom: 24, right: 20,
+      width: 56, height: 56, borderRadius: 28,
+      backgroundColor: c.accent,
+      justifyContent: 'center', alignItems: 'center',
+      shadowColor: c.accent, shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
+    },
 
-  // Waitlist entries
-  wlList: { maxHeight: 320 },
-  wlEmpty: { alignItems: 'center', paddingVertical: 36, gap: 8 },
-  wlEmptyText: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
-  wlEmptySub: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center' },
-  wlEntry: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.border, gap: 12,
-  },
-  wlPosition: {
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: Colors.accent + '20', borderWidth: 1, borderColor: Colors.accent + '40',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  wlPositionText: { color: Colors.accent, fontSize: 12, fontWeight: '800' },
-  wlEntryInfo: { flex: 1 },
-  wlEntryName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
-  wlEntryStatus: { ...Typography.caption, color: Colors.textSecondary },
-  wlActions: { flexDirection: 'row', gap: 6 },
-  wlNotifyBtn: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: '#25D36618', borderWidth: 1, borderColor: '#25D36640',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  wlRemoveBtn: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: Colors.surfaceRaised, borderWidth: 1, borderColor: Colors.border,
-    justifyContent: 'center', alignItems: 'center',
-  },
+    // Modal
+    modalRoot: { flex: 1, justifyContent: 'flex-end' },
+    modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: c.overlay },
+    modalSheet: {
+      backgroundColor: c.surface,
+      borderTopLeftRadius: 22, borderTopRightRadius: 22,
+      borderWidth: 1, borderBottomWidth: 0, borderColor: c.border,
+      paddingHorizontal: 20, paddingTop: 12,
+      maxHeight: '72%',
+    },
+    modalHandle: {
+      width: 36, height: 4, borderRadius: 2,
+      backgroundColor: c.border, alignSelf: 'center', marginBottom: 18,
+    },
+    modalHeader: {
+      flexDirection: 'row', justifyContent: 'space-between',
+      alignItems: 'flex-start', marginBottom: 16,
+    },
+    modalTitle: { ...Typography.label, color: c.textPrimary, fontWeight: '800', letterSpacing: 1.5 },
+    modalSub: { ...Typography.caption, color: c.textSecondary, marginTop: 3 },
+    addToWLBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      backgroundColor: c.accent, borderRadius: 10,
+      paddingHorizontal: 12, paddingVertical: 7,
+    },
+    addToWLBtnText: { color: c.bg, fontSize: 12, fontWeight: '700' },
 
-  // Client picker (add mode)
-  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 14 },
-  backBtnText: { ...Typography.caption, color: Colors.textSecondary },
-  clientPickRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.border, gap: 12,
-  },
-  clientPickAvatar: {
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: Colors.accent + '18', borderWidth: 1.5, borderColor: Colors.accent + '40',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  clientPickInitials: { fontSize: 13, fontWeight: '800', color: Colors.accent },
-  clientPickInfo: { flex: 1 },
-  clientPickName: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600' },
-  clientPickMeta: { ...Typography.caption, color: Colors.textSecondary },
+    // Waitlist entries
+    wlList: { maxHeight: 320 },
+    wlEmpty: { alignItems: 'center', paddingVertical: 36, gap: 8 },
+    wlEmptyText: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    wlEmptySub: { ...Typography.caption, color: c.textSecondary, textAlign: 'center' },
+    wlEntry: {
+      flexDirection: 'row', alignItems: 'center',
+      paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border, gap: 12,
+    },
+    wlPosition: {
+      width: 28, height: 28, borderRadius: 14,
+      backgroundColor: c.accent + '20', borderWidth: 1, borderColor: c.accent + '40',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    wlPositionText: { color: c.accent, fontSize: 12, fontWeight: '800' },
+    wlEntryInfo: { flex: 1 },
+    wlEntryName: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    wlEntryStatus: { ...Typography.caption, color: c.textSecondary },
+    wlActions: { flexDirection: 'row', gap: 6 },
+    wlNotifyBtn: {
+      width: 32, height: 32, borderRadius: 16,
+      backgroundColor: '#25D36618', borderWidth: 1, borderColor: '#25D36640',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    wlRemoveBtn: {
+      width: 32, height: 32, borderRadius: 16,
+      backgroundColor: c.surfaceRaised, borderWidth: 1, borderColor: c.border,
+      justifyContent: 'center', alignItems: 'center',
+    },
 
-  // Blocked dates section
-  blockHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  blockSectionTitle: { ...Typography.label, color: Colors.textSecondary },
-  addLeaveBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: Colors.accent, borderRadius: 8,
-    paddingHorizontal: 12, paddingVertical: 6,
-  },
-  addLeaveBtnText: { color: Colors.bg, fontSize: 12, fontWeight: '800' },
-  emptyBlockedCard: {
-    backgroundColor: Colors.surface, borderRadius: 12,
-    borderWidth: 1, borderColor: Colors.border,
-    padding: 20, alignItems: 'center',
-  },
-  emptyBlockedText: { ...Typography.body, color: Colors.textSecondary },
-  blockedList: {
-    backgroundColor: Colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
-  },
-  blockedRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    padding: 14, borderBottomWidth: 1, borderBottomColor: Colors.border + '80',
-  },
-  blockTypeTag: {
-    borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5,
-    flexShrink: 0, minWidth: 60, alignItems: 'center',
-  },
-  blockTypeTagText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
-  blockedInfo: { flex: 1 },
-  blockedDateText: { ...Typography.body, color: Colors.textPrimary, fontWeight: '600', marginBottom: 2 },
-  blockedNotes: { ...Typography.caption, color: Colors.textSecondary, fontStyle: 'italic' },
+    // Client picker (add mode)
+    backBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 14 },
+    backBtnText: { ...Typography.caption, color: c.textSecondary },
+    clientPickRow: {
+      flexDirection: 'row', alignItems: 'center',
+      paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border, gap: 12,
+    },
+    clientPickAvatar: {
+      width: 38, height: 38, borderRadius: 19,
+      backgroundColor: c.accent + '18', borderWidth: 1.5, borderColor: c.accent + '40',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    clientPickInitials: { fontSize: 13, fontWeight: '800', color: c.accent },
+    clientPickInfo: { flex: 1 },
+    clientPickName: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    clientPickMeta: { ...Typography.caption, color: c.textSecondary },
 
-  // Leave type buttons (in modal)
-  leaveTypeBtn: {
-    flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center',
-    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bg,
-  },
-  leaveTypeBtnText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
-});
+    // Blocked day banner (shown in day detail when selected day is blocked)
+    blockedDayBanner: {
+      backgroundColor: c.danger + '12',
+      borderWidth: 1,
+      borderColor: c.danger + '40',
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 14,
+      gap: 6,
+    },
+    blockedDayBannerTitle: {
+      ...Typography.body,
+      color: c.danger,
+      fontWeight: '700',
+    },
+    blockedDayBannerNotes: {
+      ...Typography.caption,
+      color: c.danger,
+      opacity: 0.65,
+      marginLeft: 24,
+    },
+
+    // Blocked dates section
+    blockHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+    blockSectionTitle: { ...Typography.label, color: c.textSecondary },
+    addLeaveBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      backgroundColor: c.accent, borderRadius: 8,
+      paddingHorizontal: 12, paddingVertical: 6,
+    },
+    addLeaveBtnText: { color: c.bg, fontSize: 12, fontWeight: '800' },
+    emptyBlockedCard: {
+      backgroundColor: c.surface, borderRadius: 12,
+      borderWidth: 1, borderColor: c.border,
+      padding: 20, alignItems: 'center',
+    },
+    emptyBlockedText: { ...Typography.body, color: c.textSecondary },
+    blockedList: {
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border, overflow: 'hidden',
+    },
+    blockedRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      padding: 14, borderBottomWidth: 1, borderBottomColor: c.border + '80',
+    },
+    blockTypeTag: {
+      borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5,
+      flexShrink: 0, minWidth: 60, alignItems: 'center',
+    },
+    blockTypeTagText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
+    blockedInfo: { flex: 1 },
+    blockedDateText: { ...Typography.body, color: c.textPrimary, fontWeight: '600', marginBottom: 2 },
+    blockedNotes: { ...Typography.caption, color: c.textSecondary, fontStyle: 'italic' },
+
+    // Leave type buttons (in modal)
+    leaveTypeBtn: {
+      flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center',
+      borderWidth: 1, borderColor: c.border, backgroundColor: c.bg,
+    },
+    leaveTypeBtnText: { fontSize: 13, fontWeight: '700', color: c.textSecondary },
+  });
+}
