@@ -20,6 +20,7 @@ import { supabase } from '@/lib/supabase';
 import { sendPushNotification } from '@/lib/pushNotifications';
 import { ActiveSession, NextSession } from '@/hooks/useActiveSession';
 import { QRScanModal } from '@/components/QRScanModal';
+import { ExercisePickerModal } from '@/components/ExercisePickerModal';
 import { Colors, Typography, ColorScheme } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 
@@ -225,6 +226,8 @@ export function ActiveSessionCard({
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [quickExercises, setQuickExercises] = useState([{ name: '', sets: '', reps: '', kg: '' }]);
   const [savingQuick, setSavingQuick] = useState(false);
+  const [showExPicker, setShowExPicker] = useState(false);
+  const [exPickerIdx, setExPickerIdx] = useState(0);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [restoreCredit, setRestoreCredit] = useState(true);
@@ -674,19 +677,18 @@ export function ActiveSessionCard({
               >
                 {quickExercises.map((ex, i) => (
                   <View key={i} style={ql.exRow}>
-                    <TextInput
-                      style={[ql.input, { flex: 3 }]}
-                      value={ex.name}
-                      onChangeText={v => {
-                        const next = [...quickExercises];
-                        next[i] = { ...next[i], name: v };
-                        setQuickExercises(next);
-                      }}
-                      placeholder="e.g. Squat"
-                      placeholderTextColor={c.textSecondary + '60'}
-                      autoCapitalize="words"
-                      returnKeyType="next"
-                    />
+                    <Pressable
+                      style={[ql.input, ql.exNameBtn, { flex: 3 }]}
+                      onPress={() => { setExPickerIdx(i); setShowExPicker(true); }}
+                    >
+                      <Text
+                        style={[ql.exNameTxt, !ex.name && { color: c.textSecondary + '60' }]}
+                        numberOfLines={1}
+                      >
+                        {ex.name || 'Pick exercise'}
+                      </Text>
+                      <Ionicons name="chevron-down" size={11} color={c.textSecondary + '80'} />
+                    </Pressable>
                     <TextInput
                       style={ql.input}
                       value={ex.sets}
@@ -776,6 +778,17 @@ export function ActiveSessionCard({
           </Pressable>
         </Pressable>
       </Modal>
+
+      <ExercisePickerModal
+        visible={showExPicker}
+        onClose={() => setShowExPicker(false)}
+        onSelect={(name) => {
+          const next = [...quickExercises];
+          next[exPickerIdx] = { ...next[exPickerIdx], name };
+          setQuickExercises(next);
+          setShowExPicker(false);
+        }}
+      />
     </>
   );
 }
@@ -979,6 +992,11 @@ const makeQlStyles = (c: ColorScheme) => StyleSheet.create({
     borderRadius: 10, paddingHorizontal: 8, paddingVertical: 10,
     color: c.textPrimary, fontSize: 13, textAlign: 'center',
   },
+  exNameBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 8, textAlign: 'left',
+  },
+  exNameTxt: { fontSize: 13, color: '#fff', flex: 1 },
   addBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     paddingVertical: 10, marginTop: 4,
