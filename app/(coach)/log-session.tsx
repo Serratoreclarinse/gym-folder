@@ -115,6 +115,7 @@ async function scheduleSessionReminder(
   for (const { offsetMs, label } of slots) {
     const fireAt = new Date(sessionDT.getTime() - offsetMs);
     if (fireAt.getTime() <= now) continue;
+    if (Platform.OS === 'web') continue;
 
     await Notifications.scheduleNotificationAsync({
       content: {

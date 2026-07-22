@@ -679,7 +679,11 @@ export function ActiveSessionCard({
                   <View key={i} style={ql.exRow}>
                     <Pressable
                       style={[ql.input, ql.exNameBtn, { flex: 3 }]}
-                      onPress={() => { setExPickerIdx(i); setShowExPicker(true); }}
+                      onPress={() => {
+                        setExPickerIdx(i);
+                        setShowQuickLog(false);
+                        setShowExPicker(true);
+                      }}
                     >
                       <Text
                         style={[ql.exNameTxt, !ex.name && { color: c.textSecondary + '60' }]}
@@ -715,7 +719,7 @@ export function ActiveSessionCard({
                       keyboardType="number-pad"
                       maxLength={3}
                     />
-                    <View style={{ justifyContent: 'center' }}>
+                    <View style={{ flex: 1, justifyContent: 'center' }}>
                       <TextInput
                         style={[ql.input, ex.kg.toUpperCase() === 'BW' ? { color: c.accent, fontWeight: '700' } : null]}
                         value={ex.kg}
@@ -781,12 +785,13 @@ export function ActiveSessionCard({
 
       <ExercisePickerModal
         visible={showExPicker}
-        onClose={() => setShowExPicker(false)}
+        onClose={() => { setShowExPicker(false); setShowQuickLog(true); }}
         onSelect={(name) => {
           const next = [...quickExercises];
           next[exPickerIdx] = { ...next[exPickerIdx], name };
           setQuickExercises(next);
           setShowExPicker(false);
+          setShowQuickLog(true);
         }}
       />
     </>
@@ -968,7 +973,7 @@ const makeQlStyles = (c: ColorScheme) => StyleSheet.create({
   sheet: {
     backgroundColor: c.surface,
     borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingHorizontal: 16, paddingBottom: 8,
+    paddingHorizontal: 18, paddingBottom: 8,
   },
   handle: {
     width: 40, height: 4, borderRadius: 2,
@@ -980,7 +985,7 @@ const makeQlStyles = (c: ColorScheme) => StyleSheet.create({
   },
   title: { ...Typography.label, color: c.textPrimary, fontSize: 14 },
   tableHeader: {
-    flexDirection: 'row', gap: 6, marginBottom: 6, alignItems: 'center',
+    flexDirection: 'row', gap: 6, marginBottom: 8, alignItems: 'center',
   },
   colHead: {
     flex: 1, color: c.textSecondary,
@@ -989,14 +994,14 @@ const makeQlStyles = (c: ColorScheme) => StyleSheet.create({
   exRow: { flexDirection: 'row', gap: 6, marginBottom: 8, alignItems: 'center' },
   input: {
     flex: 1, backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
-    borderRadius: 10, paddingHorizontal: 8, paddingVertical: 10,
+    borderRadius: 10, paddingHorizontal: 6, paddingVertical: 11,
     color: c.textPrimary, fontSize: 13, textAlign: 'center',
   },
   exNameBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 8, textAlign: 'left',
+    paddingHorizontal: 8,
   },
-  exNameTxt: { fontSize: 13, color: '#fff', flex: 1 },
+  exNameTxt: { fontSize: 13, color: c.textPrimary, flex: 1 },
   addBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     paddingVertical: 10, marginTop: 4,

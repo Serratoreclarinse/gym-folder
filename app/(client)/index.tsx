@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Animated, Linking, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useClientData, type ClientPackage } from '@/hooks/useClientData';
@@ -190,7 +190,7 @@ export default function ClientProgressScreen() {
     if (!upcomingScheduled.length) return;
     let cancelled = false;
     (async () => {
-      await Notifications.cancelAllScheduledNotificationsAsync();
+      if (Platform.OS !== 'web') await Notifications.cancelAllScheduledNotificationsAsync();
       if (cancelled) return;
       for (const s of upcomingScheduled) {
         const sessionDt = new Date(s.scheduled_at);
@@ -202,7 +202,7 @@ export default function ClientProgressScreen() {
         ];
         for (const r of reminders) {
           const fireAt = new Date(sessionDt.getTime() - r.ms);
-          if (fireAt > new Date()) {
+          if (fireAt > new Date() && Platform.OS !== 'web') {
             await Notifications.scheduleNotificationAsync({
               content: { title: r.title, body: r.body, sound: true },
               trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: fireAt },

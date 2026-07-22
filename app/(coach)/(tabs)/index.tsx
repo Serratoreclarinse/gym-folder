@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Image, Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Linking, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
@@ -278,6 +278,7 @@ export default function CoachDashboard() {
       if (done) return;
       const todayBdays = clients.filter((c) => c.birthday != null && getDaysUntilBirthday(c.birthday) === 0);
       if (todayBdays.length === 0) return;
+      if (Platform.OS === 'web') return;
       const { status } = await Notifications.requestPermissionsAsync();
       if (status !== 'granted') return;
       for (const c of todayBdays) {
@@ -300,6 +301,7 @@ export default function CoachDashboard() {
     const time = sessionDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const name = nextSession.client_name;
     (async () => {
+      if (Platform.OS === 'web') return;
       await Notifications.cancelScheduledNotificationAsync('coach-session-3hr').catch(() => {});
       await Notifications.cancelScheduledNotificationAsync('coach-session-30min').catch(() => {});
       await Notifications.cancelScheduledNotificationAsync('coach-session-15min').catch(() => {});
