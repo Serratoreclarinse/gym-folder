@@ -34,6 +34,9 @@ export function CoachDrawer({ visible, onClose }: Props) {
         Animated.timing(slideX,   { toValue: -DRAWER_W, duration: 240, useNativeDriver: true }),
         Animated.timing(backdrop, { toValue: 0,          duration: 200, useNativeDriver: true }),
       ]).start(({ finished }) => { if (finished) setMounted(false); });
+      // Fallback: force-unmount after 350ms in case animation callback doesn't fire
+      const t = setTimeout(() => setMounted(false), 350);
+      return () => clearTimeout(t);
     }
   }, [visible]);
 
@@ -56,7 +59,7 @@ export function CoachDrawer({ visible, onClose }: Props) {
     <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
       {/* Backdrop */}
       <Animated.View
-        pointerEvents="auto"
+        pointerEvents={visible ? 'auto' : 'none'}
         style={[
           StyleSheet.absoluteFillObject,
           { backgroundColor: '#000', elevation: 15, opacity: backdrop.interpolate({ inputRange: [0, 1], outputRange: [0, 0.55] }) },

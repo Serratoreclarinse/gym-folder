@@ -132,28 +132,53 @@ export default function QRScannerScreen() {
   ): Promise<{ error: string | null }> => {
     const today = new Date().toISOString().split('T')[0];
 
-    const { data: sessionData, error: sessionErr } = await supabase
+    // Check for a pre-planned session from schedule-session
+    const { data: planned } = await supabase
       .from('workout_sessions')
-      .insert({
-        coach_id: profile!.id,
-        client_id: clientId,
-        package_id: packageId,
-        session_date: today,
-        duration_minutes: duration,
-        exercises: [],
-        notes,
-      })
       .select('id')
-      .single();
+      .eq('coach_id', profile!.id)
+      .eq('client_id', clientId)
+      .eq('session_date', today)
+      .eq('status', 'planned')
+      .maybeSingle();
 
-    if (sessionErr || !sessionData) {
-      return { error: sessionErr?.message ?? 'Failed to create session.' };
+    let sessionId: string;
+
+    if (planned) {
+      // Activate the pre-planned session
+      await supabase.from('workout_sessions').update({
+        package_id: packageId,
+        duration_minutes: duration,
+        status: 'confirmed',
+        ...(notes ? { notes } : {}),
+      }).eq('id', planned.id);
+      sessionId = planned.id;
+    } else {
+      // No pre-plan — create a new empty session
+      const { data: sessionData, error: sessionErr } = await supabase
+        .from('workout_sessions')
+        .insert({
+          coach_id: profile!.id,
+          client_id: clientId,
+          package_id: packageId,
+          session_date: today,
+          duration_minutes: duration,
+          exercises: [],
+          notes,
+        })
+        .select('id')
+        .single();
+
+      if (sessionErr || !sessionData) {
+        return { error: sessionErr?.message ?? 'Failed to create session.' };
+      }
+      sessionId = sessionData.id;
     }
 
     const { error: activeErr } = await supabase.from('active_sessions').insert({
       coach_id: profile!.id,
       client_id: clientId,
-      session_id: sessionData.id,
+      session_id: sessionId,
       start_time: new Date().toISOString(),
       original_duration: duration,
       current_duration: duration,
@@ -162,8 +187,10 @@ export default function QRScannerScreen() {
     });
 
     if (activeErr) {
-      // Roll back the workout_sessions row so we don't deduct without a timer
-      await supabase.from('workout_sessions').delete().eq('id', sessionData.id);
+      // Roll back only if we created a new (empty) session
+      if (!planned) {
+        await supabase.from('workout_sessions').delete().eq('id', sessionId);
+      }
       return { error: activeErr.message };
     }
 
