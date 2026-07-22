@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Image, Linking, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Linking, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
@@ -37,6 +37,181 @@ const AVATAR_COLORS = [
   '#00BCD4', '#F44336', '#2196F3', '#FF5722',
   '#8BC34A', '#E91E63', '#FFC107', '#795548',
 ];
+
+function QuickStartModal({
+  visible, clients, coachId, onClose, onStarted,
+}: {
+  visible: boolean;
+  clients: ClientWithPackage[];
+  coachId: string;
+  onClose: () => void;
+  onStarted: () => void;
+}) {
+  const { colors } = useTheme();
+  const qs = useMemo(() => makeQs(colors), [colors]);
+  const [selectedId, setSelectedId] = useState('');
+  const [duration, setDuration] = useState<30 | 45 | 60 | 90>(60);
+  const [search, setSearch] = useState('');
+  const [starting, setStarting] = useState(false);
+
+  const filtered = clients.filter((c) =>
+    c.name.toLowerCase().includes(search.toLowerCase()) && c.activePackage?.status === 'active'
+  );
+
+  const reset = () => { setSelectedId(''); setDuration(60); setSearch(''); };
+
+  const handleStart = async () => {
+    if (!selectedId) { Alert.alert('Select a client first'); return; }
+    const client = clients.find((c) => c.id === selectedId);
+    const pkg = client?.activePackage;
+    if (!pkg) { Alert.alert('No Package', 'This client has no active package.'); return; }
+
+    setStarting(true);
+    const today = new Date().toISOString().split('T')[0];
+
+    // Check for a pre-planned session today
+    const { data: planned } = await supabase
+      .from('workout_sessions')
+      .select('id')
+      .eq('coach_id', coachId)
+      .eq('client_id', selectedId)
+      .eq('session_date', today)
+      .eq('status', 'planned')
+      .maybeSingle();
+
+    let sessionId: string;
+    if (planned) {
+      await supabase.from('workout_sessions').update({
+        package_id: pkg.id,
+        duration_minutes: duration,
+        status: 'confirmed',
+      }).eq('id', planned.id);
+      sessionId = planned.id;
+    } else {
+      const { data: ws, error: wsErr } = await supabase.from('workout_sessions').insert({
+        coach_id: coachId,
+        client_id: selectedId,
+        package_id: pkg.id,
+        session_date: today,
+        duration_minutes: duration,
+        exercises: [],
+      }).select('id').single();
+      if (wsErr || !ws) {
+        setStarting(false);
+        Alert.alert('Error', wsErr?.message ?? 'Could not create session.');
+        return;
+      }
+      sessionId = ws.id;
+    }
+
+    const { error: aeErr } = await supabase.from('active_sessions').insert({
+      coach_id: coachId,
+      client_id: selectedId,
+      session_id: sessionId,
+      start_time: new Date().toISOString(),
+      original_duration: duration,
+      current_duration: duration,
+      is_active: true,
+      is_paused: false,
+    });
+
+    setStarting(false);
+
+    if (aeErr) {
+      if (!planned) await supabase.from('workout_sessions').delete().eq('id', sessionId);
+      Alert.alert('Error', aeErr.message);
+      return;
+    }
+
+    reset();
+    onClose();
+    onStarted();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={qs.overlay} onPress={onClose}>
+        <Pressable style={qs.sheet} onPress={() => {}}>
+          <View style={qs.handle} />
+          <View style={qs.header}>
+            <Text style={qs.title}>QUICK START SESSION</Text>
+            <Pressable onPress={() => { reset(); onClose(); }} hitSlop={12}>
+              <Ionicons name="close" size={22} color={colors.textSecondary} />
+            </Pressable>
+          </View>
+
+          {/* Search */}
+          <View style={qs.searchRow}>
+            <Ionicons name="search-outline" size={16} color={colors.textSecondary} />
+            <TextInput
+              style={qs.searchInput}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search client…"
+              placeholderTextColor={colors.textSecondary + '60'}
+            />
+            {search.length > 0 && (
+              <Pressable onPress={() => setSearch('')} hitSlop={8}>
+                <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
+              </Pressable>
+            )}
+          </View>
+
+          {/* Client list */}
+          <ScrollView style={qs.list} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            {filtered.map((c) => {
+              const ini = c.name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
+              const active = c.id === selectedId;
+              return (
+                <Pressable
+                  key={c.id}
+                  style={[qs.clientRow, active && qs.clientRowActive]}
+                  onPress={() => setSelectedId(c.id)}
+                >
+                  <View style={[qs.avatar, active && qs.avatarActive]}>
+                    <Text style={[qs.avatarText, active && { color: colors.bg }]}>{ini}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[qs.clientName, active && { color: colors.accent }]}>{c.name}</Text>
+                    <Text style={qs.clientSub}>{c.activePackage!.sessions_remaining} sessions left</Text>
+                  </View>
+                  {active && <Ionicons name="checkmark-circle" size={20} color={colors.accent} />}
+                </Pressable>
+              );
+            })}
+            {filtered.length === 0 && (
+              <Text style={qs.empty}>No active clients found</Text>
+            )}
+          </ScrollView>
+
+          {/* Duration */}
+          <Text style={qs.durationLabel}>DURATION</Text>
+          <View style={qs.durRow}>
+            {([30, 45, 60, 90] as const).map((d) => (
+              <Pressable
+                key={d}
+                style={[qs.durBtn, duration === d && qs.durBtnActive]}
+                onPress={() => setDuration(d)}
+              >
+                <Text style={[qs.durText, duration === d && qs.durTextActive]}>{d}m</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Pressable
+            style={[qs.startBtn, (!selectedId || starting) && { opacity: 0.4 }]}
+            onPress={handleStart}
+            disabled={!selectedId || starting}
+          >
+            <Ionicons name="play-circle-outline" size={18} color={colors.bg} />
+            <Text style={qs.startBtnText}>{starting ? 'STARTING…' : 'START SESSION'}</Text>
+          </Pressable>
+          <View style={{ height: 24 }} />
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
 
 function ClientPickerModal({
   visible, clients, onClose, onSelect,
@@ -123,6 +298,7 @@ export default function CoachDashboard() {
   const { activeSession, nextSession, extendSession, endSession, cancelSession, refetch: refetchTimer } = useActiveSessionContext();
   const [pausedWorkout, setPausedWorkout] = useState<any | null>(null);
   const [showPicker, setShowPicker] = useState(false);
+  const [showQuickStart, setShowQuickStart] = useState(false);
 
   const [atRiskClients, setAtRiskClients] = useState<{ id: string; name: string; daysSince: number; phone: string | null }[]>([]);
   const [incomingTransfers, setIncomingTransfers] = useState<{
@@ -428,13 +604,23 @@ export default function CoachDashboard() {
       )}
 
       {/* Quick actions */}
-      <Pressable
-        style={({ pressed }) => [styles.logSessionBtn, pressed && { opacity: 0.85 }]}
-        onPress={() => router.push('/(coach)/log-session')}
-      >
-        <Ionicons name="add-circle-outline" size={20} color={colors.bg} />
-        <Text style={styles.logSessionText}>LOG SESSION</Text>
-      </Pressable>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, marginBottom: 12 }}>
+        <Pressable
+          style={({ pressed }) => [styles.logSessionBtn, { flex: 1 }, pressed && { opacity: 0.85 }]}
+          onPress={() => router.push('/(coach)/log-session')}
+        >
+          <Ionicons name="add-circle-outline" size={18} color={colors.bg} />
+          <Text style={styles.logSessionText}>LOG SESSION</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.quickStartBtn, pressed && { opacity: 0.85 }]}
+          onPress={() => setShowQuickStart(true)}
+          disabled={!!activeSession}
+        >
+          <Ionicons name="play-circle-outline" size={18} color={colors.accent} />
+          <Text style={styles.quickStartText}>QUICK START</Text>
+        </Pressable>
+      </View>
 
       {/* Resume paused workout — hide when active session card is showing (its FULL LOG button covers this) */}
       {pausedWorkout && !activeSession && (
@@ -754,6 +940,14 @@ export default function CoachDashboard() {
       onSelect={(id) => { setShowPicker(false); router.push(`/(coach)/client/${id}` as any); }}
     />
     </ScrollView>
+
+    <QuickStartModal
+      visible={showQuickStart}
+      clients={clients}
+      coachId={profile?.id ?? ''}
+      onClose={() => setShowQuickStart(false)}
+      onStarted={refetchTimer}
+    />
   );
 }
 
@@ -812,9 +1006,14 @@ function makeStyles(c: ColorScheme) {
     logSessionBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
       backgroundColor: c.accent, borderRadius: 14, paddingVertical: 16,
-      marginTop: 12, marginBottom: 12,
     },
-    logSessionText: { color: c.bg, fontSize: 14, fontWeight: '800', letterSpacing: 1 },
+    logSessionText: { color: c.bg, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+    quickStartBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+      borderWidth: 1.5, borderColor: c.accent + '60', borderRadius: 14, paddingVertical: 16,
+      paddingHorizontal: 18, backgroundColor: c.accent + '10',
+    },
+    quickStartText: { color: c.accent, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
     sectionTitle: { ...Typography.label, color: c.textSecondary },
     strikeSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
     strikeBadge: {
@@ -984,5 +1183,62 @@ function makePs(c: ColorScheme) {
     rowStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
     statusDot: { width: 7, height: 7, borderRadius: 4 },
     statusLabel: { fontSize: 12, fontWeight: '600' },
+  });
+}
+
+function makeQs(c: ColorScheme) {
+  return StyleSheet.create({
+    overlay: { flex: 1, backgroundColor: c.overlay, justifyContent: 'flex-end' },
+    sheet: {
+      backgroundColor: c.surface,
+      borderTopLeftRadius: 24, borderTopRightRadius: 24,
+      paddingHorizontal: 20, paddingBottom: 8,
+      maxHeight: '80%',
+    },
+    handle: {
+      width: 40, height: 4, borderRadius: 2,
+      backgroundColor: c.border, alignSelf: 'center', marginTop: 12, marginBottom: 8,
+    },
+    header: {
+      flexDirection: 'row', justifyContent: 'space-between',
+      alignItems: 'center', marginBottom: 14,
+    },
+    title: { ...Typography.label, color: c.textPrimary, fontSize: 14 },
+    searchRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      backgroundColor: c.bg, borderRadius: 12, borderWidth: 1, borderColor: c.border,
+      paddingHorizontal: 12, paddingVertical: 2, marginBottom: 10,
+    },
+    searchInput: { flex: 1, color: c.textPrimary, fontSize: 14, paddingVertical: 10 },
+    list: { maxHeight: 260 },
+    clientRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    clientRowActive: { backgroundColor: c.accent + '08' },
+    avatar: {
+      width: 38, height: 38, borderRadius: 19,
+      backgroundColor: c.accent + '18', borderWidth: 1.5, borderColor: c.accent + '40',
+      justifyContent: 'center', alignItems: 'center',
+    },
+    avatarActive: { backgroundColor: c.accent, borderColor: c.accent },
+    avatarText: { color: c.accent, fontWeight: '800', fontSize: 13 },
+    clientName: { ...Typography.body, color: c.textPrimary, fontWeight: '600' },
+    clientSub: { ...Typography.caption, color: c.textSecondary, marginTop: 1 },
+    empty: { ...Typography.body, color: c.textSecondary, textAlign: 'center', paddingVertical: 24 },
+    durationLabel: { ...Typography.label, color: c.textSecondary, marginTop: 16, marginBottom: 10 },
+    durRow: { flexDirection: 'row', gap: 8, marginBottom: 18 },
+    durBtn: {
+      flex: 1, paddingVertical: 11, borderRadius: 10, alignItems: 'center',
+      backgroundColor: c.surface, borderWidth: 1.5, borderColor: c.border,
+    },
+    durBtnActive: { backgroundColor: c.accent, borderColor: c.accent },
+    durText: { fontWeight: '700', fontSize: 13, color: c.textSecondary },
+    durTextActive: { color: c.bg },
+    startBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+      backgroundColor: c.accent, borderRadius: 14, paddingVertical: 15,
+    },
+    startBtnText: { color: c.bg, fontWeight: '800', fontSize: 14, letterSpacing: 1 },
   });
 }
